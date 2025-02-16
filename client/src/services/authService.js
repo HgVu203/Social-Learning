@@ -1,21 +1,24 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL
+import axiosInstance from './axiosService';
 
 const signup = (userData) => {
-    return axios.post(`${API_URL}/signup`, userData);
+    return axiosInstance.post('/auth/signup', userData);
 };
 
-const login = (userData) => {
-    return axios.post(`${API_URL}/login`, userData);
+const login = async (userData) => {
+    const response = await axiosInstance.post('/auth/login', userData);
+    if (response.data.success) {
+        localStorage.setItem('accessToken', response.data.data.accessToken);
+    }
+    return response;
 };
 
 const logout = () => {
-    return axios.post(`${API_URL}/logout`);
+    localStorage.removeItem('accessToken');
+    return axiosInstance.post('/auth/logout');
 };
 
 const setPassword = (userData) => {
-    return axios.post(`${API_URL}/set-password`, userData);
-}
+    return axiosInstance.post('/auth/set-password', userData);
+};
 
 export { signup, login, logout, setPassword };

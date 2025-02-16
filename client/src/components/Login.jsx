@@ -2,8 +2,9 @@ import React from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { login } from '../services/authService';
-
+import { useNavigate } from 'react-router-dom';
 const Login = () => {
+    const navigate = useNavigate();
     const formik = useFormik({
         initialValues: {
             email: '',
@@ -17,6 +18,7 @@ const Login = () => {
             try {
                 const response = await login(values);
                 alert(response.data.message);
+                navigate('/');
             } catch (error) {
                 alert(error.response.data.error);
             }
