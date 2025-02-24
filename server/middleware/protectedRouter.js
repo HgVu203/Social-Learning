@@ -1,24 +1,44 @@
-import jwt from 'jsonwebtoken';
 import User from '../models/user.model.js';
+import { AuthService } from '../services/auth.service.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
 const protectedRouter = async (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({ success: false, error: 'Access token is missing' });
-    }
-
     try {
-        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        const user = await User.findById(decoded.userId);
-        if (!user) {
-            return res.status(401).json({ success: false, error: 'User not found' });
+        const token = AuthService.getTokenFromHeader(req);
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                error: 'Access token is required'
+            });
         }
+
+        const { valid, decoded, error } = AuthService.verifyAccessToken(token);
+        if (!valid) {
+            return res.status(401).json({
+                success: false,
+                error: error || 'Invalid access token'
+            });
+        }
+
+        const user = await User.findById(decoded.userId)
+            .select('-password');
+
+        if (!user || user.status === 'banned') {
+            return res.status(401).json({
+                success: false,
+                error: 'User not found or banned'
+            });
+        }
+
         req.user = user;
         next();
     } catch (error) {
-        return res.status(401).json({ success: false, error: 'Invalid access token' });
+        console.error('Auth middleware error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Authentication failed'
+        });
     }
 };
 

@@ -6,23 +6,6 @@ import User from '../models/user.model.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const jwtOptions = {
-    jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-    secretOrKey: process.env.ACCESS_TOKEN_SECRET,
-};
-
-passport.use(new JwtStrategy(jwtOptions, async (payload, done) => {
-    try {
-        const user = await User.findById(payload.userId);
-        if (!user) {
-            return done(null, false);
-        }
-        return done(null, user);
-    } catch (error) {
-        return done(error, false);
-    }
-}));
-
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -39,7 +22,6 @@ passport.use(new GoogleStrategy({
                 fullname: profile.displayName,
                 username: profile.emails[0].value.split("@")[0],
                 email: profile.emails[0].value,
-                isPasswordSet: false
             });
             await user.save();
         }
@@ -66,7 +48,6 @@ passport.use(new FacebookStrategy({
                 fullname: profile.displayName,
                 username: profile.emails[0].value.split("@")[0],
                 email: profile.emails[0].value,
-                isPasswordSet: false
             });
             await user.save();
         }

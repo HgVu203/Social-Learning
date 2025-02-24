@@ -5,7 +5,7 @@ const NotificationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index : true
+        index: true
     },
     message: {
         type: String,
@@ -16,6 +16,7 @@ const NotificationSchema = new mongoose.Schema({
         default: false
     }
 }, { timestamps: true });
+
 
 const Notification = mongoose.model("Notification", NotificationSchema);
 export default Notification

@@ -26,11 +26,11 @@ const Login = () => {
     });
 
     const handleGoogleLogin = () => {
-        window.location.href = `${import.meta.env.VITE_API_URL}/google`;
+        window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
     };
 
     const handleFacebookLogin = () => {
-        window.location.href = `${import.meta.env.VITE_API_URL}/facebook`;
+        window.location.href = `${import.meta.env.VITE_API_URL}/auth/facebook`;
     };
 
     return (

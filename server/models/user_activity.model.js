@@ -5,18 +5,22 @@ const UserActivitySchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index : true
+        index: true
     },
     postId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Post',
-        required: true,
-        index : true
+        required: false,
+        index: true
     },
     type: {
         type: String,
-        enum: ['like', 'comment', 'share', 'search', 'read'],
+        enum: ['create_post', 'comment', 'like', 'view', 'search'],
         required: true
+    },
+    searchQuery: {
+        type: String,
+        required: false
     }
 }, { timestamps: true });
 

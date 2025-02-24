@@ -5,20 +5,28 @@ const FriendshipSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index : true
+        index: true
     },
     friendId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index : true
+        index: true
     },
     status: {
         type: String,
         enum: ['pending', 'accepted', 'blocked'],
         default: 'pending'
+    },
+    initiatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
     }
-}, { timestamps: true });   
+}, { 
+    timestamps: true
+});
+
 
 const Friendship = mongoose.model("Friendship", FriendshipSchema);
-export default Friendship
+export default Friendship;
