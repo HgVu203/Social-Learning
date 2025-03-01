@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(protectedRouter);
 
 // Group management
-router.post("/", GroupController.createGroup);
+router.post("/create", GroupController.createGroup);
 router.get("/", GroupController.getGroups);
 router.get("/:id", GroupController.getGroupById);
 router.patch("/:id", GroupController.updateGroup);

@@ -15,7 +15,7 @@ const FeedbackSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['like', 'dislike', 'report']
+        enum: ['like', 'dislike', 'report','comment']
     },
     comment: {
         type: String

@@ -25,7 +25,7 @@ const GroupSchema = new mongoose.Schema({
         },
         role: {
             type: String,
-            enum: ['admin', 'moderator', 'member'],
+            enum: ['admin', 'member'],
             default: 'member'
         },
         joinedAt: {
@@ -49,7 +49,7 @@ const GroupSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'inactive', 'archived'],
+        enum: ['active', 'inactive'],
         default: 'active'
     },
     tags: [{

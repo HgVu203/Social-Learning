@@ -12,7 +12,7 @@ const router = express.Router();
 // Rate limiters
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5,
+    max: 10000,
     message: { success: false, error: 'Too many login attempts, please try again later' }
 });
 
@@ -46,24 +46,25 @@ router.post("/reset-password",
     AuthController.resetPassword
 );
 
-router.get("/verify-email/:token", AuthController.verifyEmail);
+router.post("/refresh-token", AuthController.refreshToken);
 
 // OAuth routes
 router.get("/google", AuthController.googleLogin);
 router.get("/google/callback", AuthController.googleCallback);
 router.get("/facebook", AuthController.facebookLogin);
 router.get("/facebook/callback", AuthController.facebookCallback);
+router.get("/verify-email/:token", AuthController.verifyEmail);
+
 
 // Protected routes
 router.use(protectedRouter);
 
 router.post("/logout", AuthController.logout);
-router.post("/refresh-token", AuthController.refreshToken);
+
 router.post("/set-password/:id",
     validateRequest(authValidationSchema.setPassword),
     AuthController.setPassword
 );
-
 
 
 export default router;

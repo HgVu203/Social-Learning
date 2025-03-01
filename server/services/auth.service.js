@@ -1,10 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import {
-  generateToken,
-  signToken,
-  verifyToken,
-} from "../utils/token/handleToken.js";
+import { signToken, verifyToken } from "../utils/token/handleToken.js";
 import User from "../models/user.model.js";
 import { transporter } from "../utils/sendmail/transport.js";
 import { templateResetPassword } from "../utils/template/resetPassword.js";
@@ -22,7 +18,17 @@ export const AuthService = {
     }
 
     if (!user.emailVerified) {
-      return { error: "Please verify your email first" };
+      if (!user.emailVerificationToken || !user.emailVerificationExpires || user.emailVerificationExpires < Date.now()) {
+        const verificationToken = this.generateVerificationToken();
+        user.emailVerificationToken = verificationToken;
+        user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+        await user.save();
+      }
+      await this.sendVerificationEmail(user.email, user.emailVerificationToken);
+      return {
+        error:
+          "Please verify your email first. A new verification email has been sent.",
+      };
     }
 
     const isValidPassword = await this.comparePassword(password, user.password);
@@ -31,22 +37,6 @@ export const AuthService = {
     }
 
     return { user };
-  },
-
-  async createUser(userData) {
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-    const verificationToken = crypto.randomBytes(20).toString("hex");
-
-    const user = new User({
-      ...userData,
-      password: hashedPassword,
-      emailVerificationToken: verificationToken,
-      emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000,
-      isPasswordSet: true,
-    });
-
-    await user.save();
-    return { user, verificationToken };
   },
 
   getCookieOptions() {

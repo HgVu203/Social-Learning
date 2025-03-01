@@ -99,7 +99,7 @@ export const GroupController = {
 
     getGroupById: async (req, res) => {
         try {
-            const group = await Group.findById(req.params.id).populate('createdBy', 'username').populate('members', 'username');
+            const group = await Group.findById(req.params.id).populate('createdBy', 'username').populate('members.user', 'username');
             if (!group) {
                 return res.status(404).json({ success: false, error: "Group not found" });
             }

@@ -59,7 +59,7 @@ PostSchema.virtual('likeCount', {
 });
 
 PostSchema.virtual('commentCount', {
-    ref: 'Comment',
+    ref: 'Feedback',
     localField: '_id',
     foreignField: 'postId',
     count: true

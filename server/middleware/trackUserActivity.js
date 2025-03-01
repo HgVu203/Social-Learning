@@ -1,51 +1,50 @@
-import UserActivity from '../models/user_activity.model.js';
-
+import UserActivity from "../models/user_activity.model.js";
+import dotenv from "dotenv";
+dotenv.config();
 const trackUserActivity = async (req, res, next) => {
-    try {
-        const originalSend = res.json;
-        res.json = function (data) {
-            // Chỉ track các hoạt động thành công
-            if (res.statusCode === 200 || res.statusCode === 201) {
-                const userId = req.user?._id;
-                if (userId) {
-                    let activityType;
-                    let postId;
+  try {
+    const originalSend = res.json;
+    res.json = function (data) {
+      // Only track successful activities
+      if (res.statusCode === 200 || res.statusCode === 201) {
+        const userId = req.user?._id;
+        if (userId) {
+          let activityType;
+          let postId;
+          const fullPath = req.baseUrl + req.path;
+          if (req.method === "POST" && fullPath.includes("/create-post")) {
+            activityType = "create_post";
+            postId = data.data?._id;
+          } else if (req.method === "POST" && fullPath.includes("/comment")) {
+            activityType = "comment";
+            postId = req.params.id;
+          } else if (req.method === "POST" && fullPath.includes("post/like")) {
+            activityType = "like";
+            postId = req.params.id;
+          } else if (req.method === "GET" && fullPath.includes("post/search")) {
+            activityType = "search";
+            postId = null;
+          }
 
-                    // Xác định loại hoạt động dựa trên route và method
-                    if (req.method === 'POST' && req.path.endsWith('/posts')) {
-                        activityType = 'create_post';
-                        postId = data.data?._id;
-                    } else if (req.method === 'POST' && req.path.includes('/comment')) {
-                        activityType = 'comment';
-                        postId = req.params.id;
-                    } else if (req.method === 'POST' && req.path.includes('/like')) {
-                        activityType = 'like';
-                        postId = req.params.id;
-                    } else if (req.method === 'GET' && req.path.match(/\/posts\/[^/]+$/)) {
-                        activityType = 'view';
-                        postId = req.params.id;
-                    } else if (req.method === 'GET' && req.path.includes('/search')) {
-                        activityType = 'search';
-                        // Có thể lưu từ khóa tìm kiếm
-                        postId = null;
-                    }
-
-                    if (activityType) {
-                        new UserActivity({
-                            userId,
-                            postId,
-                            type: activityType
-                        }).save();
-                    }
-                }
-            }
-            originalSend.call(this, data);
-        };
-        next();
-    } catch (error) {
-        console.error('Error tracking user activity:', error);
-        next();
-    }
+          if (activityType) {
+            console.log(`Tracking activity: ${activityType}`); // Debug log
+            new UserActivity({
+              userId,
+              postId,
+              type: activityType,
+              searchQuery:
+                activityType === "search" ? req.query.keyword : undefined,
+            }).save();
+          }
+        }
+      }
+      originalSend.call(this, data);
+    };
+    next();
+  } catch (error) {
+    console.error("Error tracking user activity:", error);
+    next();
+  }
 };
 
 export default trackUserActivity;

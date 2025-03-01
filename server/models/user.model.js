@@ -1,116 +1,123 @@
 import mongoose from "mongoose";
 
-const UserSchema = new mongoose.Schema({
+const UserSchema = new mongoose.Schema(
+  {
     username: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     email: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     password: {
-        type: String,
-        minlength: 6
-    },
-    isPasswordSet: {
-        type: Boolean,
-        default: false
+      type: String,
+      minlength: 6,
     },
     fullname: {
-        type: String,
-        trim: true
+      type: String,
+      trim: true,
     },
     phone: {
-        type: String,
-        trim: true,
-        match: /^[0-9]{10}$/ // Validate số điện thoại 10 chữ số
+      type: String,
+      trim: true,
+      match: /^[0-9]{10}$/, // Validate số điện thoại 10 chữ số
     },
     address: {
-        type: String,
-        trim: true
+      type: String,
+      trim: true,
     },
     points: {
-        type: Number,
-        default: 0,
-        min: 0
+      type: Number,
+      default: 0,
+      min: 0,
     },
     rank: {
-        type: String,
-        enum: ['Beginner', 'Intermediate', 'Advanced', 'Expert'],
-        default: 'Beginner'
+      type: String,
+      enum: [
+        "Rookie",
+        "Bronze",
+        "Silver",
+        "Gold",
+        "Platinum",
+        "Diamond",
+        "Master",
+      ],
+      default: "Rookie",
     },
-    badges: [{
+    badges: [
+      {
         name: {
-            type: String,
-            required: true
+          type: String,
+          required: true,
         },
         earnedAt: {
-            type: Date,
-            default: Date.now
-        }
-    }],
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     role: {
-        type: String,
-        enum: ['user', 'admin', 'moderator'],
-        default: 'user'
+      type: String,
+      enum: ["user", "admin", "moderator"],
+      default: "user",
     },
     avatar: {
-        type: String,
-        default: 'default-avatar.png' // Ảnh mặc định
+      type: String,
+      default: "default-avatar.png", // Ảnh mặc định
     },
     reset_password_token: String,
     reset_password_expires: Date,
     emailVerified: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
     emailVerificationToken: String,
     emailVerificationExpires: Date,
     googleId: {
-        type: String,
-        unique: true,
-        sparse: true
+      type: String,
+      unique: true,
+      sparse: true,
     },
     facebookId: {
-        type: String,
-        unique: true,
-        sparse: true
+      type: String,
+      unique: true,
+      sparse: true,
     },
     status: {
-        type: String,
-        enum: ['active', 'inactive', 'banned'],
-        default: 'active'
+      type: String,
+      enum: ["active", "inactive", "banned"],
+      default: "active",
     },
     lastLogin: {
-        type: Date
-    }
-}, {
+      type: Date,
+    },
+  },
+  {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toObject: { virtuals: true },
+  }
+);
+
+UserSchema.virtual("postCount", {
+  ref: "Post",
+  localField: "_id",
+  foreignField: "author",
+  count: true,
+  match: { deleted: false },
 });
 
-
-
-UserSchema.virtual('postCount', {
-    ref: 'Post',
-    localField: '_id',
-    foreignField: 'author',
-    count: true,
-    match: { deleted: false }
+UserSchema.virtual("activityCount", {
+  ref: "UserActivity",
+  localField: "_id",
+  foreignField: "userId",
+  count: true,
 });
 
-UserSchema.virtual('activityCount', {
-    ref: 'UserActivity',
-    localField: '_id',
-    foreignField: 'userId',
-    count: true
-});
-
-const User = mongoose.model('User', UserSchema);
+const User = mongoose.model("User", UserSchema);
 export default User;

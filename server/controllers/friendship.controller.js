@@ -7,7 +7,6 @@ export const FriendshipController = {
             const { friendId } = req.body;
             const userId = req.user._id;
 
-            // Check if users are same
             if (userId.toString() === friendId) {
                 return res.status(400).json({
                     success: false,
@@ -15,7 +14,6 @@ export const FriendshipController = {
                 });
             }
 
-            // Check if friendship already exists
             const existingFriendship = await Friendship.findOne({
                 $or: [
                     { userId, friendId },
@@ -38,7 +36,6 @@ export const FriendshipController = {
             });
             await newFriendship.save();
 
-            // Create notification for friend request
             await new Notification({
                 userId: friendId,
                 message: `${req.user.username} sent you a friend request`,
@@ -69,18 +66,16 @@ export const FriendshipController = {
             if (!friendship) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Friend request not found'
+                    error: 'Friend not found'
                 });
             }
 
             friendship.status = 'accepted';
             await friendship.save();
 
-            // Create notification for accepted friend request
             await new Notification({
                 userId: friendId,
-                message: `${req.user.username} accepted your friend request`,
-                type: 'friend_accept'
+                message: `${req.user.username} accepted your friend`,
             }).save();
 
             return res.status(200).json({
@@ -106,7 +101,7 @@ export const FriendshipController = {
 
             return res.status(200).json({
                 success: true,
-                message: 'Friend request rejected successfully'
+                message: 'Friend rejected successfully'
             });
         } catch (error) {
             console.error(error);
@@ -134,7 +129,6 @@ export const FriendshipController = {
                 status: 'accepted'
             });
 
-            // Transform data to get friend info
             const friends = friendships.map(friendship => {
                 const friend = friendship.userId._id.equals(userId)
                     ? friendship.friendId

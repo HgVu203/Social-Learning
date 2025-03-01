@@ -28,7 +28,6 @@ export const AuthController = {
         username,
         password: hashedPassword,
         fullname,
-        isPasswordSet: true,
         emailVerificationToken: verificationToken,
         emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000,
       });
@@ -64,6 +63,8 @@ export const AuthController = {
           error: validationError,
         });
       }
+
+      
 
       user.lastLogin = new Date();
       await user.save();
@@ -139,10 +140,10 @@ export const AuthController = {
         });
       }
 
-      const accessToken = AuthService.generateAccessToken(user);
+      const tokens = AuthService.generateTokenPair(user);
       return res.status(200).json({
         success: true,
-        data: { accessToken: accessToken },
+        data: { accessToken: tokens.accessToken },
       });
     } catch (error) {
       console.error("Refresh token error:", error);
@@ -236,7 +237,6 @@ export const AuthController = {
       user.password = await AuthService.hashPassword(password);
       user.reset_password_token = undefined;
       user.reset_password_expires = undefined;
-      user.isPasswordSet = true;
       await user.save();
 
       return res.status(200).json({
@@ -268,7 +268,6 @@ export const AuthController = {
       const hashedPassword = await AuthService.hashPassword(password);
 
       user.password = hashedPassword;
-      user.isPasswordSet = true;
       await user.save();
 
       return res.status(200).json({
@@ -319,20 +318,26 @@ const handleOAuthSuccess = async (req, res, user) => {
   try {
     const { accessToken, refreshToken } = AuthService.generateTokenPair(user);
     res.cookie("refreshToken", refreshToken, AuthService.getCookieSettings());
-
-    if (!user.isPasswordSet) {
-      return res.redirect(
-        `${process.env.CLIENT_URL}/set-password?token=${accessToken}`
-      );
-    }
-
-    return res.redirect(
-      `${process.env.CLIENT_URL}/login/success?token=${accessToken}`
-    );
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        accessToken,
+        user: {
+          _id: user._id,
+          email: user.email,
+          username: user.username,
+          fullname: user.fullname,
+          role: user.role,
+          avatar: user.avatar,
+        },
+      },
+    });
   } catch (error) {
     console.error("OAuth success handling error:", error);
-    return res.redirect(
-      `${process.env.CLIENT_URL}/login?error=Authentication failed`
-    );
+    return res.status(500).json({
+      success: false,
+      error: "Login failed",
+    });
   }
 };

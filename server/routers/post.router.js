@@ -4,9 +4,7 @@ import protectedRouter from "../middleware/protectedRouter.js";
 import isAdmin from "../middleware/isAdmin.js";
 import trackUserActivity from "../middleware/trackUserActivity.js";
 import { validateRequest } from "../middleware/validateRequest.js";
-import { validateQuery } from "../middleware/validateQuery.js";
 import { postValidationSchema } from "../utils/validator/post.validator.js";
-import { queryValidationSchema } from "../utils/validator/query.validator.js";
 import rateLimit from "express-rate-limit";
 
 const router = express.Router();
@@ -26,28 +24,28 @@ const postLimiter = rateLimit({
 
 // Public routes
 router.get("/",
-    validateQuery(queryValidationSchema.pagination),
     PostController.getPosts
 );
 
 router.get("/search",
-    validateQuery(queryValidationSchema.search),
     PostController.searchPosts
 );
+
+
+
+router.get("/:id", PostController.getPostById);
+
+router.get("/:id/comments", PostController.getComments);
 
 router.get("/recommend",
     protectedRouter,
     PostController.recommendPosts
 );
-
-router.get("/:id", PostController.getPostById);
-router.get("/:id/comments", PostController.getComments);
-
 // Protected routes
 router.use(protectedRouter);
 
 // Post management
-router.post("/",
+router.post("/create-post",
     postLimiter,
     validateRequest(postValidationSchema.create),
     trackUserActivity,
@@ -80,5 +78,6 @@ router.post("/:id/like",
     trackUserActivity,
     PostController.likePost
 );
+
 
 export default router;

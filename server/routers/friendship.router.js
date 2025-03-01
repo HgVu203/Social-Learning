@@ -7,12 +7,9 @@ const router = express.Router();
 
 router.use(protectedRouter);
 
-// Friend requests
 router.post("/send", FriendshipController.sendFriend);
 router.post("/accept", FriendshipController.acceptFriend);
 router.post("/reject", FriendshipController.rejectFriend);
-
-// Get friends and requests
 router.get("/", FriendshipController.getFriends);
 router.get("/pending", FriendshipController.getPendingRequests);
 
