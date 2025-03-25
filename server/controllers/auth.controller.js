@@ -64,8 +64,6 @@ export const AuthController = {
         });
       }
 
-      
-
       user.lastLogin = new Date();
       await user.save();
 
@@ -318,21 +316,20 @@ const handleOAuthSuccess = async (req, res, user) => {
   try {
     const { accessToken, refreshToken } = AuthService.generateTokenPair(user);
     res.cookie("refreshToken", refreshToken, AuthService.getCookieSettings());
-    return res.status(200).json({
-      success: true,
-      message: "Login successful",
-      data: {
-        accessToken,
-        user: {
+    return res.redirect(
+      `${
+        process.env.CLIENT_URL
+      }/auth/social-callback?accessToken&user=${encodeURIComponent(
+        JSON.stringify({
           _id: user._id,
           email: user.email,
           username: user.username,
           fullname: user.fullname,
           role: user.role,
           avatar: user.avatar,
-        },
-      },
-    });
+        })
+      )}`
+    )(req, res, next);
   } catch (error) {
     console.error("OAuth success handling error:", error);
     return res.status(500).json({

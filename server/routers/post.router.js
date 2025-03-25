@@ -31,16 +31,16 @@ router.get("/search",
     PostController.searchPosts
 );
 
-
+router.get("/recommend",
+    protectedRouter,
+    PostController.recommendPosts
+);
 
 router.get("/:id", PostController.getPostById);
 
 router.get("/:id/comments", PostController.getComments);
 
-router.get("/recommend",
-    protectedRouter,
-    PostController.recommendPosts
-);
+
 // Protected routes
 router.use(protectedRouter);
 
@@ -72,6 +72,11 @@ router.post("/:id/comment",
     validateRequest(postValidationSchema.comment),
     trackUserActivity,
     PostController.addComment
+);
+
+router.delete("/:id/comment/:commentId",
+    trackUserActivity,
+    PostController.deleteComment
 );
 
 router.post("/:id/like",

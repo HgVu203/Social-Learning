@@ -12,7 +12,7 @@ const router = express.Router();
 // Rate limiters
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10000,
+    max: 10,
     message: { success: false, error: 'Too many login attempts, please try again later' }
 });
 
@@ -58,6 +58,16 @@ router.get("/verify-email/:token", AuthController.verifyEmail);
 
 // Protected routes
 router.use(protectedRouter);
+
+// Route để kiểm tra xác thực - trả về thông tin người dùng nếu đã xác thực
+router.get("/check", (req, res) => {
+    return res.status(200).json({
+        success: true,
+        data: {
+            user: req.user
+        }
+    });
+});
 
 router.post("/logout", AuthController.logout);
 

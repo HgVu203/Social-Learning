@@ -25,7 +25,7 @@ const GroupSchema = new mongoose.Schema({
         },
         role: {
             type: String,
-            enum: ['admin', 'member'],
+            enum: ['admin', 'operator', 'member'],
             default: 'member'
         },
         joinedAt: {

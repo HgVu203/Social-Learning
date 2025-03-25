@@ -2,9 +2,9 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 dotenv.config();
 
-export const signToken = (user, secret) => {
+export const signToken = (user, secret, time) => {
   return jwt.sign({ userId: user._id }, secret, {
-    expiresIn: process.env.ACCESS_TOKEN_TIME,
+    expiresIn: time,
   });
 };
 

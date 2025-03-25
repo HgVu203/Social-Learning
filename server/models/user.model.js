@@ -68,7 +68,6 @@ const UserSchema = new mongoose.Schema(
     },
     avatar: {
       type: String,
-      default: "default-avatar.png", // Ảnh mặc định
     },
     reset_password_token: String,
     reset_password_expires: Date,

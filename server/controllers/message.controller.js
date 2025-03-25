@@ -5,7 +5,7 @@ import Notification from "../models/notification.model.js";
 export const MessageController = {
     sendMessage: async (req, res) => {
         try {
-            const { receiverId, message, type = 'text' } = req.body;
+            const { receiverId, message, type } = req.body;
             const senderId = req.user._id;
 
             // Validate receiver exists
@@ -21,7 +21,7 @@ export const MessageController = {
                 receiverId,
                 senderId,
                 message,
-                type,
+                type : type || 'text',
                 read: false
             });
             await newMessage.save();
@@ -30,7 +30,6 @@ export const MessageController = {
             await new Notification({
                 userId: receiverId,
                 message: `New message from ${req.user.username}`,
-                type: 'message'
             }).save();
 
             // Populate sender info

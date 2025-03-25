@@ -4,62 +4,62 @@ import User from "../models/user.model.js";
 export const UserController = {
   updatePoints: async (req, res) => {
     try {
-        const { points, badge } = req.body;
-        const userId = req.user._id;
+      const { points, badge } = req.body;
+      const userId = req.user._id;
 
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                error: "User not found" 
-            });
-        }
-
-        // Update points
-        user.points += points;
-
-        // Update rank based on points thresholds
-        if (user.points >= 6000) {
-            user.rank = "Master";           // Cao Thủ
-        } else if (user.points >= 5000) {
-            user.rank = "Diamond";          // Kim Cương
-        } else if (user.points >= 4000) {
-            user.rank = "Platinum";         // Bạch Kim
-        } else if (user.points >= 3000) {
-            user.rank = "Gold";             // Vàng
-        } else if (user.points >= 2000) {
-            user.rank = "Silver";           // Bạc
-        } else if (user.points >= 1000) {
-            user.rank = "Bronze";           // Đồng
-        } else {
-            user.rank = "Rookie";           // Tân Thủ
-        }
-
-        // Add badge if provided and not already earned
-        if (badge && !user.badges.some(b => b.name === badge)) {
-            user.badges.push({
-                name: badge,
-                earnedAt: new Date()
-            });
-        }
-
-        await user.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Points and rank updated successfully",
-            data: {
-                points: user.points,
-                rank: user.rank,
-                badges: user.badges,
-            },
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "User not found",
         });
+      }
+
+      // Update points
+      user.points += Number(points);
+
+      // Update rank based on points thresholds
+      if (user.points >= 6000) {
+        user.rank = "Master"; // Cao Thủ
+      } else if (user.points >= 5000) {
+        user.rank = "Diamond"; // Kim Cương
+      } else if (user.points >= 4000) {
+        user.rank = "Platinum"; // Bạch Kim
+      } else if (user.points >= 3000) {
+        user.rank = "Gold"; // Vàng
+      } else if (user.points >= 2000) {
+        user.rank = "Silver"; // Bạc
+      } else if (user.points >= 1000) {
+        user.rank = "Bronze"; // Đồng
+      } else {
+        user.rank = "Rookie"; // Tân Thủ
+      }
+
+      // Add badge if provided and not already earned
+      if (badge && !user.badges.some((b) => b.name === badge)) {
+        user.badges.push({
+          name: badge,
+          earnedAt: new Date(),
+        });
+      }
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Points and rank updated successfully",
+        data: {
+          points: user.points,
+          rank: user.rank,
+          badges: user.badges,
+        },
+      });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ 
-            success: false, 
-            error: error.message 
-        });
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   },
 
@@ -89,6 +89,7 @@ export const UserController = {
       return res.status(500).json({ success: false, error: error.message });
     }
   },
+
   myProfile: async (req, res) => {
     try {
       const user = await User.findById(req.user._id).select(
@@ -110,15 +111,20 @@ export const UserController = {
       return res.status(500).json({ success: false, error: error.message });
     }
   },
+  
   getUserProfile: async (req, res) => {
     try {
       const userId = req.params.id;
-        let user;
-        if (mongoose.Types.ObjectId.isValid(userId)){
-            user = await User.findById(userId).select("-password -reset_password_token -reset_password_expires");
-        } else {
-            user  = await User.findOne({username : userId}).select("-password -reset_password_token -reset_password_expires");
-        }
+      let user;
+      if (mongoose.Types.ObjectId.isValid(userId)) {
+        user = await User.findById(userId).select(
+          "-password -reset_password_token -reset_password_expires"
+        );
+      } else {
+        user = await User.findOne({ username: userId }).select(
+          "-password -reset_password_token -reset_password_expires"
+        );
+      }
       if (!user) {
         return res
           .status(404)

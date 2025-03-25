@@ -50,50 +50,85 @@ export const GroupController = {
             const {
                 page = 1,
                 limit = 10,
-                search,
+                query = '',
                 tag,
-                status = 'active'
+                status = 'active',
+                sort = 'createdAt',
+                membership
             } = req.query;
 
-            const query = { status };
+            const queryObj = { status };
 
-            if (search) {
-                query.$text = { $search: search };
+            // Text search
+            if (query && query.trim() !== '') {
+                queryObj.$or = [
+                    { name: { $regex: query, $options: 'i' } },
+                    { description: { $regex: query, $options: 'i' } }
+                ];
             }
 
+            // Tag filter
             if (tag) {
-                query.tags = tag;
+                queryObj.tags = tag;
             }
 
-            // Filter private groups if user is not a member
-            if (!req.user?.role === 'admin') {
-                query.$or = [
+            // Membership filter - show only groups the user is a member of
+            if (membership === 'user') {
+                queryObj['members.user'] = req.user._id;
+            } 
+            // Privacy filter - don't show private groups unless the user is a member
+            else if (!req.user?.role === 'admin') {
+                queryObj.$or = [
                     { isPrivate: false },
                     { 'members.user': req.user?._id }
                 ];
             }
 
-            const groups = await Group.find(query)
+            // Determine sort order
+            let sortOption = { createdAt: -1 }; // Default sort by newest
+            if (sort === 'memberCount') {
+                sortOption = { 'members.length': -1 }; // Sort by most members
+            } else if (sort === 'popular') {
+                // Add any other popularity metrics here
+                sortOption = { 'members.length': -1 };
+            }
+
+            const groups = await Group.find(queryObj)
                 .populate('createdBy', 'username email avatar')
                 .populate('members.user', 'username email avatar')
-                .sort({ createdAt: -1 })
-                .limit(limit * 1)
-                .skip((page - 1) * limit);
+                .sort(sortOption)
+                .limit(parseInt(limit))
+                .skip((parseInt(page) - 1) * parseInt(limit));
 
-            const total = await Group.countDocuments(query);
+            // Add isMember flag for the current user
+            const groupsWithMembershipInfo = groups.map(group => {
+                const isMember = group.members.some(
+                    member => member.user?._id?.toString() === req.user._id.toString()
+                );
+                return {
+                    ...group.toObject(),
+                    isMember,
+                    membersCount: group.members.length
+                };
+            });
+
+            const total = await Group.countDocuments(queryObj);
 
             return res.status(200).json({
                 success: true,
-                data: groups,
+                data: groupsWithMembershipInfo,
                 pagination: {
                     total,
                     page: parseInt(page),
-                    totalPages: Math.ceil(total / limit)
+                    totalPages: Math.ceil(total / parseInt(limit))
                 }
             });
         } catch (error) {
-            console.error(error);
-            return res.status(500).json({ success: false, error: error.message });
+            console.error('Get groups error:', error);
+            return res.status(500).json({ 
+                success: false, 
+                error: error.message || "Failed to fetch groups" 
+            });
         }
     },
 
