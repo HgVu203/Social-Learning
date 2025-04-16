@@ -3,62 +3,101 @@ import Feedback from "../models/feedback.model.js";
 import UserActivity from "../models/user_activity.model.js";
 import User from "../models/user.model.js";
 import RecommendationService from "../services/recommendation.service.js";
+import Friendship from "../models/friendship.model.js";
+import { emitCommentEvent } from "../socket.js";
 
 export const PostController = {
   createPost: async (req, res) => {
     try {
       const { title, content, tags } = req.body;
+      let images = [];
 
       // Validate required fields
       if (!title || !content) {
         return res.status(400).json({
           success: false,
-          error: "Title and content are required"
+          error: "Title and content are required",
         });
+      }
+
+      // Xử lý nhiều ảnh nếu có
+      if (req.files && req.files.length > 0) {
+        // Trường hợp sử dụng multer array
+        images = req.files.map((file) => file.path);
+      }
+
+      // Chuyển đổi tags thành mảng nếu cần
+      let processTags = [];
+      if (tags) {
+        try {
+          // Thử parse JSON string (cách mới)
+          processTags = JSON.parse(tags);
+          if (!Array.isArray(processTags)) {
+            processTags = [processTags];
+          }
+        } catch (e) {
+          // Nếu không phải JSON, xử lý theo cách cũ
+          if (Array.isArray(tags)) {
+            processTags = tags;
+          } else if (typeof tags === "string") {
+            // Nếu tags là string (có thể là một tag đơn hoặc nhiều tag phân cách bởi dấu phẩy)
+            processTags = tags.split(",").filter((tag) => tag.trim() !== "");
+          } else {
+            // Ensure single tag is properly handled
+            processTags = [tags].filter((tag) => tag && tag.trim() !== "");
+          }
+        }
       }
 
       const newPost = new Post({
         title,
         content,
-        tags: tags ? tags.map(tag => tag.toLowerCase().trim()) : [],
+        tags: processTags.map((tag) => tag.toLowerCase().trim()),
         author: req.user._id,
+        images,
       });
 
       await newPost.save();
 
       // Populate author info
-      await newPost.populate("author", "username email avatar");
+      await newPost.populate("author", "username email avatar fullname");
 
       // Get likes and comments count
-      const likes = await Feedback.find({ postId: newPost._id, type: "like" }).select('userId');
-      const comments = await Feedback.find({ postId: newPost._id, type: "comment" });
+      const likes = await Feedback.find({
+        postId: newPost._id,
+        type: "like",
+      }).select("userId");
+      const comments = await Feedback.find({
+        postId: newPost._id,
+        type: "comment",
+      });
 
       const postWithCounts = {
         ...newPost.toJSON(),
-        likes: likes.map(like => like.userId),
+        likes: likes.map((like) => like.userId),
         comments: comments,
         likesCount: likes.length,
         commentsCount: comments.length,
-        isLiked: false // New post is not liked by creator initially
+        isLiked: false, // New post is not liked by creator initially
       };
 
       // Track user activity
       await UserActivity.create({
         userId: req.user._id,
-        activityType: 'post_create',
-        postId: newPost._id
+        type: "create_post",
+        postId: newPost._id,
       });
 
       return res.status(201).json({
         success: true,
         data: postWithCounts,
-        message: "Post created successfully"
+        message: "Post created successfully",
       });
     } catch (error) {
-      console.error('Create post error:', error);
+      console.error("Create post error:", error);
       return res.status(500).json({
         success: false,
-        error: error.message || "An error occurred while creating the post"
+        error: error.message || "An error occurred while creating the post",
       });
     }
   },
@@ -69,7 +108,7 @@ export const PostController = {
         _id: req.params.id,
         deleted: false,
       })
-        .populate("author", "username email avatar")
+        .populate("author", "username email avatar fullname")
         .populate("likeCount")
         .populate("commentCount");
 
@@ -81,7 +120,53 @@ export const PostController = {
       post.views += 1;
       await post.save();
 
-      return res.status(200).json({ success: true, data: post });
+      // Get likes and comments for this post
+      const [likes, comments] = await Promise.all([
+        Feedback.find({
+          postId: post._id,
+          type: "like",
+        }).select("userId"),
+        Feedback.find({
+          postId: post._id,
+          type: "comment",
+        })
+          .populate("userId", "username email avatar fullname")
+          .sort({ createdAt: -1 }),
+      ]);
+
+      // Xác định trạng thái isLiked cho người dùng hiện tại
+      let isLiked = false;
+      if (req.user) {
+        const userId = req.user._id.toString();
+        isLiked = likes.some((like) => {
+          // Kiểm tra tất cả các trường hợp
+          if (!like.userId) return false;
+
+          // Trường hợp userId là object có _id
+          if (typeof like.userId === "object" && like.userId._id) {
+            return like.userId._id.toString() === userId;
+          }
+
+          // Trường hợp userId là string hoặc ObjectId
+          return like.userId.toString() === userId;
+        });
+
+        console.log(
+          `[Server] Post detail ${post._id} isLiked for user ${userId}: ${isLiked}`
+        );
+      }
+
+      // Create response with additional data
+      const postData = {
+        ...post.toJSON(),
+        likes: likes.map((like) => like.userId),
+        comments: comments,
+        likesCount: likes.length,
+        commentsCount: comments.length,
+        isLiked,
+      };
+
+      return res.status(200).json({ success: true, data: postData });
     } catch (error) {
       console.error(error);
       return res.status(500).json({ success: false, error: error.message });
@@ -115,7 +200,7 @@ export const PostController = {
         post.tags = tags.map((tag) => tag.toLowerCase().trim());
 
       await post.save();
-      await post.populate("author", "username email avatar");
+      await post.populate("author", "username email avatar fullname");
 
       return res.status(200).json({ success: true, data: post });
     } catch (error) {
@@ -126,41 +211,99 @@ export const PostController = {
 
   getPosts: async (req, res) => {
     try {
-      const { page = 1, limit = 10, filter = 'latest' } = req.query;
+      const { page = 1, limit = 10, filter = "latest" } = req.query;
       let query = { deleted: false };
-      let sort = { createdAt: -1 }; // Default sort by latest
 
-      // Apply filters
-      if (filter === 'popular') {
-        sort = { likesCount: -1, commentsCount: -1, createdAt: -1 };
-      } else if (filter === 'following' && req.user) {
-        const user = await User.findById(req.user._id).populate('following');
-        const followingIds = user.following.map(u => u._id);
-        query.author = { $in: followingIds };
+      // Handle Following filter
+      if (filter === "following" && req.user) {
+        const friendships = await Friendship.find({
+          $or: [
+            { userId: req.user._id, status: "accepted" },
+            { friendId: req.user._id, status: "accepted" },
+          ],
+        });
+
+        const friendIds = friendships.map((f) =>
+          f.userId.toString() === req.user._id.toString()
+            ? f.friendId
+            : f.userId
+        );
+
+        query.author = { $in: friendIds };
       }
 
       const posts = await Post.find(query)
-        .populate("author", "username email avatar")
-        .sort(sort)
+        .populate("author", "username email avatar fullname")
+        .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);
 
       // Get likes and comments for each post
-      const postsWithCounts = await Promise.all(posts.map(async (post) => {
-        const likes = await Feedback.find({ postId: post._id, type: "like" }).select('userId');
-        const comments = await Feedback.find({ postId: post._id, type: "comment" })
-          .populate("userId", "username email avatar")
-          .sort({ createdAt: -1 });
+      const postsWithCounts = await Promise.all(
+        posts.map(async (post) => {
+          const [likes, comments] = await Promise.all([
+            Feedback.find({
+              postId: post._id,
+              type: "like",
+            }).populate("userId", "username email avatar fullname"),
+            Feedback.find({
+              postId: post._id,
+              type: "comment",
+            })
+              .populate("userId", "username email avatar fullname")
+              .sort({ createdAt: -1 }),
+          ]);
 
-        return {
-          ...post.toJSON(),
-          likes: likes.map(like => like.userId),
-          comments: comments,
-          likesCount: likes.length,
-          commentsCount: comments.length,
-          isLiked: req.user ? likes.some(like => like.userId.toString() === req.user._id.toString()) : false
-        };
-      }));
+          // Xác định trạng thái isLiked cho người dùng hiện tại
+          let isLiked = false;
+          if (req.user) {
+            const userId = req.user._id.toString();
+            isLiked = likes.some((like) => {
+              // Kiểm tra tất cả các trường hợp
+              if (!like.userId) return false;
+
+              // Trường hợp userId là object có _id
+              if (like.userId._id) {
+                return like.userId._id.toString() === userId;
+              }
+
+              // Trường hợp userId là string hoặc ObjectId
+              return like.userId.toString() === userId;
+            });
+
+            console.log(
+              `[Server] Post ${post._id} isLiked for user ${userId}: ${isLiked}`
+            );
+          }
+
+          return {
+            ...post.toJSON(),
+            likes: likes.map((like) => ({
+              _id: like._id,
+              userId: like.userId._id || like.userId,
+              username: like.userId.username,
+              fullname: like.userId.fullname,
+              avatar: like.userId.avatar,
+            })),
+            comments: comments,
+            likesCount: likes.length,
+            commentsCount: comments.length,
+            isLiked,
+          };
+        })
+      );
+
+      // Sort by popularity if needed
+      if (filter === "popular") {
+        postsWithCounts.sort((a, b) => {
+          const aScore = a.likesCount * 2 + a.commentsCount;
+          const bScore = b.likesCount * 2 + b.commentsCount;
+          if (bScore !== aScore) {
+            return bScore - aScore;
+          }
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+      }
 
       const total = await Post.countDocuments(query);
 
@@ -207,7 +350,7 @@ export const PostController = {
       }
 
       const posts = await Post.find(query)
-        .populate("author", "username email")
+        .populate("author", "username email fullname")
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);
@@ -285,83 +428,97 @@ export const PostController = {
       const postId = req.params.id;
       const userId = req.user._id;
 
-      const post = await Post.findOne({ _id: postId, deleted: false });
+      console.log(`[Server] User ${userId} toggling like for post ${postId}`);
+
+      // Check if post exists
+      const post = await Post.findOne({
+        _id: postId,
+        deleted: false,
+      });
+
       if (!post) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Post not found or deleted" });
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or deleted",
+        });
       }
 
-      let feedback = await Feedback.findOne({ postId, userId });
+      // Check if already liked
+      const existingLike = await Feedback.findOne({
+        postId,
+        userId,
+        type: "like",
+      });
 
-      if (feedback) {
-        if (feedback.type === "like") {
-          await Feedback.findByIdAndDelete(feedback._id);
-          
-          // Get updated likes
-          const likes = await Feedback.find({ postId, type: "like" }).select('userId');
-          
-          return res.status(200).json({
-            success: true,
-            message: "Post unliked successfully",
-            likes: likes.map(like => like.userId)
-          });
-        } else {
-          feedback.type = "like";
-          await feedback.save();
-        }
+      let isLiked;
+
+      // Toggle like status
+      if (existingLike) {
+        // Unlike: Remove the like
+        console.log(`[Server] Removing like ${existingLike._id}`);
+        await Feedback.deleteOne({
+          _id: existingLike._id,
+        });
+        isLiked = false;
       } else {
-        feedback = new Feedback({
+        // Like: Create new like
+        console.log(`[Server] Creating new like for post ${postId}`);
+        await Feedback.create({
           postId,
           userId,
           type: "like",
         });
-        await feedback.save();
+        isLiked = true;
       }
 
-      // Get updated likes
-      const likes = await Feedback.find({ postId, type: "like" }).select('userId');
+      // Get all likes for this post with full info
+      const likes = await Feedback.find({
+        postId,
+        type: "like",
+      })
+        .select("userId")
+        .lean();
 
-      return res.status(200).json({
+      const likesCount = likes.length;
+
+      // Ensure we return a consistent format for likes
+      const formattedLikes = likes.map((like) => like.userId);
+
+      // Prepare response
+      const response = {
         success: true,
-        message: "Post liked successfully",
-        likes: likes.map(like => like.userId)
+        message: isLiked
+          ? "Post liked successfully"
+          : "Post unliked successfully",
+        likesCount,
+        isLiked,
+        likes: formattedLikes,
+        userId: userId.toString(),
+      };
+
+      console.log(`[Server] Response for like toggle:`, {
+        success: response.success,
+        isLiked: response.isLiked,
+        likesCount: response.likesCount,
+        userId: response.userId,
       });
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-  },
 
-  unlikePost: async (req, res) => {
-    try {
-      const postId = req.params.id;
-      const userId = req.user._id;
-
-      const feedback = await Feedback.findOneAndDelete({ 
-        postId, 
+      // Track user activity asynchronously
+      UserActivity.create({
         userId,
-        type: "like" 
-      });
+        type: isLiked ? "like_post" : "unlike_post",
+        postId,
+      }).catch((err) =>
+        console.error("[Server] Failed to track activity:", err)
+      );
 
-      if (!feedback) {
-        return res.status(404).json({ 
-          success: false, 
-          error: "Like not found" 
-        });
-      }
-
-      // Get updated likes
-      const likes = await Feedback.find({ postId, type: "like" }).select('userId');
-
-      return res.status(200).json({
-        success: true,
-        message: "Post unliked successfully",
-        likes: likes.map(like => like.userId)
-      });
+      return res.status(200).json(response);
     } catch (error) {
-      console.error(error);
-      return res.status(500).json({ success: false, error: error.message });
+      console.error("[Server] Error toggling post like:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   },
 
@@ -381,16 +538,16 @@ export const PostController = {
 
       // Validate parent comment if provided
       if (parentId) {
-        const parentComment = await Feedback.findOne({ 
-          _id: parentId, 
-          postId, 
-          type: "comment" 
+        const parentComment = await Feedback.findOne({
+          _id: parentId,
+          postId,
+          type: "comment",
         });
-        
+
         if (!parentComment) {
           return res.status(404).json({
             success: false,
-            error: "Parent comment not found"
+            error: "Parent comment not found",
           });
         }
       }
@@ -400,7 +557,7 @@ export const PostController = {
         userId,
         type: "comment",
         content: comment,
-        parentId: parentId || null
+        parentId: parentId || null,
       });
       await newFeedback.save();
 
@@ -417,19 +574,33 @@ export const PostController = {
         parentId: newFeedback.parentId,
         userId: {
           _id: userInfo._id || userId,
-          username: userInfo.username || 'user',
-          email: userInfo.email || '',
-          avatar: userInfo.avatar || '',
-          fullname: userInfo.fullname || 'User'
+          username: userInfo.username || "user",
+          email: userInfo.email || "",
+          avatar: userInfo.avatar || "",
+          fullname: userInfo.fullname || "User",
         },
         createdAt: newFeedback.createdAt,
-        updatedAt: newFeedback.updatedAt
+        updatedAt: newFeedback.updatedAt,
+        likes: [],
+        likesCount: 0,
+        isLiked: false,
       };
 
       // Get updated comment count
       const totalComments = await Feedback.countDocuments({
         postId,
-        type: "comment"
+        type: "comment",
+      });
+
+      // Get post owner ID
+      const postOwnerId = post.author.toString();
+
+      // Emit socket event for real-time comment update
+      emitCommentEvent("comment_added", postId, {
+        postId,
+        comment: formattedComment,
+        commentsCount: totalComments,
+        postOwnerId,
       });
 
       return res.status(200).json({
@@ -437,9 +608,9 @@ export const PostController = {
         data: {
           postId,
           comment: formattedComment,
-          commentsCount: totalComments
+          commentsCount: totalComments,
         },
-        message: "Comment added successfully"
+        message: "Comment added successfully",
       });
     } catch (error) {
       console.error("Error adding comment:", error);
@@ -460,7 +631,7 @@ export const PostController = {
       if (!post) {
         return res.status(404).json({
           success: false,
-          error: "Post not found or deleted"
+          error: "Post not found or deleted",
         });
       }
 
@@ -468,36 +639,150 @@ export const PostController = {
       const comment = await Feedback.findOne({
         _id: commentId,
         postId,
-        type: "comment"
+        type: "comment",
       });
 
       if (!comment) {
         return res.status(404).json({
           success: false,
-          error: "Comment not found"
+          error: "Comment not found",
         });
       }
 
       // Check if user is authorized to delete
-      if (comment.userId.toString() !== userId.toString() && req.user.role !== "admin") {
+      if (
+        comment.userId.toString() !== userId.toString() &&
+        req.user.role !== "admin"
+      ) {
         return res.status(403).json({
           success: false,
-          error: "Not authorized to delete this comment"
+          error: "Not authorized to delete this comment",
         });
       }
 
       // Delete the comment
       await comment.deleteOne();
 
+      // Get updated comment count
+      const totalComments = await Feedback.countDocuments({
+        postId,
+        type: "comment",
+      });
+
+      // Get post owner ID
+      const postOwnerId = post.author.toString();
+
+      // Emit socket event for real-time comment update
+      emitCommentEvent("comment_deleted", postId, {
+        postId,
+        commentId,
+        commentsCount: totalComments,
+        postOwnerId,
+      });
+
       return res.status(200).json({
         success: true,
-        message: "Comment deleted successfully"
+        message: "Comment deleted successfully",
       });
     } catch (error) {
       console.error(error);
       return res.status(500).json({
         success: false,
-        error: error.message
+        error: error.message,
+      });
+    }
+  },
+
+  updateComment: async (req, res) => {
+    try {
+      const { id: postId, commentId } = req.params;
+      const { comment } = req.body;
+      const userId = req.user._id;
+
+      // Check if post exists
+      const post = await Post.findOne({ _id: postId, deleted: false });
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or deleted",
+        });
+      }
+
+      // Find the comment
+      const commentDoc = await Feedback.findOne({
+        _id: commentId,
+        postId,
+        type: "comment",
+      });
+
+      if (!commentDoc) {
+        return res.status(404).json({
+          success: false,
+          error: "Comment not found",
+        });
+      }
+
+      // Check if user is authorized to update the comment
+      if (
+        commentDoc.userId.toString() !== userId.toString() &&
+        req.user.role !== "admin"
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Not authorized to update this comment",
+        });
+      }
+
+      // Update comment content
+      commentDoc.content = comment;
+      await commentDoc.save();
+
+      // Populate user info
+      await commentDoc.populate("userId", "username email avatar fullname");
+
+      // Format response with user info
+      const userInfo = commentDoc.userId || {};
+      const formattedComment = {
+        _id: commentDoc._id,
+        content: commentDoc.content,
+        parentId: commentDoc.parentId,
+        userId: {
+          _id: userInfo._id || userId,
+          username: userInfo.username || "user",
+          email: userInfo.email || "",
+          avatar: userInfo.avatar || "",
+          fullname: userInfo.fullname || "User",
+        },
+        createdAt: commentDoc.createdAt,
+        updatedAt: commentDoc.updatedAt,
+        likes: commentDoc.likes || [],
+        likesCount: (commentDoc.likes || []).length,
+        isLiked: commentDoc.likes?.includes(userId) || false,
+      };
+
+      // Get post owner ID
+      const postOwnerId = post.author.toString();
+
+      // Emit socket event for real-time update
+      emitCommentEvent("comment_updated", postId, {
+        postId,
+        comment: formattedComment,
+        postOwnerId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          postId,
+          comment: formattedComment,
+        },
+        message: "Comment updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating comment:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
       });
     }
   },
@@ -505,18 +790,19 @@ export const PostController = {
   getComments: async (req, res) => {
     try {
       const postId = req.params.id;
-      const { page = 1, limit = 50 } = req.query; // Increased limit to get more comments at once
+      const { page = 1, limit = 50 } = req.query;
+      const userId = req.user?._id;
 
-      // Check if post exists
+      // Check if post exists and is not deleted
       const post = await Post.findOne({ _id: postId, deleted: false });
       if (!post) {
         return res.status(404).json({
           success: false,
-          error: "Post not found or deleted"
+          error: "Post not found or deleted",
         });
       }
 
-      // Fetch comments with full user information
+      // Get all comments for the post
       const comments = await Feedback.find({
         postId,
         type: "comment",
@@ -524,44 +810,64 @@ export const PostController = {
         .populate("userId", "username email avatar fullname")
         .sort({ createdAt: -1 })
         .limit(limit * 1)
-        .skip((page - 1) * limit);
+        .skip((page - 1) * limit)
+        .lean();
 
-      // Logging for debugging
-      if (comments.some(c => !c.userId)) {
-        console.warn('Some comments have missing userId:', 
-          comments.filter(c => !c.userId).map(c => c._id));
-      }
+      // Group comments by parent to create a tree structure
+      const commentsByParent = {};
+      const topLevelComments = [];
 
-      // Format comments and handle missing user data
-      const formattedComments = comments.map(comment => {
-        // If userId is null or undefined, provide default values
-        const userId = comment.userId || {};
-        
-        return {
+      // First pass: organize comments by their parentId
+      comments.forEach((comment) => {
+        // Format comment
+        const formattedComment = {
           _id: comment._id,
           content: comment.content,
           parentId: comment.parentId,
-          userId: {
-            _id: userId._id || 'deleted-user',
-            username: userId.username || 'deleteduser',
-            email: userId.email || '',
-            avatar: userId.avatar || '',
-            fullname: userId.fullname || 'Deleted User'
+          userId: comment.userId || {
+            _id: "deleted",
+            username: "deleted",
+            email: "",
+            avatar: "",
+            fullname: "Deleted User",
           },
           createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt
+          updatedAt: comment.updatedAt,
+          likes: comment.likes || [],
+          likesCount: (comment.likes || []).length,
+          isLiked: userId
+            ? (comment.likes || []).some(
+                (like) => like.toString() === userId.toString()
+              )
+            : false,
+          replies: [],
         };
+
+        // Store in lookup table
+        commentsByParent[comment._id] = formattedComment;
+
+        // Top-level comments have no parentId
+        if (!comment.parentId) {
+          topLevelComments.push(formattedComment);
+        }
       });
 
-      const total = await Feedback.countDocuments({
-        postId,
-        type: "comment",
+      // Second pass: attach replies to parents
+      comments.forEach((comment) => {
+        if (comment.parentId && commentsByParent[comment.parentId]) {
+          commentsByParent[comment.parentId].replies.push(
+            commentsByParent[comment._id]
+          );
+        }
       });
+
+      // Get total comments count
+      const total = await Feedback.countDocuments({ postId, type: "comment" });
 
       return res.status(200).json({
         success: true,
-        data: formattedComments,
-        pagination: {
+        data: {
+          comments: topLevelComments,
           total,
           page: parseInt(page),
           totalPages: Math.ceil(total / limit),
@@ -569,6 +875,114 @@ export const PostController = {
       });
     } catch (error) {
       console.error("Error fetching comments:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+
+  likeComment: async (req, res) => {
+    try {
+      const { id: postId, commentId } = req.params;
+      const userId = req.user._id;
+
+      // Find post to verify it exists
+      const post = await Post.findOne({ _id: postId, deleted: false });
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or deleted",
+        });
+      }
+
+      // Find the comment
+      const comment = await Feedback.findOne({
+        _id: commentId,
+        postId,
+        type: "comment",
+      });
+
+      if (!comment) {
+        return res.status(404).json({
+          success: false,
+          error: "Comment not found",
+        });
+      }
+
+      // Initialize likes array if it doesn't exist
+      if (!comment.likes) {
+        comment.likes = [];
+      }
+
+      // Check if user already liked
+      const isLiked = comment.likes.some(
+        (like) => like.toString() === userId.toString()
+      );
+
+      // Toggle like status
+      if (isLiked) {
+        // Unlike: Remove user ID from likes array
+        comment.likes = comment.likes.filter(
+          (like) => like.toString() !== userId.toString()
+        );
+      } else {
+        // Like: Add user ID to likes array
+        comment.likes.push(userId);
+      }
+
+      // Save the updated comment
+      await comment.save();
+
+      // Populate user info for the response
+      await comment.populate("userId", "username email avatar fullname");
+
+      // Format the comment for response
+      const userInfo = comment.userId || {};
+      const formattedComment = {
+        _id: comment._id,
+        content: comment.content,
+        parentId: comment.parentId,
+        userId: {
+          _id: userInfo._id || userId,
+          username: userInfo.username || "user",
+          email: userInfo.email || "",
+          avatar: userInfo.avatar || "",
+          fullname: userInfo.fullname || "User",
+        },
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+        likes: comment.likes || [],
+        likesCount: (comment.likes || []).length,
+        isLiked: !isLiked, // Toggle the previous state
+      };
+
+      // Get post owner ID
+      const postOwnerId = post.author.toString();
+
+      // Emit socket event
+      emitCommentEvent("comment_liked", postId, {
+        postId,
+        comment: formattedComment,
+        commentId,
+        likesCount: formattedComment.likesCount,
+        isLiked: !isLiked,
+        postOwnerId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          postId,
+          commentId,
+          likes: comment.likes,
+          likesCount: comment.likes.length,
+          isLiked: !isLiked,
+        },
+        message: isLiked ? "Comment unliked" : "Comment liked",
+      });
+    } catch (error) {
+      console.error("Error liking comment:", error);
       return res.status(500).json({
         success: false,
         error: error.message,
@@ -609,7 +1023,7 @@ export const PostController = {
         },
         tags: { $in: Object.keys(userProfile.tags) },
       })
-        .populate("author", "username")
+        .populate("author", "username fullname")
         .populate("likeCount")
         .sort({ createdAt: -1 })
         .limit(100)

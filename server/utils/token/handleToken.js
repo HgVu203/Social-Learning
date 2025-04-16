@@ -3,7 +3,10 @@ import jwt from "jsonwebtoken";
 dotenv.config();
 
 export const signToken = (user, secret, time) => {
-  return jwt.sign({ userId: user._id }, secret, {
+  // Check if it's a user object with _id or a custom payload
+  const payload = user.userId ? user : { userId: user._id };
+  
+  return jwt.sign(payload, secret, {
     expiresIn: time,
   });
 };

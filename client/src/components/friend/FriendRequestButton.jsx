@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { sendFriendRequest, cancelFriendRequest, unfriend } from '../../redux/friendSlice';
-import { FiUserPlus, FiUserCheck, FiUserX, FiClock } from 'react-icons/fi';
+import { useState } from "react";
+import { FiUserPlus, FiUserCheck, FiClock } from "react-icons/fi";
+import { showConfirmToast } from "../../utils/toast";
+import { useFriend } from "../../contexts/FriendContext";
 
 // Các trạng thái có thể:
 // - NOT_FRIEND: Chưa là bạn bè
@@ -9,21 +9,26 @@ import { FiUserPlus, FiUserCheck, FiUserX, FiClock } from 'react-icons/fi';
 // - PENDING_SENT: Đã gửi lời mời kết bạn, đang chờ chấp nhận
 // - PENDING_RECEIVED: Đã nhận lời mời kết bạn, chưa xử lý
 
-const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId = null, onStatusChange }) => {
-  const dispatch = useDispatch();
+const FriendRequestButton = ({
+  userId,
+  initialStatus = "NOT_FRIEND",
+  requestId = null,
+  onStatusChange,
+}) => {
+  const { sendFriendRequest, rejectFriendRequest, removeFriend } = useFriend();
   const [status, setStatus] = useState(initialStatus);
   const [loading, setLoading] = useState(false);
 
   const handleSendRequest = async () => {
     if (loading) return;
-    
+
     setLoading(true);
     try {
-      await dispatch(sendFriendRequest(userId)).unwrap();
-      setStatus('PENDING_SENT');
-      if (onStatusChange) onStatusChange('PENDING_SENT');
+      await sendFriendRequest.mutateAsync(userId);
+      setStatus("PENDING_SENT");
+      if (onStatusChange) onStatusChange("PENDING_SENT");
     } catch (error) {
-      console.error('Failed to send friend request:', error);
+      console.error("Failed to send friend request:", error);
     } finally {
       setLoading(false);
     }
@@ -31,42 +36,42 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
 
   const handleCancelRequest = async () => {
     if (loading || !requestId) return;
-    
-    if (window.confirm('Bạn có chắc muốn hủy lời mời kết bạn?')) {
+
+    showConfirmToast("Bạn có chắc muốn hủy lời mời kết bạn?", async () => {
       setLoading(true);
       try {
-        await dispatch(cancelFriendRequest(requestId)).unwrap();
-        setStatus('NOT_FRIEND');
-        if (onStatusChange) onStatusChange('NOT_FRIEND');
+        await rejectFriendRequest.mutateAsync(requestId);
+        setStatus("NOT_FRIEND");
+        if (onStatusChange) onStatusChange("NOT_FRIEND");
       } catch (error) {
-        console.error('Failed to cancel friend request:', error);
+        console.error("Failed to cancel friend request:", error);
       } finally {
         setLoading(false);
       }
-    }
+    });
   };
 
   const handleUnfriend = async () => {
     if (loading) return;
-    
-    if (window.confirm('Bạn có chắc muốn hủy kết bạn?')) {
+
+    showConfirmToast("Bạn có chắc muốn hủy kết bạn?", async () => {
       setLoading(true);
       try {
-        await dispatch(unfriend(userId)).unwrap();
-        setStatus('NOT_FRIEND');
-        if (onStatusChange) onStatusChange('NOT_FRIEND');
+        await removeFriend.mutateAsync(userId);
+        setStatus("NOT_FRIEND");
+        if (onStatusChange) onStatusChange("NOT_FRIEND");
       } catch (error) {
-        console.error('Failed to unfriend:', error);
+        console.error("Failed to unfriend:", error);
       } finally {
         setLoading(false);
       }
-    }
+    });
   };
 
   // Render nút phù hợp với trạng thái hiện tại
   const renderButton = () => {
     switch (status) {
-      case 'NOT_FRIEND':
+      case "NOT_FRIEND":
         return (
           <button
             onClick={handleSendRequest}
@@ -74,11 +79,11 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
             className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             <FiUserPlus className="mr-1" />
-            <span>{loading ? 'Đang xử lý...' : 'Kết bạn'}</span>
+            <span>{loading ? "Đang xử lý..." : "Kết bạn"}</span>
           </button>
         );
-        
-      case 'FRIEND':
+
+      case "FRIEND":
         return (
           <button
             onClick={handleUnfriend}
@@ -86,11 +91,11 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
             className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
           >
             <FiUserCheck className="mr-1" />
-            <span>{loading ? 'Đang xử lý...' : 'Bạn bè'}</span>
+            <span>{loading ? "Đang xử lý..." : "Bạn bè"}</span>
           </button>
         );
-        
-      case 'PENDING_SENT':
+
+      case "PENDING_SENT":
         return (
           <button
             onClick={handleCancelRequest}
@@ -98,16 +103,16 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
             className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
           >
             <FiClock className="mr-1" />
-            <span>{loading ? 'Đang xử lý...' : 'Đã gửi lời mời'}</span>
+            <span>{loading ? "Đang xử lý..." : "Đã gửi lời mời"}</span>
           </button>
         );
-        
-      case 'PENDING_RECEIVED':
+
+      case "PENDING_RECEIVED":
         return (
           <div className="flex items-center space-x-2">
             <button
               onClick={() => {
-                if (onStatusChange) onStatusChange('HANDLE_ACCEPT', requestId);
+                if (onStatusChange) onStatusChange("HANDLE_ACCEPT", requestId);
               }}
               disabled={loading}
               className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
@@ -116,7 +121,7 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
             </button>
             <button
               onClick={() => {
-                if (onStatusChange) onStatusChange('HANDLE_REJECT', requestId);
+                if (onStatusChange) onStatusChange("HANDLE_REJECT", requestId);
               }}
               disabled={loading}
               className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
@@ -125,7 +130,7 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
             </button>
           </div>
         );
-        
+
       default:
         return null;
     }
@@ -134,4 +139,4 @@ const FriendRequestButton = ({ userId, initialStatus = 'NOT_FRIEND', requestId =
   return renderButton();
 };
 
-export default FriendRequestButton; 
+export default FriendRequestButton;

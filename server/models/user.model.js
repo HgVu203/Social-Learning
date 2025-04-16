@@ -31,6 +31,11 @@ const UserSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
     points: {
       type: Number,
       default: 0,

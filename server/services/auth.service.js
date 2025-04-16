@@ -65,9 +65,19 @@ export const AuthService = {
     );
     return { accessToken, refreshToken };
   },
-  generateAccessToken(token) {
+  generateAccessToken(user) {
+    // Check if user is already a formatted token payload or needs formatting
+    const payload = user._id
+      ? {
+          userId: user._id.toString(),
+          email: user.email,
+          username: user.username,
+          role: user.role || "user",
+        }
+      : user;
+
     return signToken(
-      token,
+      payload,
       process.env.ACCESS_TOKEN_SECRET,
       process.env.ACCESS_TOKEN_TIME
     );
@@ -96,25 +106,36 @@ export const AuthService = {
   },
 
   generateVerificationToken() {
-    return crypto.randomBytes(20).toString("hex");
+    // Tạo mã xác thực 6 chữ số
+    return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
-  async sendVerificationEmail(email, token) {
-    const verificationUrl = `${process.env.CLIENT_URL}/verify-email/${token}`;
-    await transporter.sendMail({
-      to: email,
-      subject: "Verify your email",
-      html: templateVerificationEmail(verificationUrl),
-    });
+  async sendVerificationEmail(email, code) {
+    try {
+      await transporter.sendMail({
+        to: email,
+        subject: "Xác thực email của bạn",
+        html: templateVerificationEmail(code),
+      });
+      return true;
+    } catch (error) {
+      console.error("Error sending verification email:", error);
+      return false;
+    }
   },
 
-  async sendPasswordResetEmail(email, token) {
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${token}`;
-    await transporter.sendMail({
-      to: email,
-      subject: "Password Reset",
-      html: templateResetPassword(resetUrl),
-    });
+  async sendPasswordResetEmail(email, code) {
+    try {
+      await transporter.sendMail({
+        to: email,
+        subject: "Đặt lại mật khẩu",
+        html: templateResetPassword(code),
+      });
+      return true;
+    } catch (error) {
+      console.error("Error sending password reset email:", error);
+      return false;
+    }
   },
 
   getCookieSettings() {

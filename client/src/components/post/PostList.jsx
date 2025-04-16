@@ -1,26 +1,32 @@
-import { memo, useEffect, useRef, useCallback } from 'react';
-import PostCard from './PostCard';
-import Loading from '../common/Loading';
+import { memo, useRef, useCallback } from "react";
+import PostCard from "./PostCard";
+import Loading from "../common/Loading";
 
 const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
   const observer = useRef();
-  
+
   // Setup the intersection observer for infinite scroll
-  const lastPostElementRef = useCallback(node => {
-    if (loading) return;
-    if (observer.current) observer.current.disconnect();
-    
-    // Chỉ thiết lập observer nếu có hàm loadMore
-    if (loadMore && hasMore) {
-      observer.current = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting && hasMore) {
-          loadMore();
-        }
-      }, { threshold: 0.5 });
-      
-      if (node) observer.current.observe(node);
-    }
-  }, [loading, hasMore, loadMore]);
+  const lastPostElementRef = useCallback(
+    (node) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
+
+      // Chỉ thiết lập observer nếu có hàm loadMore
+      if (loadMore && hasMore) {
+        observer.current = new IntersectionObserver(
+          (entries) => {
+            if (entries[0].isIntersecting && hasMore) {
+              loadMore();
+            }
+          },
+          { threshold: 0.5 }
+        );
+
+        if (node) observer.current.observe(node);
+      }
+    },
+    [loading, hasMore, loadMore]
+  );
 
   if (loading && !posts?.length) {
     return (
@@ -32,7 +38,7 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
 
   if (error) {
     return (
-      <div className="text-center text-red-500 p-4 bg-red-50 rounded-lg">
+      <div className="text-center text-red-500 p-4 bg-red-900/20 rounded-lg">
         {error}
       </div>
     );
@@ -40,7 +46,7 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
 
   if (!Array.isArray(posts) || posts.length === 0) {
     return (
-      <div className="text-center text-gray-500 p-8">
+      <div className="text-center text-gray-400 p-8 bg-[#16181c] rounded-lg">
         No posts found. Be the first to create one!
       </div>
     );
@@ -49,9 +55,11 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
   return (
     <div className="space-y-6">
       {posts.map((post, index) => (
-        <div 
-          key={post._id} 
-          ref={loadMore && index === posts.length - 1 ? lastPostElementRef : null}
+        <div
+          key={post._id}
+          ref={
+            loadMore && index === posts.length - 1 ? lastPostElementRef : null
+          }
         >
           <PostCard post={post} />
         </div>
@@ -62,7 +70,7 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
         </div>
       )}
       {hasMore === false && posts.length > 0 && (
-        <div className="text-center text-gray-500 py-4 border-t border-gray-200">
+        <div className="text-center text-gray-400 py-4 border-t border-gray-800 bg-[#16181c] rounded-lg">
           You've reached the end of the feed
         </div>
       )}
@@ -70,4 +78,4 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
   );
 };
 
-export default memo(PostList); 
+export default memo(PostList);

@@ -3,6 +3,7 @@ import { GroupController } from "../controllers/group.controller.js";
 import protectedRouter from "../middleware/protectedRouter.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { groupValidationSchema } from "../utils/validator/group.validator.js";
+import { groupImageUpload } from "../middleware/upload.cloudinary.js";
 
 const router = express.Router();
 
@@ -10,15 +11,16 @@ const router = express.Router();
 router.use(protectedRouter);
 
 // Group management
-router.post("/create", GroupController.createGroup);
+router.post("/create", groupImageUpload, GroupController.createGroup);
 router.get("/", GroupController.getGroups);
 router.get("/:id", GroupController.getGroupById);
-router.patch("/:id", GroupController.updateGroup);
+router.patch("/:id", groupImageUpload, GroupController.updateGroup);
 router.delete("/:id", GroupController.deleteGroup);
 
 // Membership management
 router.post("/:id/join", GroupController.joinGroup);
 router.post("/:id/leave", GroupController.leaveGroup);
 router.patch("/:id/member-role", GroupController.updateMemberRole);
+router.post("/:id/remove-member", GroupController.removeMember);
 
 export default router;

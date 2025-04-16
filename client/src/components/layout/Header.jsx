@@ -1,14 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { logout } from '../../redux/authSlice';
-import defaultAvatar from '../../assets/images/default-avatar.svg';
+import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import defaultAvatar from "../../assets/images/default-avatar.svg";
 
 const Header = () => {
-  const { user, isAuthenticated } = useSelector(state => state.auth);
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
-  
+  const { user, isAuthenticated, logout } = useAuth();
+
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const dropdownRef = useRef(null);
@@ -20,18 +17,17 @@ const Header = () => {
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
   const handleLogout = async () => {
     try {
-      await dispatch(logout()).unwrap();
-      navigate('/login');
+      logout();
     } catch (error) {
-      console.error('Failed to logout:', error);
+      console.error("Failed to logout:", error);
     }
   };
 
@@ -41,14 +37,12 @@ const Header = () => {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0 flex items-center">
-              <img
-                className="h-8 w-auto"
-                src="/logo.png"
-                alt="Logo"
-              />
-              <span className="ml-2 text-xl font-bold text-gray-900">DevConnect</span>
+              <img className="h-8 w-auto" src="/logo.png" alt="Logo" />
+              <span className="ml-2 text-xl font-bold text-gray-900">
+                DevConnect
+              </span>
             </Link>
-            
+
             {/* Desktop Navigation */}
             <nav className="hidden md:ml-6 md:flex md:space-x-8">
               <Link
@@ -87,7 +81,7 @@ const Header = () => {
               )}
             </nav>
           </div>
-          
+
           <div className="flex items-center">
             {isAuthenticated ? (
               <div className="ml-3 relative" ref={dropdownRef}>
@@ -114,13 +108,17 @@ const Header = () => {
                     </div>
                   </button>
                 </div>
-                
+
                 {/* User Dropdown Menu */}
                 {showDropdown && (
                   <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-50">
                     <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900 truncate">{user?.fullname || user?.username}</p>
-                      <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {user?.fullname || user?.username}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {user?.email}
+                      </p>
                     </div>
                     <Link
                       to="/profile"
@@ -171,7 +169,7 @@ const Header = () => {
                 </Link>
               </div>
             )}
-            
+
             {/* Mobile menu button */}
             <div className="md:hidden flex items-center ml-4">
               <button
@@ -180,7 +178,7 @@ const Header = () => {
               >
                 <span className="sr-only">Open main menu</span>
                 <svg
-                  className={`${showMobileMenu ? 'hidden' : 'block'} h-6 w-6`}
+                  className={`${showMobileMenu ? "hidden" : "block"} h-6 w-6`}
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -195,7 +193,7 @@ const Header = () => {
                   />
                 </svg>
                 <svg
-                  className={`${showMobileMenu ? 'block' : 'hidden'} h-6 w-6`}
+                  className={`${showMobileMenu ? "block" : "hidden"} h-6 w-6`}
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -216,7 +214,7 @@ const Header = () => {
       </div>
 
       {/* Mobile menu, show/hide based on menu state */}
-      <div className={`${showMobileMenu ? 'block' : 'hidden'} md:hidden`}>
+      <div className={`${showMobileMenu ? "block" : "hidden"} md:hidden`}>
         <div className="pt-2 pb-3 space-y-1">
           <Link
             to="/"
@@ -304,4 +302,4 @@ const Header = () => {
   );
 };
 
-export default Header; 
+export default Header;

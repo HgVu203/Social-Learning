@@ -1,280 +1,257 @@
-import React, { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import { createGroup } from '../../redux/groupSlice';
-import { FiImage, FiUpload, FiX } from 'react-icons/fi';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { FiImage, FiUpload, FiX } from "react-icons/fi";
+import { showSuccessToast, showErrorToast } from "../../utils/toast";
+import { useGroup } from "../../contexts/GroupContext";
 
 const CreateGroupPage = () => {
-  const dispatch = useDispatch();
+  const { createGroup } = useGroup();
   const navigate = useNavigate();
-  const { loading, error } = useSelector((state) => state.group);
-  
+
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     isPrivate: false,
-    avatarImage: null,
-    coverImage: null
+    coverImage: null,
   });
-  
-  const [avatarPreview, setAvatarPreview] = useState(null);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [coverPreview, setCoverPreview] = useState(null);
-  
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     });
   };
-  
-  const handleImageChange = (e, imageType) => {
+
+  const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
+
+    // Check file size (limit to 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      showErrorToast("Image size should be less than 2MB");
+      return;
+    }
+
     // Update form data
     setFormData({
       ...formData,
-      [imageType]: file
+      coverImage: file,
     });
-    
+
     // Create preview
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (imageType === 'avatarImage') {
-        setAvatarPreview(reader.result);
-      } else {
-        setCoverPreview(reader.result);
-      }
+      setCoverPreview(reader.result);
     };
     reader.readAsDataURL(file);
   };
-  
-  const removeImage = (imageType) => {
+
+  const removeImage = () => {
     setFormData({
       ...formData,
-      [imageType]: null
+      coverImage: null,
     });
-    
-    if (imageType === 'avatarImage') {
-      setAvatarPreview(null);
-    } else {
-      setCoverPreview(null);
-    }
+    setCoverPreview(null);
   };
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Create form data object for file upload
-    const groupFormData = new FormData();
-    groupFormData.append('name', formData.name);
-    groupFormData.append('description', formData.description);
-    groupFormData.append('isPrivate', formData.isPrivate);
-    
-    if (formData.avatarImage) {
-      groupFormData.append('avatarImage', formData.avatarImage);
+
+    if (!formData.name || formData.name.trim().length < 3) {
+      showErrorToast("Group name must be at least 3 characters");
+      return;
     }
-    
-    if (formData.coverImage) {
-      groupFormData.append('coverImage', formData.coverImage);
-    }
-    
+
     try {
-      const response = await dispatch(createGroup(groupFormData)).unwrap();
-      navigate(`/groups/${response._id}`);
+      setIsSubmitting(true);
+
+      // Create form data object for file upload
+      const groupFormData = new FormData();
+      groupFormData.append("name", formData.name.trim());
+      groupFormData.append("description", formData.description?.trim() || "");
+
+      // Convert boolean to string value explicitly
+      groupFormData.append("isPrivate", String(formData.isPrivate));
+
+      // Add coverImage only if it exists
+      if (formData.coverImage) {
+        groupFormData.append("coverImage", formData.coverImage);
+      }
+
+      console.log("Submitting group with data:", {
+        name: formData.name,
+        description: formData.description,
+        isPrivate: formData.isPrivate,
+        isPrivateType: typeof formData.isPrivate,
+        hasCoverImage: !!formData.coverImage,
+      });
+
+      const response = await createGroup.mutateAsync(groupFormData);
+      console.log("Create group response:", response);
+
+      if (response && response.data) {
+        showSuccessToast("Group created successfully!");
+        navigate(`/groups/${response.data._id}`);
+      } else {
+        throw new Error("Invalid response from server");
+      }
     } catch (err) {
-      console.error('Failed to create group:', err);
+      console.error("Failed to create group:", err);
+      showErrorToast(
+        err?.response?.data?.error ||
+          err?.message ||
+          "Failed to create group. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
-  
+
   return (
     <div className="max-w-3xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Create New Group</h1>
-      
+      <h1 className="text-2xl font-bold mb-6 text-white">Create New Group</h1>
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="bg-red-50 p-4 rounded-md text-red-600 text-sm">
-            {error}
-          </div>
-        )}
-        
         {/* Cover Image Upload */}
-        <div className="relative">
-          <div 
-            className={`h-48 rounded-lg flex items-center justify-center ${
-              coverPreview ? 'bg-gray-200' : 'bg-gray-100 border-2 border-dashed border-gray-300'
+        <div className="relative bg-[#1E2024] rounded-lg border border-gray-800 p-4">
+          <h3 className="text-lg font-medium text-white mb-4">
+            Group Cover Image
+          </h3>
+
+          <div
+            className={`h-56 rounded-lg flex items-center justify-center ${
+              coverPreview ? "" : "border-2 border-dashed border-gray-700"
             }`}
-            style={coverPreview ? { backgroundImage: `url(${coverPreview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+            style={
+              coverPreview
+                ? {
+                    backgroundImage: `url(${coverPreview})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }
+                : {}
+            }
           >
             {!coverPreview && (
               <div className="text-center">
-                <FiImage className="mx-auto text-gray-400 text-3xl mb-2" />
+                <FiImage className="mx-auto text-gray-500 text-3xl mb-2" />
                 <p className="text-gray-500">Cover Image (Optional)</p>
-                <p className="text-xs text-gray-400 mt-1">Recommended size: 820 x 312 pixels</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Recommended size: 820 x 312 pixels
+                </p>
               </div>
             )}
-            
+
             {coverPreview && (
-              <button 
-                type="button" 
-                onClick={() => removeImage('coverImage')}
-                className="absolute top-2 right-2 bg-gray-800 bg-opacity-50 text-white p-1 rounded-full hover:bg-opacity-70"
+              <button
+                type="button"
+                onClick={removeImage}
+                className="absolute top-12 right-6 bg-gray-800 bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70"
               >
                 <FiX />
               </button>
             )}
           </div>
-          
+
           <input
             type="file"
             id="coverImage"
-            onChange={(e) => handleImageChange(e, 'coverImage')}
+            onChange={handleImageChange}
             accept="image/*"
             className="hidden"
           />
-          
-          <label 
-            htmlFor="coverImage" 
-            className="absolute bottom-2 right-2 bg-white rounded-md shadow-md px-3 py-1.5 text-sm font-medium flex items-center cursor-pointer"
+
+          <label
+            htmlFor="coverImage"
+            className="absolute bottom-6 right-6 bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md px-4 py-2 text-sm font-medium flex items-center cursor-pointer text-white transition-colors"
           >
-            <FiUpload className="mr-1" /> {coverPreview ? 'Change Cover' : 'Add Cover'}
+            <FiUpload className="mr-2" />
+            {coverPreview ? "Change Cover" : "Add Cover Image"}
           </label>
         </div>
-        
-        {/* Avatar Upload */}
-        <div className="flex items-center space-x-4">
-          <div className="relative">
-            <div 
-              className={`w-24 h-24 rounded-full flex items-center justify-center ${
-                avatarPreview ? 'bg-gray-200' : 'bg-gray-100 border-2 border-dashed border-gray-300'
-              }`}
-              style={avatarPreview ? { backgroundImage: `url(${avatarPreview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+
+        {/* Group Info */}
+        <div className="bg-[#1E2024] rounded-lg border border-gray-800 p-4">
+          <h3 className="text-lg font-medium text-white mb-4">
+            Group Information
+          </h3>
+
+          {/* Group Name */}
+          <div className="mb-4">
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-gray-300 mb-2"
             >
-              {!avatarPreview && <FiImage className="text-gray-400 text-xl" />}
-              
-              {avatarPreview && (
-                <button 
-                  type="button" 
-                  onClick={() => removeImage('avatarImage')}
-                  className="absolute -top-1 -right-1 bg-gray-800 bg-opacity-50 text-white p-1 rounded-full hover:bg-opacity-70"
-                  style={{ fontSize: '10px' }}
-                >
-                  <FiX size={12} />
-                </button>
-              )}
-            </div>
-            
+              Group Name *
+            </label>
             <input
-              type="file"
-              id="avatarImage"
-              onChange={(e) => handleImageChange(e, 'avatarImage')}
-              accept="image/*"
-              className="hidden"
+              type="text"
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              placeholder="Enter group name"
+              className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
-            
-            <label 
-              htmlFor="avatarImage" 
-              className="absolute bottom-0 right-0 bg-white rounded-full shadow-md p-1.5 text-xs font-medium cursor-pointer"
+          </div>
+
+          {/* Group Description */}
+          <div className="mb-4">
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-300 mb-2"
             >
-              <FiUpload size={14} />
+              Description
             </label>
+            <textarea
+              id="description"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              rows={4}
+              placeholder="Describe what your group is about"
+              className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
           </div>
-          
-          <div>
-            <h3 className="font-medium">Group Profile Image</h3>
-            <p className="text-xs text-gray-500">Upload a profile image for your group</p>
-          </div>
-        </div>
-        
-        {/* Group Name */}
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-            Group Name *
-          </label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            required
-            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        
-        {/* Group Description */}
-        <div>
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-            Group Description
-          </label>
-          <textarea
-            id="description"
-            name="description"
-            value={formData.description}
-            onChange={handleChange}
-            rows={4}
-            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="What is this group about?"
-          ></textarea>
-        </div>
-        
-        {/* Privacy Settings */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Privacy Type
-          </label>
-          
-          <div className="space-y-2">
-            <label className="flex items-start p-3 border rounded-md hover:bg-gray-50 cursor-pointer">
-              <input
-                type="radio"
-                name="isPrivate"
-                checked={!formData.isPrivate}
-                onChange={() => setFormData({ ...formData, isPrivate: false })}
-                className="mt-0.5 mr-3"
-              />
-              <div>
-                <span className="font-medium">Public Group</span>
-                <p className="text-sm text-gray-500 mt-1">
-                  Anyone can see the group, its members and their posts
-                </p>
-              </div>
-            </label>
-            
-            <label className="flex items-start p-3 border rounded-md hover:bg-gray-50 cursor-pointer">
-              <input
-                type="radio"
-                name="isPrivate"
-                checked={formData.isPrivate}
-                onChange={() => setFormData({ ...formData, isPrivate: true })}
-                className="mt-0.5 mr-3"
-              />
-              <div>
-                <span className="font-medium">Private Group</span>
-                <p className="text-sm text-gray-500 mt-1">
-                  Only members can see the group, its members and their posts
-                </p>
-              </div>
+
+          {/* Privacy Setting */}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="isPrivate"
+              name="isPrivate"
+              checked={formData.isPrivate}
+              onChange={handleChange}
+              className="h-4 w-4 text-blue-600 border-gray-700 rounded focus:ring-blue-500 bg-gray-700"
+            />
+            <label
+              htmlFor="isPrivate"
+              className="ml-2 block text-gray-300 text-sm"
+            >
+              Private Group (Only members can see posts)
             </label>
           </div>
         </div>
-        
-        {/* Submit Button */}
-        <div className="flex justify-end space-x-3 pt-4">
+
+        <div className="flex justify-end">
           <button
             type="button"
-            onClick={() => navigate('/groups')}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+            onClick={() => navigate("/groups")}
+            className="px-6 py-2.5 mr-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Creating...' : 'Create Group'}
+            {isSubmitting ? "Creating..." : "Create Group"}
           </button>
         </div>
       </form>
@@ -282,4 +259,4 @@ const CreateGroupPage = () => {
   );
 };
 
-export default CreateGroupPage; 
+export default CreateGroupPage;

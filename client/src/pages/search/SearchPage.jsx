@@ -1,43 +1,86 @@
-import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import { searchPosts } from '../../redux/postSlice';
-import MainLayout from '../../layout/MainLayout';
-import PostList from '../../components/post/PostList';
-import Loading from '../../components/common/Loading';
+import { useState } from "react";
+import { useLocation } from "react-router-dom";
+import { usePostContext } from "../../contexts/PostContext";
+import PostCard from "../../components/post/PostCard";
+import UserCard from "../../components/user/UserCard";
+import Loading from "../../components/common/Loading";
 
 const SearchPage = () => {
-  const [searchParams] = useSearchParams();
-  const query = searchParams.get('q');
-  const dispatch = useDispatch();
-  const { searchResults, searchLoading, searchError } = useSelector(state => state.posts);
+  const location = useLocation();
+  const query = new URLSearchParams(location.search).get("q") || "";
+  const [activeTab, setActiveTab] = useState("posts");
+  const { searchResults, searchLoading, searchError } = usePostContext();
 
-  useEffect(() => {
-    if (query) {
-      dispatch(searchPosts(query));
-    }
-  }, [query, dispatch]);
+  // Filter results based on active tab
+  const filteredResults =
+    activeTab === "posts"
+      ? searchResults.filter((item) => item.type === "post")
+      : searchResults.filter((item) => item.type === "user");
 
   return (
-    <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <h1 className="text-2xl font-bold mb-6">
-          Kết quả tìm kiếm cho {query}
+    <div className="max-w-4xl mx-auto p-4">
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h1 className="text-2xl font-bold text-gray-800 mb-4">
+          Search Results for "{query}"
         </h1>
-        
-        {searchLoading ? (
-          <Loading />
-        ) : searchError ? (
-          <div className="text-red-500 text-center py-4">{searchError}</div>
-        ) : searchResults.length > 0 ? (
-          <PostList posts={searchResults} />
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            Không tìm thấy kết quả nào cho {query}
+
+        {/* Tabs */}
+        <div className="flex space-x-4 border-b border-gray-200 mb-6">
+          <button
+            className={`py-2 px-4 font-medium ${
+              activeTab === "posts"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("posts")}
+          >
+            Posts
+          </button>
+          <button
+            className={`py-2 px-4 font-medium ${
+              activeTab === "users"
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("users")}
+          >
+            Users
+          </button>
+        </div>
+
+        {/* Loading State */}
+        {searchLoading && (
+          <div className="flex justify-center py-8">
+            <Loading />
           </div>
         )}
+
+        {/* Error State */}
+        {searchError && (
+          <div className="bg-red-50 p-4 rounded-lg text-red-600 mb-4">
+            {searchError}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!searchLoading && filteredResults.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            No {activeTab} found matching "{query}"
+          </div>
+        )}
+
+        {/* Results */}
+        <div className="space-y-4">
+          {filteredResults.map((result) =>
+            activeTab === "posts" ? (
+              <PostCard key={result.id} post={result} />
+            ) : (
+              <UserCard key={result.id} user={result} />
+            )
+          )}
+        </div>
       </div>
-    </MainLayout>
+    </div>
   );
 };
 

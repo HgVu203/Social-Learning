@@ -111,7 +111,7 @@ export const UserController = {
       return res.status(500).json({ success: false, error: error.message });
     }
   },
-  
+
   getUserProfile: async (req, res) => {
     try {
       const userId = req.params.id;
@@ -143,7 +143,7 @@ export const UserController = {
 
   updateProfile: async (req, res) => {
     try {
-      const { fullname, phone, address, avatar } = req.body;
+      const { fullname, phone, address, bio, avatar } = req.body;
       const user = await User.findById(req.user._id);
 
       if (!user) {
@@ -152,10 +152,19 @@ export const UserController = {
           .json({ success: false, error: "User not found" });
       }
 
+      // Xử lý tệp ảnh đại diện từ Cloudinary
+      if (req.file) {
+        // URL ảnh từ Cloudinary đã được lưu trong req.file.path
+        user.avatar = req.file.path;
+      } else if (avatar) {
+        // Nếu không có file upload nhưng có URL avatar trong body
+        user.avatar = avatar;
+      }
+
       user.fullname = fullname || user.fullname;
       user.phone = phone || user.phone;
       user.address = address || user.address;
-      user.avatar = avatar || user.avatar;
+      user.bio = bio || user.bio;
 
       await user.save();
 

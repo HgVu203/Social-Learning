@@ -3,6 +3,7 @@ import { UserController } from "../controllers/user.controller.js";
 import protectedRouter from "../middleware/protectedRouter.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { userValidationSchema } from "../utils/validator/user.validator.js";
+import { userImageUpload } from "../middleware/upload.cloudinary.js";
 
 const router = express.Router();
 
@@ -14,6 +15,7 @@ router.use(protectedRouter);
 
 router.patch(
   "/update-profile",
+  userImageUpload,
   validateRequest(userValidationSchema.updateProfile),
   UserController.updateProfile
 );

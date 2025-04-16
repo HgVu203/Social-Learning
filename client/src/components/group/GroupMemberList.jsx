@@ -1,250 +1,354 @@
-import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { getGroupById, updateMemberRole } from '../../redux/groupSlice';
-import Avatar from '../common/Avatar';
-import Loading from '../common/Loading';
-import { Link } from 'react-router-dom';
-import { FiSearch, FiMoreVertical, FiUserPlus, FiShield, FiX, FiUserCheck } from 'react-icons/fi';
-import { BiCrown } from 'react-icons/bi';
-import NoData from '../common/NoData';
+import { useEffect, useState } from "react";
+import { useGroup } from "../../contexts/GroupContext";
+import { useAuth } from "../../contexts/AuthContext";
+import Avatar from "../common/Avatar";
+import Loading from "../common/Loading";
+import {
+  showSuccessToast,
+  showErrorToast,
+  showConfirmToast,
+} from "../../utils/toast";
+import {
+  FiChevronDown,
+  FiUserX,
+  FiShield,
+  FiEdit,
+  FiUser,
+  FiUserPlus,
+} from "react-icons/fi";
 
-const MemberItem = ({ member, isAdmin, currentUserId, groupId, onUpdateRole }) => {
-  const [showMenu, setShowMenu] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  
-  const handleRoleUpdate = async (newRole) => {
-    if (processing) return;
-    
-    setProcessing(true);
-    try {
-      await onUpdateRole(member.userId, newRole);
-      setShowMenu(false);
-    } finally {
-      setProcessing(false);
+const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
+  const { user: currentUser } = useAuth();
+  const {
+    currentGroup,
+    currentGroupLoading: loading,
+    selectGroup,
+    updateMemberRole,
+    removeMember,
+  } = useGroup();
+
+  const [members, setMembers] = useState([]);
+  const [showRoleMenu, setShowRoleMenu] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [updatingMember, setUpdatingMember] = useState(null);
+
+  useEffect(() => {
+    if (currentGroup) {
+      setMembers(currentGroup.members || []);
     }
-  };
-  
-  const handleRemoveMember = async () => {
-    if (processing) return;
-    
-    if (window.confirm(`Are you sure you want to remove ${member.fullName} from the group?`)) {
-      setProcessing(true);
-      try {
-        await onUpdateRole(member.userId, 'remove');
-        setShowMenu(false);
-      } finally {
-        setProcessing(false);
-      }
+  }, [currentGroup]);
+
+  useEffect(() => {
+    if (groupId && currentUser) {
+      selectGroup(groupId);
     }
-  };
-  
-  return (
-    <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-md transition-colors">
-      <div className="flex items-center">
-        <Avatar 
-          src={member.avatarImage} 
-          alt={member.fullName} 
-          size="md" 
-          className="mr-3"
-        />
-        <div>
-          <Link to={`/profile/${member.userId}`} className="font-medium text-blue-600 hover:underline">
-            {member.fullName}
-          </Link>
-          <div className="flex items-center text-sm text-gray-500">
-            {member.role === 'owner' && (
-              <div className="flex items-center text-yellow-600">
-                <BiCrown className="mr-1" /> Group Creator
-              </div>
-            )}
-            {member.role === 'admin' && (
-              <div className="flex items-center text-blue-600">
-                <FiShield className="mr-1" /> Admin
-              </div>
-            )}
-            {member.role === 'member' && (
-              <span>Member</span>
-            )}
-          </div>
-        </div>
-      </div>
-      
-      {isAdmin && member.userId !== currentUserId && (
-        <div className="relative">
-          <button 
-            onClick={() => setShowMenu(!showMenu)}
-            className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
-            disabled={processing}
-          >
-            <FiMoreVertical />
-          </button>
-          
-          {showMenu && (
-            <div className="absolute right-0 mt-1 w-56 bg-white rounded-md shadow-lg z-10 border">
-              <div className="py-1">
-                {member.role !== 'admin' && (
-                  <button 
-                    onClick={() => handleRoleUpdate('admin')}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    disabled={processing}
-                  >
-                    <FiShield className="mr-2" /> Make Admin
-                  </button>
-                )}
-                {member.role === 'admin' && (
-                  <button 
-                    onClick={() => handleRoleUpdate('member')}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    disabled={processing}
-                  >
-                    <FiUserCheck className="mr-2" /> Remove Admin Status
-                  </button>
-                )}
-                <button 
-                  onClick={handleRemoveMember}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center"
-                  disabled={processing}
-                >
-                  <FiX className="mr-2" /> Remove from Group
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+  }, [groupId, currentUser, selectGroup]);
+
+  const filteredMembers = members.filter((member) =>
+    member.user?.username?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-};
 
-const GroupMemberList = ({ groupId, isAdmin }) => {
-  const dispatch = useDispatch();
-  const { currentGroup, loading } = useSelector((state) => state.group);
-  const { user } = useSelector((state) => state.auth);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredMembers, setFilteredMembers] = useState([]);
-  
-  useEffect(() => {
-    if (!currentGroup || currentGroup._id !== groupId) {
-      dispatch(getGroupById(groupId));
+  const handleRemoveMember = async (memberId) => {
+    showConfirmToast(
+      "Are you sure you want to remove this member?",
+      async () => {
+        setUpdatingMember(memberId);
+        try {
+          await removeMember.mutateAsync({ groupId, memberId });
+          showSuccessToast("Member removed successfully");
+        } catch (error) {
+          console.error("Failed to remove member:", error);
+          showErrorToast("Failed to remove member. Please try again.");
+          // Keep the UI consistent if the API call fails
+          setMembers(members.filter((m) => m.user?._id !== memberId));
+        } finally {
+          setUpdatingMember(null);
+        }
+      }
+    );
+  };
+
+  const handleRoleChange = async (memberId, role) => {
+    if (memberId === currentUser?._id && role !== "admin") {
+      showConfirmToast(
+        "Are you sure you want to demote yourself? You may lose admin privileges.",
+        async () => {
+          setUpdatingMember(memberId);
+          try {
+            await updateMemberRole.mutateAsync({
+              groupId,
+              userId: memberId,
+              role,
+            });
+
+            // Update the local state to reflect the change
+            setMembers(
+              members.map((member) =>
+                member.user?._id === memberId ? { ...member, role } : member
+              )
+            );
+            showSuccessToast(`Member role updated to ${role}`);
+          } catch (error) {
+            console.error("Failed to update member role:", error);
+            showErrorToast("Failed to update member role. Please try again.");
+          } finally {
+            setUpdatingMember(null);
+            setShowRoleMenu(null);
+          }
+        }
+      );
+      return;
     }
-  }, [dispatch, groupId, currentGroup]);
-  
-  useEffect(() => {
-    if (currentGroup?.members) {
-      setFilteredMembers(
-        currentGroup.members.filter(member => 
-          searchQuery.trim() === '' || 
-          member.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+
+    setUpdatingMember(memberId);
+    try {
+      await updateMemberRole.mutateAsync({
+        groupId,
+        userId: memberId,
+        role,
+      });
+
+      // Update the local state to reflect the change
+      setMembers(
+        members.map((member) =>
+          member.user?._id === memberId ? { ...member, role } : member
         )
       );
-    }
-  }, [currentGroup?.members, searchQuery]);
-  
-  const handleUpdateRole = async (userId, role) => {
-    try {
-      await dispatch(updateMemberRole({ 
-        groupId, 
-        userId, 
-        role 
-      })).unwrap();
-      
-      // Refresh group data
-      dispatch(getGroupById(groupId));
-      return true;
+      showSuccessToast(`Member role updated to ${role}`);
     } catch (error) {
-      console.error('Failed to update role:', error);
-      return false;
+      console.error("Failed to update member role:", error);
+      showErrorToast("Failed to update member role. Please try again.");
+    } finally {
+      setUpdatingMember(null);
+      setShowRoleMenu(null);
     }
   };
-  
+
   if (loading && !currentGroup) {
     return (
-      <div className="flex justify-center items-center min-h-[300px]">
+      <div className="flex justify-center py-8">
         <Loading />
       </div>
     );
   }
-  
-  if (!currentGroup?.members || currentGroup.members.length === 0) {
+
+  if (!members.length) {
     return (
-      <NoData 
-        message="No members found" 
-        description="Invite friends to join this group"
-      />
+      <div className="text-center p-8">
+        <div className="text-gray-400 text-lg">No members to display</div>
+      </div>
     );
   }
-  
-  const adminMembers = filteredMembers.filter(member => 
-    member.role === 'owner' || member.role === 'admin'
-  );
-  
-  const regularMembers = filteredMembers.filter(member => 
-    member.role === 'member'
-  );
-  
+
+  const membersByRole = {
+    admins: members.filter((m) => m.role === "admin"),
+    members: members.filter((m) => m.role !== "admin"),
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="p-4 border-b">
-        <h2 className="text-xl font-bold mb-4">Group Members ({currentGroup.members.length})</h2>
+    <div className="space-y-6">
+      {isManagePage && (
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold text-white">
+            Group Members Management
+          </h1>
+          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors">
+            <FiUserPlus />
+            Invite Members
+          </button>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl text-white font-bold">
+          Group Members ({members.length})
+        </h2>
         <div className="relative">
           <input
             type="text"
             placeholder="Search members..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-300"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 pl-10 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
-          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </span>
         </div>
       </div>
-      
-      {isAdmin && (
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <button className="flex items-center text-blue-600 hover:underline">
-            <FiUserPlus className="mr-2" /> Add New Members
-          </button>
-        </div>
+
+      {isManagePage && (
+        <>
+          <div className="mb-4">
+            <h3 className="text-lg text-white font-medium mb-2 flex items-center">
+              <FiShield className="mr-2 text-blue-500" /> Administrators (
+              {membersByRole.admins.length})
+            </h3>
+            <div className="bg-[#16181c] rounded-xl border border-gray-700 divide-y divide-gray-800">
+              {membersByRole.admins.map((member) => (
+                <MemberItem
+                  key={member.user?._id}
+                  member={member}
+                  currentGroup={currentGroup}
+                  currentUser={currentUser}
+                  isAdmin={isAdmin}
+                  showRoleMenu={showRoleMenu}
+                  setShowRoleMenu={setShowRoleMenu}
+                  handleRoleChange={handleRoleChange}
+                  handleRemoveMember={handleRemoveMember}
+                  updatingMember={updatingMember}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg text-white font-medium mb-2 flex items-center">
+              <FiUser className="mr-2 text-gray-400" /> Members (
+              {membersByRole.members.length})
+            </h3>
+          </div>
+        </>
       )}
-      
-      <div className="divide-y">
-        {adminMembers.length > 0 && (
-          <div className="p-4">
-            <h3 className="font-medium text-sm text-gray-500 mb-2">Admins and Creator ({adminMembers.length})</h3>
-            <div className="space-y-1">
-              {adminMembers.map(member => (
-                <MemberItem 
-                  key={member.userId}
-                  member={member}
-                  isAdmin={isAdmin}
-                  currentUserId={user?.id}
-                  groupId={groupId}
-                  onUpdateRole={handleUpdateRole}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {regularMembers.length > 0 && (
-          <div className="p-4">
-            <h3 className="font-medium text-sm text-gray-500 mb-2">Members ({regularMembers.length})</h3>
-            <div className="space-y-1">
-              {regularMembers.map(member => (
-                <MemberItem 
-                  key={member.userId}
-                  member={member}
-                  isAdmin={isAdmin}
-                  currentUserId={user?.id}
-                  groupId={groupId}
-                  onUpdateRole={handleUpdateRole}
-                />
-              ))}
-            </div>
-          </div>
+
+      <div className="bg-[#16181c] rounded-xl border border-gray-700 divide-y divide-gray-800">
+        {(isManagePage ? membersByRole.members : filteredMembers).map(
+          (member) => (
+            <MemberItem
+              key={member.user?._id}
+              member={member}
+              currentGroup={currentGroup}
+              currentUser={currentUser}
+              isAdmin={isAdmin}
+              showRoleMenu={showRoleMenu}
+              setShowRoleMenu={setShowRoleMenu}
+              handleRoleChange={handleRoleChange}
+              handleRemoveMember={handleRemoveMember}
+              updatingMember={updatingMember}
+            />
+          )
         )}
       </div>
     </div>
   );
 };
 
-export default GroupMemberList; 
+// Extracted MemberItem component for reusability
+const MemberItem = ({
+  member,
+  currentGroup,
+  currentUser,
+  isAdmin,
+  showRoleMenu,
+  setShowRoleMenu,
+  handleRoleChange,
+  handleRemoveMember,
+  updatingMember,
+}) => {
+  return (
+    <div className="p-4 hover:bg-gray-800/40 transition-colors flex items-center justify-between">
+      <div className="flex items-center">
+        <Avatar
+          src={member.user?.avatar}
+          alt={member.user?.username || "Unknown"}
+          size="md"
+          className="mr-3 border-2 border-gray-700"
+        />
+        <div>
+          <div className="flex items-center">
+            <p className="font-medium text-white">
+              {member.user?.username || "Unknown User"}
+            </p>
+            {member.role === "admin" && (
+              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-xs text-white rounded-full flex items-center">
+                <FiShield className="mr-1" /> Admin
+              </span>
+            )}
+            {member.user?._id === currentGroup?.createdBy?._id && (
+              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-xs text-white rounded-full">
+                Creator
+              </span>
+            )}
+            {member.user?._id === currentUser?._id && (
+              <span className="ml-2 text-xs text-gray-400">(You)</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-400">
+            Joined {new Date(member.joinedAt).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+
+      {isAdmin && member.user?._id !== currentGroup?.createdBy?._id && (
+        <div className="flex space-x-2">
+          <div className="relative">
+            <button
+              onClick={() =>
+                setShowRoleMenu(
+                  showRoleMenu === member.user?._id ? null : member.user?._id
+                )
+              }
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg flex items-center transition-colors text-sm"
+              disabled={updatingMember === member.user?._id}
+            >
+              <FiEdit className="mr-1" />
+              {member.role} <FiChevronDown className="ml-1" />
+            </button>
+            {showRoleMenu === member.user?._id && (
+              <div className="absolute right-0 mt-1 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10">
+                <ul>
+                  <li
+                    className={`px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300 text-sm ${
+                      member.role === "admin" ? "bg-gray-700" : ""
+                    }`}
+                    onClick={() => handleRoleChange(member.user?._id, "admin")}
+                  >
+                    Admin
+                  </li>
+                  <li
+                    className={`px-4 py-2 hover:bg-gray-700 cursor-pointer text-gray-300 text-sm ${
+                      member.role === "member" ? "bg-gray-700" : ""
+                    }`}
+                    onClick={() => handleRoleChange(member.user?._id, "member")}
+                  >
+                    Member
+                  </li>
+                </ul>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => handleRemoveMember(member.user?._id)}
+            className="px-3 py-1.5 bg-red-900/40 hover:bg-red-800/60 text-red-400 rounded-lg flex items-center transition-colors text-sm"
+            disabled={updatingMember === member.user?._id}
+          >
+            <FiUserX className="mr-1" /> Remove
+          </button>
+        </div>
+      )}
+
+      {member.user?._id === currentGroup?.createdBy?._id && isAdmin && (
+        <div className="flex space-x-2">
+          <div className="px-3 py-1.5 bg-gray-800 text-gray-400 rounded-lg text-sm">
+            Group Creator (Cannot modify)
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GroupMemberList;

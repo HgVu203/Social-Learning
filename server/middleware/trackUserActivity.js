@@ -27,7 +27,6 @@ const trackUserActivity = async (req, res, next) => {
           }
 
           if (activityType) {
-            console.log(`Tracking activity: ${activityType}`); // Debug log
             new UserActivity({
               userId,
               postId,

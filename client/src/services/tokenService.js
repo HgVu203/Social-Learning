@@ -14,11 +14,11 @@ export const USER_KEY = "user";
  */
 export const setToken = (token, axiosInstance = null) => {
   if (!token) return;
-  
+
   localStorage.setItem(TOKEN_KEY, token);
-  
+
   if (axiosInstance) {
-    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    axiosInstance.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   }
 };
 
@@ -35,9 +35,9 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const isTokenValid = () => {
   const token = getToken();
   if (!token) return false;
-  
+
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const payload = JSON.parse(atob(token.split(".")[1]));
     return Date.now() < payload.exp * 1000;
   } catch {
     return false;
@@ -69,9 +69,9 @@ export const getUser = () => {
 export const clearTokens = (axiosInstance = null) => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
-  
+
   if (axiosInstance) {
-    delete axiosInstance.defaults.headers.common['Authorization'];
+    delete axiosInstance.defaults.headers.common["Authorization"];
   }
 };
 
@@ -84,7 +84,7 @@ const tokenService = {
   getUser,
   clearTokens,
   TOKEN_KEY,
-  USER_KEY
+  USER_KEY,
 };
 
-export default tokenService; 
+export default tokenService;
