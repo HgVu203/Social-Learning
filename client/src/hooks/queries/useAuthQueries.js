@@ -35,8 +35,11 @@ export const useAuthSession = () => {
     },
     retry: false,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    // Chỉ kích hoạt khi có token
-    enabled: !!tokenService.getToken(),
+    refetchOnMount: true,
+    staleTime: 300000, // 5 minutes
+    // Set short timeout to prevent long loading states
+    cacheTime: 60000, // 1 minute
+    // Kích hoạt ngay cả khi không có token để đặt trạng thái loading nhanh chóng
+    enabled: true,
   });
 };

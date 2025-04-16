@@ -158,7 +158,15 @@ export const subscribeToComments = (postId, callbacks) => {
     socket.on("comment_liked", (data) => {
       const listener = commentListeners.get(data.postId);
       if (listener && listener.onCommentLiked) {
-        listener.onCommentLiked(data.comment);
+        // Pass the complete comment data including parentId and isNestedComment flags
+        listener.onCommentLiked(data.comment, {
+          commentId: data.commentId,
+          parentId: data.parentId,
+          isNestedComment: data.isNestedComment,
+          likesCount: data.likesCount,
+          isLiked: data.isLiked,
+          postId: data.postId,
+        });
       }
     });
 

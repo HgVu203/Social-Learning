@@ -887,6 +887,10 @@ export const PostController = {
       const { id: postId, commentId } = req.params;
       const userId = req.user._id;
 
+      console.log(
+        `Processing like for comment: ${commentId} in post: ${postId}`
+      );
+
       // Find post to verify it exists
       const post = await Post.findOne({ _id: postId, deleted: false });
       if (!post) {
@@ -896,7 +900,7 @@ export const PostController = {
         });
       }
 
-      // Find the comment
+      // Find the comment using more robust query to handle nested comments
       const comment = await Feedback.findOne({
         _id: commentId,
         postId,
@@ -910,21 +914,43 @@ export const PostController = {
         });
       }
 
+      // Check if this is a nested comment (has a parent)
+      const isNestedComment = !!comment.parentId;
+      const parentId = isNestedComment ? comment.parentId.toString() : null;
+
+      if (isNestedComment) {
+        console.log(`This is a nested comment with parent ID: ${parentId}`);
+
+        // Verify parent exists
+        const parentComment = await Feedback.findOne({
+          _id: parentId,
+          postId,
+          type: "comment",
+        });
+
+        if (!parentComment) {
+          console.warn(
+            `Parent comment ${parentId} not found for nested comment ${commentId}`
+          );
+        }
+      }
+
       // Initialize likes array if it doesn't exist
       if (!comment.likes) {
         comment.likes = [];
       }
 
       // Check if user already liked
+      const userIdStr = userId.toString();
       const isLiked = comment.likes.some(
-        (like) => like.toString() === userId.toString()
+        (like) => like.toString() === userIdStr
       );
 
       // Toggle like status
       if (isLiked) {
         // Unlike: Remove user ID from likes array
         comment.likes = comment.likes.filter(
-          (like) => like.toString() !== userId.toString()
+          (like) => like.toString() !== userIdStr
         );
       } else {
         // Like: Add user ID to likes array
@@ -960,11 +986,13 @@ export const PostController = {
       // Get post owner ID
       const postOwnerId = post.author.toString();
 
-      // Emit socket event
+      // Emit socket event with enhanced data for nested comments
       emitCommentEvent("comment_liked", postId, {
         postId,
         comment: formattedComment,
         commentId,
+        parentId,
+        isNestedComment,
         likesCount: formattedComment.likesCount,
         isLiked: !isLiked,
         postOwnerId,
@@ -975,6 +1003,8 @@ export const PostController = {
         data: {
           postId,
           commentId,
+          parentId,
+          isNestedComment,
           likes: comment.likes,
           likesCount: comment.likes.length,
           isLiked: !isLiked,

@@ -1,10 +1,19 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import Avatar from "../../components/common/Avatar";
+import { useEffect, useState } from "react";
 
 const Sidebar = ({ onClose }) => {
   const location = useLocation();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, loading } = useAuth();
+  const [isMenuLoaded, setIsMenuLoaded] = useState(false);
+
+  useEffect(() => {
+    // Set menu loaded state once authentication check is complete
+    if (!loading) {
+      setIsMenuLoaded(true);
+    }
+  }, [loading]);
 
   const handleLogout = async () => {
     try {
@@ -77,10 +86,30 @@ const Sidebar = ({ onClose }) => {
     },
   ];
 
-  // Hiển thị các menu dựa trên trạng thái xác thực
-  const menuItems = isAuthenticated
-    ? [...publicMenuItems, ...privateMenuItems]
+  // Hiển thị các menu dựa trên trạng thái xác thực và đảm bảo chỉ hiển thị khi đã load xong
+  const menuItems = isMenuLoaded
+    ? isAuthenticated
+      ? [...publicMenuItems, ...privateMenuItems]
+      : publicMenuItems
     : publicMenuItems;
+
+  if (loading) {
+    return (
+      <div className="h-screen p-4 flex flex-col">
+        {/* Logo */}
+        <Link to="/" className="flex items-center mb-6 px-3">
+          <span className="text-2xl font-bold text-blue-500">DevConnect</span>
+        </Link>
+
+        {/* Loading indicator */}
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="animate-pulse flex space-x-3">
+            <div className="h-6 w-20 bg-gray-700 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen p-4 flex flex-col">

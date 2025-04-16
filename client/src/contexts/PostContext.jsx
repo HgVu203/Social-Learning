@@ -20,6 +20,7 @@ const PostContext = createContext({
   fetchGroupPosts: () => {},
   optimisticAddComment: () => {},
   optimisticToggleCommentLike: () => {},
+  reactToComment: null,
 });
 
 export const PostProvider = ({ children }) => {
@@ -65,6 +66,7 @@ export const PostProvider = ({ children }) => {
     createComment,
     deleteComment,
     likeComment,
+    reactToComment,
     optimisticAddComment,
     optimisticToggleCommentLike,
   } = usePostMutations();
@@ -173,6 +175,7 @@ export const PostProvider = ({ children }) => {
     createComment,
     deleteComment,
     likeComment,
+    reactToComment,
     optimisticAddComment,
     optimisticToggleCommentLike,
 

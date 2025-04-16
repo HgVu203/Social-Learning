@@ -26,11 +26,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
   const [verificationData, setVerificationData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { data, isLoading } = useAuthSession();
   const authMutations = useAuthMutations();
 
   console.log("Auth Session Data:", data);
+  console.log("Auth Session Loading:", isLoading);
 
   useEffect(() => {
     // Update user state when session data changes
@@ -60,17 +61,24 @@ export const AuthProvider = ({ children }) => {
       }
 
       setUser(userData);
+      setLoading(false);
 
       // Socket temporarily disabled
       // initSocket();
     } else {
       console.log("No valid user data in session response:", data);
       setUser(null);
+      setLoading(false);
 
       // Socket temporarily disabled
       // closeSocket();
     }
   }, [data]);
+
+  // Also update loading state based on useAuthSession loading state
+  useEffect(() => {
+    setLoading(isLoading);
+  }, [isLoading]);
 
   // Wrap auth mutations to handle common state updates
   const login = async (credentials) => {
@@ -273,9 +281,9 @@ export const AuthProvider = ({ children }) => {
   const value = {
     isAuthenticated: !!user,
     user,
-    loading: isLoading || loading,
-    error,
+    loading,
     verificationData,
+    error,
     login,
     signup,
     logout,

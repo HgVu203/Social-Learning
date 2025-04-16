@@ -96,17 +96,45 @@ export const usePostQueries = {
 
           // Ensure comments are properly formatted
           if (response.data && response.data.data) {
+            // Fixed data structure handling
+            if (Array.isArray(response.data.data)) {
+              // Old format: direct array of comments
+              response.data.data = {
+                comments: response.data.data,
+                commentsCount: response.data.data.length,
+              };
+            } else if (
+              !response.data.data.comments &&
+              response.data.data.topLevelComments
+            ) {
+              // Alternative format: comments under topLevelComments
+              response.data.data.comments = response.data.data.topLevelComments;
+              response.data.data.commentsCount =
+                response.data.data.total ||
+                response.data.data.topLevelComments.length;
+            }
+
             // If comments are missing, initialize with empty array
             if (!response.data.data.comments) {
               response.data.data.comments = [];
+            }
+
+            // Ensure commentsCount is set
+            if (response.data.data.commentsCount === undefined) {
+              response.data.data.commentsCount =
+                response.data.data.comments.length;
             }
 
             // Ensure each comment has proper structure
             response.data.data.comments.forEach((comment) => {
               if (!comment.replies) comment.replies = [];
               if (!comment.likes) comment.likes = [];
-              comment.likesCount = comment.likes.length;
+              if (comment.likesCount === undefined) {
+                comment.likesCount = comment.likes.length;
+              }
             });
+
+            console.log("Formatted comments data:", response.data.data);
           }
 
           return response.data;
