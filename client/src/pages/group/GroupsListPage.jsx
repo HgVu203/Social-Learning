@@ -1,327 +1,257 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import GroupCard from "../../components/group/GroupCard";
+import { motion } from "framer-motion";
+import useGroupQueries from "../../hooks/queries/useGroupQueries";
 import Loading from "../../components/common/Loading";
-import {
-  FiPlus,
-  FiSearch,
-  FiUsers,
-  FiUser,
-  FiTrendingUp,
-  FiX,
-} from "react-icons/fi";
-import { useGroup } from "../../contexts/GroupContext";
 
 const GroupsListPage = () => {
-  const [activeTab, setActiveTab] = useState("popular");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const [previousTab, setPreviousTab] = useState("popular");
-
-  // Get the query functions from context
-  const { useAllGroups, useUserGroups, usePopularGroups } = useGroup();
-
-  // Use custom hooks for queries
-  const {
-    data: userGroupsData,
-    isLoading: userGroupsLoading,
-    error: userGroupsError,
-  } = useUserGroups();
 
   const {
-    data: popularGroupsData,
-    isLoading: popularGroupsLoading,
-    error: popularGroupsError,
-  } = usePopularGroups();
+    data: myGroupsData,
+    isLoading: myGroupsLoading,
+    error: myGroupsError,
+  } = useGroupQueries.useMyGroups();
 
-  // Sử dụng biến tách biệt cho search query để tránh re-render không cần thiết
-  const [currentSearchQuery, setCurrentSearchQuery] = useState("");
+  const { data: myGroups = [] } = myGroupsData || {};
 
-  const {
-    data: allGroupsData,
-    isLoading: allGroupsLoading,
-    error: allGroupsError,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useAllGroups(currentSearchQuery);
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    setPreviousTab(tab);
-    setSearchQuery("");
-    setIsSearching(false);
-    setCurrentSearchQuery("");
-  };
-
-  // Initialize with "popular" tab
-  useEffect(() => {
-    handleTabChange("popular");
-  }, []);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-
-    // Nếu ô tìm kiếm trống, reset trạng thái tìm kiếm và hiển thị lại dữ liệu của tab trước đó
-    if (!searchQuery.trim()) {
-      setCurrentSearchQuery("");
-      setIsSearching(false);
-      setActiveTab(previousTab);
-      return;
-    }
-
-    // Lưu tab hiện tại trước khi chuyển sang chế độ tìm kiếm
-    if (!isSearching) {
-      setPreviousTab(activeTab);
-    }
-
-    // Nếu có nội dung tìm kiếm, tiến hành tìm kiếm bình thường
-    setCurrentSearchQuery(searchQuery.trim());
-    setIsSearching(true);
-    setActiveTab("search");
-  };
-
-  const handleLoadMore = () => {
-    if (isSearching && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  };
-
-  const handleClearSearch = () => {
-    setSearchQuery("");
-    setCurrentSearchQuery("");
-    setIsSearching(false);
-    setActiveTab(previousTab);
-  };
-
-  // Prepare data based on active tab
-  const userGroups = userGroupsData?.data || [];
-  // Đảm bảo cấu trúc dữ liệu nhất quán
-  const popularGroups = popularGroupsData?.data || [];
-
-  // In ra thông tin chi tiết hơn để debug
-  console.log("User groups:", userGroups, "from data:", userGroupsData);
-  console.log(
-    "Popular groups:",
-    popularGroups,
-    "from data:",
-    popularGroupsData
+  // Filter groups based on search query
+  const filteredGroups = myGroups.filter(
+    (group) =>
+      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (group.description &&
+        group.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-  console.log("Active tab:", activeTab, "isSearching:", isSearching);
-  console.log("All groups data:", allGroupsData);
 
-  // Xử lý dữ liệu tìm kiếm từ infinite query
-  const searchGroups =
-    isSearching && allGroupsData
-      ? allGroupsData.pages.flatMap((page) => page.groups)
-      : [];
+  // Animation variants
+  const container = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
+  };
 
-  // Determine loading and error states
-  const loading =
-    activeTab === "my"
-      ? userGroupsLoading
-      : activeTab === "popular"
-      ? popularGroupsLoading
-      : allGroupsLoading;
+  const item = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 },
+  };
 
-  const error =
-    activeTab === "my"
-      ? userGroupsError
-      : activeTab === "popular"
-      ? popularGroupsError
-      : allGroupsError;
-
-  const renderGroups = () => {
-    let groupsToRender = [];
-
-    // Xác định nhóm hiển thị dựa vào trạng thái hiện tại
-    if (isSearching) {
-      groupsToRender = searchGroups;
-    } else if (activeTab === "my") {
-      groupsToRender = userGroups;
-    } else if (activeTab === "popular") {
-      groupsToRender = popularGroups;
+  const renderGroupList = () => {
+    if (myGroupsLoading) {
+      return <Loading />;
     }
 
-    // Debug thông tin
-    console.log("Rendering groups:", {
-      isSearching,
-      activeTab,
-      groupsToRender,
-      count: groupsToRender.length,
-    });
-
-    if (groupsToRender.length === 0 && !loading) {
+    if (myGroupsError) {
       return (
-        <div className="text-center py-12">
-          <div className="mb-4">
-            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FiUsers className="w-8 h-8 text-gray-400" />
-            </div>
-            <p className="text-gray-400 text-lg mb-2">
-              {isSearching
-                ? "No groups found matching your search."
-                : activeTab === "my"
-                ? "You haven't joined any groups yet."
-                : "No popular groups available."}
-            </p>
-            <p className="text-gray-500 mb-6">
-              {isSearching
-                ? "Try searching with different keywords"
-                : "Create a new group or join existing ones"}
-            </p>
-          </div>
-          <Link
-            to="/groups/create"
-            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium shadow-sm"
-          >
-            <FiPlus className="mr-2" />
-            Create New Group
+        <div className="bg-red-900/20 text-red-500 p-4 rounded-lg">
+          {myGroupsError.message || "Failed to load groups"}
+        </div>
+      );
+    }
+
+    if (filteredGroups.length === 0) {
+      return (
+        <div className="card py-10 px-4 text-center">
+          <h3 className="text-xl font-semibold mb-3 text-[var(--color-text-primary)]">
+            No groups found
+          </h3>
+          <p className="text-[var(--color-text-secondary)] mb-6">
+            {searchQuery
+              ? "No groups match your search query."
+              : "You haven't joined any groups yet."}
+          </p>
+          <Link to="/groups/create" className="btn btn-primary">
+            Create a Group
           </Link>
         </div>
       );
     }
 
     return (
-      <div className="space-y-3">
-        {groupsToRender.map((group) => (
-          <GroupCard key={group._id} group={group} />
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+      >
+        {filteredGroups.map((group) => (
+          <motion.div
+            key={group._id}
+            variants={item}
+            className="card overflow-hidden hover-scale"
+          >
+            {/* Group Cover Image or Placeholder */}
+            <div className="h-36 relative bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-light)]">
+              {group.coverImage && (
+                <img
+                  src={group.coverImage}
+                  alt={group.name}
+                  className="w-full h-full object-cover"
+                />
+              )}
+
+              {/* Semi-transparent overlay for better readability */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+
+              {/* Privacy Badge */}
+              <div className="absolute top-3 right-3">
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    group.isPrivate
+                      ? "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+                      : "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+                  }`}
+                >
+                  {group.isPrivate ? "Private" : "Public"}
+                </span>
+              </div>
+            </div>
+
+            {/* Group Info */}
+            <div className="p-4">
+              <Link to={`/groups/${group._id}`}>
+                <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)] hover:text-[var(--color-primary)] transition-colors">
+                  {group.name}
+                </h3>
+              </Link>
+              <p className="text-[var(--color-text-secondary)] mb-3 line-clamp-2">
+                {group.description || "No description available"}
+              </p>
+
+              {/* Group Stats */}
+              <div className="flex items-center justify-between text-sm text-[var(--color-text-tertiary)]">
+                <div className="flex items-center">
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
+                  </svg>
+                  {group.membersCount || 0} members
+                </div>
+
+                <div className="flex items-center">
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
+                  </svg>
+                  {group.postsCount || 0} posts
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-4 flex justify-end gap-2">
+                <Link
+                  to={`/groups/${group._id}`}
+                  className="btn btn-primary btn-sm"
+                >
+                  View Group
+                </Link>
+              </div>
+            </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
     );
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-        <div className="mb-4 md:mb-0">
-          <h1 className="text-3xl font-bold text-white mb-2">Groups</h1>
-          <p className="text-gray-400">
-            Discover and join groups with shared interests
+    <div className="p-4 max-w-7xl mx-auto">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4"
+      >
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+            My Groups
+          </h1>
+          <p className="text-[var(--color-text-secondary)]">
+            Manage your group memberships
           </p>
         </div>
-        <Link
-          to="/groups/create"
-          className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium shadow-sm self-start md:self-center"
-        >
-          <FiPlus className="mr-2" />
-          Create New Group
+
+        <Link to="/groups/create" className="btn btn-primary">
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+            />
+          </svg>
+          Create Group
         </Link>
-      </div>
+      </motion.div>
 
-      <div className="mb-8 space-y-6">
-        {/* Search */}
-        <form onSubmit={handleSearch} className="relative">
-          <input
-            type="text"
-            placeholder="Search groups by name or description..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-16 py-3 bg-[#1E2024] border border-gray-700/50 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
-          />
-          <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
-
-          {/* Clear button */}
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={handleClearSearch}
-              className="absolute right-24 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-white"
-              aria-label="Clear search"
-            >
-              <FiX className="h-5 w-5" />
-            </button>
-          )}
-
-          <button
-            type="submit"
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium"
-          >
-            Search
-          </button>
-        </form>
-
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 p-1 bg-[#1E2024] rounded-xl shadow-sm border border-gray-800/50">
-          <button
-            onClick={() => handleTabChange("my")}
-            className={`px-5 py-2.5 font-medium rounded-lg transition-all flex items-center ${
-              activeTab === "my"
-                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
-                : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
-            }`}
-          >
-            <FiUser className="mr-2" /> My Groups
-          </button>
-          <button
-            onClick={() => handleTabChange("popular")}
-            className={`px-5 py-2.5 font-medium rounded-lg transition-all flex items-center ${
-              activeTab === "popular"
-                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
-                : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
-            }`}
-          >
-            <FiTrendingUp className="mr-2" /> Popular
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-          <p className="text-red-500 font-medium">
-            {error.message || "Error loading groups"}
-          </p>
-        </div>
-      )}
-
-      {/* Content */}
-      {loading &&
-      (activeTab === "my"
-        ? userGroups.length === 0
-        : activeTab === "popular"
-        ? popularGroups.length === 0
-        : searchGroups.length === 0) ? (
-        <div className="flex justify-center py-12">
-          <Loading />
-        </div>
-      ) : (
-        <>
-          {/* Hiển thị thông báo kết quả tìm kiếm nếu đang tìm kiếm */}
-          {isSearching && (
-            <div className="mb-4 py-2 px-4 bg-gray-800/50 rounded-lg border border-gray-700/50">
-              <p className="text-gray-300">
-                Showing {searchGroups.length} results for "{currentSearchQuery}"
-                <button
-                  onClick={handleClearSearch}
-                  className="ml-3 text-blue-400 hover:text-blue-300 underline"
-                >
-                  Clear search
-                </button>
-              </p>
-            </div>
-          )}
-
-          {renderGroups()}
-
-          {isSearching && hasNextPage && (
-            <div className="mt-8 text-center">
-              <button
-                onClick={handleLoadMore}
-                disabled={isFetchingNextPage}
-                className="px-6 py-3 bg-gradient-to-r from-gray-700 to-gray-800 text-gray-200 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all disabled:opacity-50 font-medium shadow-sm"
+      {/* Search Input */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center"
+      >
+        <div className="flex-1">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg
+                className="w-5 h-5 text-[var(--color-text-tertiary)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                {isFetchingNextPage ? "Loading..." : "Load More"}
-              </button>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
             </div>
-          )}
+            <input
+              type="text"
+              placeholder="Search your groups..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full py-2 pl-10 pr-4 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+            />
+          </div>
+        </div>
+      </motion.div>
 
-          {isFetchingNextPage && searchGroups.length > 0 && (
-            <div className="flex justify-center py-6">
-              <Loading />
-            </div>
-          )}
-        </>
-      )}
+      {/* Group List */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        {renderGroupList()}
+      </motion.div>
     </div>
   );
 };

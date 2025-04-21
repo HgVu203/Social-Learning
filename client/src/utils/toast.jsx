@@ -2,6 +2,14 @@
 import React from "react";
 import { toast } from "react-toastify";
 
+// Get theme from localStorage or default to dark
+const getTheme = () => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("theme") || "dark";
+  }
+  return "dark";
+};
+
 /**
  * Cấu hình mặc định cho tất cả các toast
  */
@@ -13,7 +21,7 @@ export const defaultConfig = {
   pauseOnHover: true,
   draggable: true,
   pauseOnFocusLoss: false,
-  theme: "dark",
+  theme: getTheme(),
   limit: 3,
 };
 
@@ -27,7 +35,11 @@ const Toast = {
    * @param {object} options - Tùy chọn bổ sung (optional)
    */
   success: (message, options = {}) => {
-    return toast.success(message, { ...defaultConfig, ...options });
+    return toast.success(message, {
+      ...defaultConfig,
+      theme: getTheme(),
+      ...options,
+    });
   },
 
   /**
@@ -36,10 +48,28 @@ const Toast = {
    * @param {object} options - Tùy chọn bổ sung (optional)
    */
   error: (message, options = {}) => {
+    // Nếu không có toastId được cung cấp, tạo một ID mặc định
+    const toastId = options.toastId || "error-toast";
+
+    // Kiểm tra xem toast với ID đó đã tồn tại chưa
+    if (toast.isActive(toastId)) {
+      // Nếu đã tồn tại, cập nhật nội dung
+      return toast.update(toastId, {
+        render: message,
+        ...defaultConfig,
+        theme: getTheme(),
+        autoClose: 4000,
+        ...options,
+      });
+    }
+
+    // Nếu chưa tồn tại, tạo mới với ID đã chỉ định
     return toast.error(message, {
       ...defaultConfig,
+      theme: getTheme(),
       autoClose: 4000,
       ...options,
+      toastId: toastId,
     });
   },
 
@@ -49,7 +79,11 @@ const Toast = {
    * @param {object} options - Tùy chọn bổ sung (optional)
    */
   info: (message, options = {}) => {
-    return toast.info(message, { ...defaultConfig, ...options });
+    return toast.info(message, {
+      ...defaultConfig,
+      theme: getTheme(),
+      ...options,
+    });
   },
 
   /**
@@ -60,7 +94,7 @@ const Toast = {
   warning: (message, options = {}) => {
     return toast.warning(message, {
       ...defaultConfig,
-      autoClose: 4000,
+      theme: getTheme(),
       ...options,
     });
   },

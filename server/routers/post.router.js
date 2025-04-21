@@ -40,7 +40,7 @@ router.use(protectedRouter);
 
 // Post management
 router.post(
-  "/create-post",
+  "/",
   postLimiter,
   postImageUpload,
   validateRequest(postValidationSchema.create),

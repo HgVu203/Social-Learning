@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { defaultConfig } from "./utils/toast";
 import { useAuth } from "./contexts/AuthContext";
+import { useTheme } from "./contexts/ThemeContext";
 import { connectSocket, disconnectSocket } from "./services/socket";
 import tokenService from "./services/tokenService";
 
@@ -31,10 +32,14 @@ import FriendsPage from "./pages/friend/FriendsPage";
 import CreateGroupPage from "./pages/group/CreateGroupPage";
 import MessagesPage from "./pages/message/MessagesPage";
 import SocialAuthCallback from "./pages/auth/SocialAuthCallback";
+import SettingsPage from "./pages/settings/SettingsPage";
 
 function App() {
   const { user, isAuthenticated } = useAuth();
+  const { theme } = useTheme();
+  const location = useLocation();
 
+  // Handle socket connection based on authentication state
   useEffect(() => {
     if (isAuthenticated && user) {
       // Connect socket when user logs in
@@ -58,20 +63,18 @@ function App() {
       // Disconnect socket when user logs out
       try {
         console.log("Disconnecting socket due to user logout");
-        disconnectSocket();
+        disconnectSocket(false); // Complete disconnect on logout
       } catch (error) {
         console.error("Socket disconnection error:", error);
       }
     }
 
-    // Chỉ ngắt kết nối khi component unmount
-    // không làm điều này khi effect chạy lại do user/isAuthenticated thay đổi
+    // Cleanup on app unmount only, not on auth state changes
     return () => {
-      // Chỉ thực hiện khi component thực sự unmount, không phải khi re-render
       if (window.isUnmounting) {
         try {
-          console.log("Disconnecting socket due to component unmount");
-          disconnectSocket();
+          console.log("Disconnecting socket due to app unmount");
+          disconnectSocket(false); // Complete disconnect on app unmount
         } catch (error) {
           console.error("Socket cleanup error:", error);
         }
@@ -79,11 +82,34 @@ function App() {
     };
   }, [isAuthenticated, user]);
 
-  // Đặt cờ khi component unmount
+  // Set unmounting flag
   useEffect(() => {
     return () => {
       window.isUnmounting = true;
     };
+  }, []);
+
+  // Track navigation to handle socket pausing between pages (except messages pages)
+  useEffect(() => {
+    const isMessagesPage = location.pathname.startsWith("/messages");
+    const isInitialLoad = window.initialPageLoad;
+
+    // Skip initial page load
+    if (isInitialLoad) {
+      window.initialPageLoad = false;
+      return;
+    }
+
+    // If navigating away from messages to another page, temporarily disconnect socket
+    if (!isMessagesPage && isAuthenticated) {
+      console.log("Navigated away from messages page, pausing socket");
+      disconnectSocket(true); // Disconnect with navigation flag to enable reconnection
+    }
+  }, [location.pathname, isAuthenticated]);
+
+  // Set initial page load flag
+  useEffect(() => {
+    window.initialPageLoad = true;
   }, []);
 
   return (
@@ -119,6 +145,22 @@ function App() {
           element={
             <MainLayout>
               <GroupDetailPage />
+            </MainLayout>
+          }
+        />
+        <Route
+          path="/groups/:groupId/settings"
+          element={
+            <MainLayout>
+              <GroupDetailPage isSettingsPage={true} />
+            </MainLayout>
+          }
+        />
+        <Route
+          path="/groups/:groupId/manage"
+          element={
+            <MainLayout>
+              <GroupDetailPage isManagePage={true} />
             </MainLayout>
           }
         />
@@ -175,6 +217,14 @@ function App() {
             }
           />
           <Route
+            path="/messages/:userId"
+            element={
+              <MainLayout>
+                <MessagesPage />
+              </MainLayout>
+            }
+          />
+          <Route
             path="/create-post"
             element={
               <MainLayout>
@@ -207,10 +257,42 @@ function App() {
             }
           />
           <Route
-            path="/create-group"
+            path="/settings"
+            element={
+              <MainLayout>
+                <SettingsPage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/groups/create"
             element={
               <MainLayout>
                 <CreateGroupPage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/groups/:groupId/settings"
+            element={
+              <MainLayout>
+                <GroupDetailPage isSettingsPage={true} />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/groups/:groupId/manage"
+            element={
+              <MainLayout>
+                <GroupDetailPage isManagePage={true} />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/post/edit/:postId"
+            element={
+              <MainLayout>
+                <CreatePostPage isEditing={true} />
               </MainLayout>
             }
           />
@@ -229,7 +311,7 @@ function App() {
         pauseOnHover={defaultConfig.pauseOnHover}
         draggable={defaultConfig.draggable}
         pauseOnFocusLoss={defaultConfig.pauseOnFocusLoss}
-        theme={defaultConfig.theme}
+        theme={theme}
         limit={defaultConfig.limit}
       />
     </>

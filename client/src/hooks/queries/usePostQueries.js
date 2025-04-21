@@ -19,22 +19,18 @@ export const usePostQueries = {
     return useInfiniteQuery({
       queryKey: POST_QUERY_KEYS.list({ filter }),
       queryFn: async ({ pageParam = 1 }) => {
-        console.log(
-          `Fetching posts with filter: ${filter}, page: ${pageParam}, limit: ${limit}`
-        );
         try {
           const response = await axiosService.get(
             `/posts?filter=${filter}&page=${pageParam}&limit=${limit}`
           );
-          console.log("Posts response:", response.data);
-
+        
           // Ensure each post has isLiked property
-          if (response.data && response.data.data) {
-            // Log information about isLiked status for each post
-            response.data.data.forEach((post) => {
-              console.log(`Post ${post._id} isLiked:`, post.isLiked);
-            });
-          }
+          // if (response.data && response.data.data) {
+          //   // Log information about isLiked status for each post
+          //   response.data.data.forEach((post) => {
+          //     console.log(`Post ${post._id} isLiked:`, post.isLiked);
+          //   });
+          // }
 
           return response.data;
         } catch (error) {
@@ -52,14 +48,6 @@ export const usePostQueries = {
       keepPreviousData: true,
       staleTime: 1000 * 60, // 1 minute
       refetchOnWindowFocus: false, // Prevent automatic refetching on window focus to preserve like state
-      onSuccess: (data) => {
-        // Make sure like status is correctly stored for each post
-        if (data && data.pages && data.pages.length > 0) {
-          console.log(
-            "Successfully fetched posts with like status information"
-          );
-        }
-      },
     });
   },
 
@@ -69,10 +57,8 @@ export const usePostQueries = {
       queryKey: POST_QUERY_KEYS.detail(postId),
       queryFn: async () => {
         if (!postId) return null;
-        console.log(`Fetching post detail for ID: ${postId}`);
         try {
           const response = await axiosService.get(`/posts/${postId}`);
-          console.log("Post detail response:", response.data);
           return response.data;
         } catch (error) {
           console.error("Error fetching post detail:", error);
@@ -89,11 +75,8 @@ export const usePostQueries = {
       queryKey: POST_QUERY_KEYS.comment(postId),
       queryFn: async () => {
         if (!postId) return { data: { comments: [] } };
-        console.log(`Fetching comments for post ID: ${postId}`);
         try {
           const response = await axiosService.get(`/posts/${postId}/comments`);
-          console.log("Post comments response:", response.data);
-
           // Ensure comments are properly formatted
           if (response.data && response.data.data) {
             // Fixed data structure handling
@@ -133,10 +116,7 @@ export const usePostQueries = {
                 comment.likesCount = comment.likes.length;
               }
             });
-
-            console.log("Formatted comments data:", response.data.data);
           }
-
           return response.data;
         } catch (error) {
           console.error("Error fetching post comments:", error);
@@ -163,12 +143,10 @@ export const usePostQueries = {
       queryKey: POST_QUERY_KEYS.search(query),
       queryFn: async () => {
         if (!query || query.trim().length < 2) return { data: [] };
-        console.log(`Searching posts with query: ${query}`);
         try {
           const response = await axiosService.get(
             `/posts/search?q=${encodeURIComponent(query)}`
           );
-          console.log("Search posts response:", response.data);
           return response.data;
         } catch (error) {
           console.error("Error searching posts:", error);
@@ -186,14 +164,10 @@ export const usePostQueries = {
       queryFn: async ({ pageParam = 1 }) => {
         if (!groupId)
           return { data: [], pagination: { page: 1, totalPages: 1 } };
-        console.log(
-          `Fetching posts for group ID: ${groupId}, page: ${pageParam}, limit: ${limit}`
-        );
         try {
           const response = await axiosService.get(
             `/posts?groupId=${groupId}&page=${pageParam}&limit=${limit}`
           );
-          console.log("Group posts response:", response.data);
           return response.data;
         } catch (error) {
           console.error(`Error fetching posts for group ${groupId}:`, error);

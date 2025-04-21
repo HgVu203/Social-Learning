@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiImage, FiUpload, FiX } from "react-icons/fi";
 import { showSuccessToast, showErrorToast } from "../../utils/toast";
@@ -7,6 +7,15 @@ import { useGroup } from "../../contexts/GroupContext";
 const CreateGroupPage = () => {
   const { createGroup } = useGroup();
   const navigate = useNavigate();
+
+  // Prevent any incorrect API calls when this component mounts
+  useEffect(() => {
+    // No need to fetch any data when creating a new group
+    console.log("Create group page mounted");
+    return () => {
+      console.log("Create group page unmounted");
+    };
+  }, []);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -113,18 +122,22 @@ const CreateGroupPage = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6 text-white">Create New Group</h1>
+      <h1 className="text-2xl font-bold mb-6 text-[var(--color-text-primary)]">
+        Create New Group
+      </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Cover Image Upload */}
-        <div className="relative bg-[#1E2024] rounded-lg border border-gray-800 p-4">
-          <h3 className="text-lg font-medium text-white mb-4">
+        <div className="relative bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
+          <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-4">
             Group Cover Image
           </h3>
 
           <div
             className={`h-56 rounded-lg flex items-center justify-center ${
-              coverPreview ? "" : "border-2 border-dashed border-gray-700"
+              coverPreview
+                ? ""
+                : "border-2 border-dashed border-[var(--color-border)]"
             }`}
             style={
               coverPreview
@@ -138,9 +151,11 @@ const CreateGroupPage = () => {
           >
             {!coverPreview && (
               <div className="text-center">
-                <FiImage className="mx-auto text-gray-500 text-3xl mb-2" />
-                <p className="text-gray-500">Cover Image (Optional)</p>
-                <p className="text-xs text-gray-500 mt-1">
+                <FiImage className="mx-auto text-[var(--color-text-tertiary)] text-3xl mb-2" />
+                <p className="text-[var(--color-text-tertiary)]">
+                  Cover Image (Optional)
+                </p>
+                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
                   Recommended size: 820 x 312 pixels
                 </p>
               </div>
@@ -150,7 +165,7 @@ const CreateGroupPage = () => {
               <button
                 type="button"
                 onClick={removeImage}
-                className="absolute top-12 right-6 bg-gray-800 bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70"
+                className="absolute top-12 right-6 bg-[var(--color-bg-tertiary)] bg-opacity-50 text-[var(--color-text-primary)] p-2 rounded-full hover:bg-opacity-70"
               >
                 <FiX />
               </button>
@@ -167,7 +182,7 @@ const CreateGroupPage = () => {
 
           <label
             htmlFor="coverImage"
-            className="absolute bottom-6 right-6 bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md px-4 py-2 text-sm font-medium flex items-center cursor-pointer text-white transition-colors"
+            className="absolute bottom-6 right-6 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] rounded-lg shadow-md px-4 py-2 text-sm font-medium flex items-center cursor-pointer text-white transition-colors"
           >
             <FiUpload className="mr-2" />
             {coverPreview ? "Change Cover" : "Add Cover Image"}
@@ -175,8 +190,8 @@ const CreateGroupPage = () => {
         </div>
 
         {/* Group Info */}
-        <div className="bg-[#1E2024] rounded-lg border border-gray-800 p-4">
-          <h3 className="text-lg font-medium text-white mb-4">
+        <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
+          <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-4">
             Group Information
           </h3>
 
@@ -184,7 +199,7 @@ const CreateGroupPage = () => {
           <div className="mb-4">
             <label
               htmlFor="name"
-              className="block text-sm font-medium text-gray-300 mb-2"
+              className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2"
             >
               Group Name *
             </label>
@@ -196,7 +211,7 @@ const CreateGroupPage = () => {
               onChange={handleChange}
               required
               placeholder="Enter group name"
-              className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
             />
           </div>
 
@@ -204,7 +219,7 @@ const CreateGroupPage = () => {
           <div className="mb-4">
             <label
               htmlFor="description"
-              className="block text-sm font-medium text-gray-300 mb-2"
+              className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2"
             >
               Description
             </label>
@@ -215,7 +230,7 @@ const CreateGroupPage = () => {
               onChange={handleChange}
               rows={4}
               placeholder="Describe what your group is about"
-              className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
             />
           </div>
 
@@ -227,11 +242,11 @@ const CreateGroupPage = () => {
               name="isPrivate"
               checked={formData.isPrivate}
               onChange={handleChange}
-              className="h-4 w-4 text-blue-600 border-gray-700 rounded focus:ring-blue-500 bg-gray-700"
+              className="h-4 w-4 text-[var(--color-primary)] border-[var(--color-border)] rounded focus:ring-[var(--color-primary)] bg-[var(--color-bg-tertiary)]"
             />
             <label
               htmlFor="isPrivate"
-              className="ml-2 block text-gray-300 text-sm"
+              className="ml-2 block text-[var(--color-text-secondary)] text-sm"
             >
               Private Group (Only members can see posts)
             </label>
@@ -242,14 +257,14 @@ const CreateGroupPage = () => {
           <button
             type="button"
             onClick={() => navigate("/groups")}
-            className="px-6 py-2.5 mr-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+            className="px-6 py-2.5 mr-2 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg hover:bg-[var(--color-primary-hover)] transition-all font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? "Creating..." : "Create Group"}
           </button>

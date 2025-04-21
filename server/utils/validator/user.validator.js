@@ -8,6 +8,7 @@ export const userValidationSchema = {
     }),
     phone: Joi.string()
       .pattern(/^[0-9]{10}$/)
+      .allow("")
       .messages({
         "string.pattern.base": "Phone must be 10 digits",
       }),

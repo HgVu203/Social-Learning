@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
 import { useGroupMutations } from "../../hooks/mutations/useGroupMutations";
@@ -9,10 +9,9 @@ import Avatar from "../../components/common/Avatar";
 import Loading from "../../components/common/Loading";
 import GroupMemberList from "../../components/group/GroupMemberList";
 import {
-  showSuccessToast,
   showErrorToast,
-  showConfirmToast,
   showInfoToast,
+  showConfirmToast,
 } from "../../utils/toast";
 import {
   FiUsers,
@@ -117,11 +116,11 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
     setIsJoining(true);
     try {
       await joinGroup.mutateAsync(groupId);
-      showSuccessToast("You have joined the group successfully");
     } catch (error) {
       console.error("Failed to join group:", error);
       showErrorToast(
-        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
           "Failed to join the group. Please try again."
       );
     } finally {
@@ -136,7 +135,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       setIsJoining(true);
       try {
         const response = await leaveGroup.mutateAsync(groupId);
-        showSuccessToast("You have left the group successfully");
+        // Thông báo thành công đã được xử lý trong mutation, không cần hiển thị thêm
 
         // If response has a message about group deletion, navigate to the groups list
         if (
@@ -151,7 +150,8 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       } catch (error) {
         console.error("Failed to leave group:", error);
         showErrorToast(
-          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+            error?.response?.data?.message ||
             "Failed to leave the group. Please try again."
         );
       } finally {
@@ -163,39 +163,125 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
   const handleSaveSettings = async () => {
     if (isSaving) return;
 
+    // Basic validation
+    if (!groupForm.name.trim()) {
+      showErrorToast("Group name is required");
+      return;
+    }
+
     setIsSaving(true);
     try {
+      console.log("Starting group update process");
+
       // Create form data for file uploads
       const formData = new FormData();
-      formData.append("name", groupForm.name);
-      formData.append("description", groupForm.description);
+
+      // Add standard fields
+      formData.append("name", groupForm.name.trim());
+      formData.append("description", groupForm.description.trim());
       formData.append("isPrivate", groupForm.isPrivate);
 
-      if (coverFile) {
-        formData.append("coverImage", coverFile);
-        console.log("Adding coverImage to form data", coverFile.name);
+      // Add tags if provided
+      if (groupForm.tags && groupForm.tags.length > 0) {
+        // Convert tags array to JSON string to ensure proper transmission
+        formData.append("tags", JSON.stringify(groupForm.tags));
       }
 
-      console.log("Updating group with formData", formData);
+      // Handle the cover image - important for proper file upload
+      if (coverFile) {
+        try {
+          // Validate the file again before upload
+          if (coverFile.size > 5 * 1024 * 1024) {
+            showErrorToast("Image size should be less than 5MB");
+            setIsSaving(false);
+            return;
+          }
 
-      const response = await updateGroup.mutateAsync({
-        groupId,
-        groupData: formData,
-      });
+          if (!coverFile.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
+            showErrorToast("Only image files (JPEG, PNG, GIF) are allowed");
+            setIsSaving(false);
+            return;
+          }
 
-      console.log("Update response:", response);
+          // This is the key step: append with unique filename for proper server handling
+          const fileExt = coverFile.name.split(".").pop();
+          const uniqueFilename = `cover_${Date.now()}_${Math.floor(
+            Math.random() * 1000
+          )}.${fileExt}`;
 
-      // Reset file states after successful update
-      setCoverFile(null);
-      setCoverPreview(null);
+          // Append with explicit file name to ensure it's properly processed on the server
+          formData.append("coverImage", coverFile, uniqueFilename);
+          console.log(
+            `Adding coverImage to form data: ${uniqueFilename} (${coverFile.type}, ${coverFile.size} bytes)`
+          );
+        } catch (fileError) {
+          console.error("Error preparing file for upload:", fileError);
+          showErrorToast("Error preparing the image for upload");
+          setIsSaving(false);
+          return;
+        }
+      }
 
-      showSuccessToast("Group settings updated successfully");
+      console.log("FormData created successfully for group update");
+
+      // Log all form data entries to verify content
+      for (let [key, value] of formData.entries()) {
+        console.log(
+          `FormData entry: ${key} = ${
+            value instanceof File
+              ? `${value.name} (${value.type}, ${value.size} bytes)`
+              : value
+          }`
+        );
+      }
+
+      console.log("Sending update request to server for group:", groupId);
+      try {
+        const response = await updateGroup.mutateAsync({
+          groupId,
+          groupData: formData,
+        });
+
+        console.log("Update response received:", response);
+
+        // Reset file states after successful update
+        setCoverFile(null);
+        setCoverPreview(null);
+
+        // Success toast is already shown by the mutation
+      } catch (apiError) {
+        console.error("API error when updating group:", apiError);
+        // Enhanced error logging
+        if (apiError.response) {
+          console.error("API response error:", {
+            status: apiError.response.status,
+            data: apiError.response.data,
+            headers: apiError.response.headers,
+          });
+        }
+        throw apiError; // Re-throw to be caught by the outer catch
+      }
     } catch (error) {
       console.error("Failed to update group settings:", error);
-      showErrorToast(
-        error?.response?.data?.message ||
-          "Failed to update group settings. Please try again."
-      );
+
+      // Enhanced error handling
+      let errorMessage = "Failed to update group settings. Please try again.";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      console.error("Error details:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+
+      showErrorToast(errorMessage);
     } finally {
       setIsSaving(false);
     }
@@ -221,20 +307,60 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file) {
+      console.log("No file selected");
+      return;
+    }
 
-    // Check file size (limit to 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      showErrorToast("Image size should be less than 2MB");
+    // Log file details
+    console.log("Selected file details:", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: new Date(file.lastModified).toISOString(),
+    });
+
+    // Check file size (limit to 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showErrorToast("Image size should be less than 5MB");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
+      showErrorToast("Only image files (JPEG, PNG, GIF) are allowed");
       return;
     }
 
     // Create preview
     const reader = new FileReader();
+
+    reader.onloadstart = () => {
+      console.log("Starting to read the file");
+    };
+
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentLoaded = Math.round((event.loaded / event.total) * 100);
+        console.log(`File reading progress: ${percentLoaded}%`);
+      }
+    };
+
     reader.onloadend = () => {
+      console.log("File read complete");
       setCoverFile(file);
       setCoverPreview(reader.result);
+      console.log("Cover image preview created, size:", reader.result.length);
     };
+
+    reader.onerror = (error) => {
+      console.error("FileReader error:", error);
+      showErrorToast(
+        "Failed to read the image file. Please try another image."
+      );
+    };
+
+    console.log("Starting file read as Data URL");
     reader.readAsDataURL(file);
   };
 
@@ -652,7 +778,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
     <div className="max-w-7xl mx-auto p-4">
       {/* Group Header - Chỉ hiển thị khi không phải trang settings hoặc manage */}
       {!isSettingsPage && !isManagePage && (
-        <div className="bg-[#1E2024] rounded-xl overflow-hidden shadow-lg mb-8 border border-gray-700">
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl overflow-hidden shadow-lg mb-8 border border-[var(--color-border)]">
           <div className="relative h-64 md:h-72 lg:h-80">
             {currentGroup.coverImage ? (
               <img
@@ -663,14 +789,14 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
             ) : (
               <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700"></div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-bg-primary)]/80 via-[var(--color-bg-primary)]/40 to-transparent"></div>
             <div className="absolute bottom-0 left-0 w-full p-6">
               <div className="flex flex-col md:flex-row md:items-end">
                 <div>
-                  <h1 className="text-white text-3xl md:text-4xl font-bold mb-2 drop-shadow-md">
+                  <h1 className="text-[var(--color-text-primary)] text-3xl md:text-4xl font-bold mb-2 drop-shadow-md">
                     {currentGroup.name}
                   </h1>
-                  <p className="text-gray-300 flex items-center mb-4">
+                  <p className="text-[var(--color-text-secondary)] flex items-center mb-4">
                     {currentGroup.isPrivate ? (
                       <span className="flex items-center">
                         <FiLock className="mr-1" /> Private Group
@@ -694,11 +820,11 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
       {/* Hiển thị tiêu đề trang tương ứng khi là trang settings hoặc manage */}
       {(isSettingsPage || isManagePage) && (
-        <div className="bg-[#1E2024] rounded-xl p-6 shadow-lg mb-8 border border-gray-700">
-          <h1 className="text-2xl font-bold text-white">
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 shadow-lg mb-8 border border-[var(--color-border)]">
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
             {isSettingsPage ? "Group Settings" : "Manage Group Members"}
           </h1>
-          <p className="text-gray-400 mt-1">
+          <p className="text-[var(--color-text-secondary)] mt-1">
             {isSettingsPage
               ? "Customize your group's settings and appearance"
               : "Manage members and permissions for your group"}
@@ -707,8 +833,8 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       )}
 
       {/* Group Actions */}
-      <div className="bg-[#1E2024] rounded-xl shadow-lg mb-8 border border-gray-700">
-        <div className="px-6 py-4 flex flex-wrap items-center justify-between border-b border-gray-700">
+      <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-lg mb-8 border border-[var(--color-border)]">
+        <div className="px-6 py-4 flex flex-wrap items-center justify-between border-b border-[var(--color-border)]">
           {renderTabs()}
 
           {!isSettingsPage && !isManagePage && (
@@ -716,7 +842,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               {isAdmin && (
                 <Link
                   to={`/groups/${groupId}/settings`}
-                  className="px-4 py-2.5 bg-gradient-to-r from-gray-700 to-gray-800 text-gray-200 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all font-medium flex items-center shadow-sm"
+                  className="px-4 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all font-medium flex items-center shadow-sm"
                 >
                   <FiSettings className="mr-1" /> Settings
                 </Link>
@@ -725,7 +851,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 <button
                   onClick={handleLeaveGroup}
                   disabled={isJoining}
-                  className="px-5 py-2.5 bg-gradient-to-r from-gray-700 to-gray-800 text-gray-200 rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all disabled:opacity-50 font-medium shadow-sm"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all disabled:opacity-50 font-medium shadow-sm"
                 >
                   {isJoining ? "Processing..." : "Leave Group"}
                 </button>
@@ -733,7 +859,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 <button
                   onClick={handleJoinGroup}
                   disabled={isJoining}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 font-medium shadow-sm"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white rounded-lg hover:from-[var(--color-primary-hover)] hover:to-[var(--color-primary)] transition-all disabled:opacity-50 font-medium shadow-sm"
                 >
                   {isJoining ? "Processing..." : "Join Group"}
                 </button>
@@ -744,7 +870,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       </div>
 
       {/* Tab Content */}
-      <div className="bg-[#1E2024] rounded-xl shadow-lg p-6 border border-gray-700">
+      <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-lg p-6 border border-[var(--color-border)]">
         {renderTabContent()}
       </div>
     </div>

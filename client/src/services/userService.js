@@ -3,7 +3,7 @@ import axiosInstance from "./axiosService";
 export const userService = {
   getCurrentUser: async () => {
     try {
-      const response = await axiosInstance.get("/user/profile");
+      const response = await axiosInstance.get("/users/profile");
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -12,7 +12,10 @@ export const userService = {
 
   updateProfile: async (userData) => {
     try {
-      const response = await axiosInstance.patch("/user/update-profile", userData);
+      const response = await axiosInstance.patch(
+        "/users/update-profile",
+        userData
+      );
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -21,18 +24,26 @@ export const userService = {
 
   updateAvatar: async (formData) => {
     try {
-      const response = await axiosInstance.patch("/user/update-profile", formData);
+      const response = await axiosInstance.patch(
+        "/users/update-profile",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
     }
   },
 
-  changePassword: async (passwords) => {
+  changePassword: async (passwordData) => {
     try {
-      const response = await axiosInstance.put(
-        "/user/change-password",
-        passwords
+      const response = await axiosInstance.post(
+        "/users/change-password",
+        passwordData
       );
       return response.data;
     } catch (error) {
@@ -42,9 +53,7 @@ export const userService = {
 
   getUserProfile: async (userId) => {
     try {
-      // If userId is not provided, get current user's profile
-      const url = userId ? `/user/profile/${userId}` : '/user/profile';
-      const response = await axiosInstance.get(url);
+      const response = await axiosInstance.get(`/users/profile/${userId}`);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -53,7 +62,7 @@ export const userService = {
 
   getLeaderboard: async (page = 1, limit = 10) => {
     try {
-      const response = await axiosInstance.get("/user/leaderboard", {
+      const response = await axiosInstance.get("/users/leaderboard", {
         params: { page, limit },
       });
       return response.data;
@@ -64,28 +73,19 @@ export const userService = {
 
   getSuggestedUsers: async () => {
     try {
-      const response = await axiosInstance.get("/user/suggested");
+      const response = await axiosInstance.get("/users/suggested");
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
     }
   },
 
-  followUser: async (userId) => {
-    try {
-      const response = await axiosInstance.post(`/user/${userId}/follow`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error;
+  toggleFollow: async (userId) => {
+    if (!userId) {
+      throw new Error("User ID is required");
     }
-  },
 
-  unfollowUser: async (userId) => {
-    try {
-      const response = await axiosInstance.post(`/user/${userId}/unfollow`);
-      return response.data;
-    } catch (error) {
-      throw error.response?.data || error;
-    }
+    const response = await axiosInstance.post(`/users/${userId}/follow`);
+    return response.data;
   },
 };

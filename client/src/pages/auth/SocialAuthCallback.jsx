@@ -40,10 +40,18 @@ const SocialAuthCallback = () => {
         // Use the token to get the user data from the API
         try {
           const apiUrl = import.meta.env.VITE_API_URL;
+
+          // First, make sure the token is properly stored
+          tokenService.clearTokens(); // Clear any existing tokens first
+          tokenService.setToken(token); // Set the new token
+
+          // Now make the request with Authorization header
           const response = await axios.get(`${apiUrl}/auth/check`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            // Ensure cookies are sent with the request
+            withCredentials: true,
           });
 
           console.log("User data fetched successfully:", response.data);
@@ -56,18 +64,21 @@ const SocialAuthCallback = () => {
 
           setProcessingStatus("Setting credentials");
 
-          // Set the token in storage
-          tokenService.setToken(token);
+          // Create a complete user object with token
+          const userWithToken = {
+            ...userData,
+            token: token,
+          };
 
           // Set credentials in the auth context
-          const result = await setCredentials({
-            user: userData,
+          const result = setCredentials({
+            user: userWithToken,
             accessToken: token,
           });
 
           console.log("Social login setCredentials result:", result);
 
-          if (result && result.success) {
+          if (result) {
             setProcessingStatus("Login successful, redirecting");
 
             // Redirect with slight delay to ensure state is updated
@@ -77,9 +88,7 @@ const SocialAuthCallback = () => {
           } else {
             console.error("Failed to set credentials", result);
             throw new Error(
-              `Authentication failed: ${
-                result?.error || "Unable to save credentials"
-              }`
+              "Authentication failed: Unable to save credentials"
             );
           }
         } catch (apiError) {

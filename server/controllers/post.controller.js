@@ -9,7 +9,7 @@ import { emitCommentEvent } from "../socket.js";
 export const PostController = {
   createPost: async (req, res) => {
     try {
-      const { title, content, tags } = req.body;
+      const { title, content, tags, groupId } = req.body;
       let images = [];
 
       // Validate required fields
@@ -55,6 +55,7 @@ export const PostController = {
         tags: processTags.map((tag) => tag.toLowerCase().trim()),
         author: req.user._id,
         images,
+        groupId: groupId || null,
       });
 
       await newPost.save();
@@ -211,8 +212,13 @@ export const PostController = {
 
   getPosts: async (req, res) => {
     try {
-      const { page = 1, limit = 10, filter = "latest" } = req.query;
+      const { page = 1, limit = 10, filter = "latest", groupId } = req.query;
       let query = { deleted: false };
+
+      // Thêm điều kiện lọc theo groupId nếu có
+      if (groupId) {
+        query.groupId = groupId;
+      }
 
       // Handle Following filter
       if (filter === "following" && req.user) {

@@ -7,36 +7,73 @@ export const AuthController = {
     try {
       const { email, password, username, fullname } = req.body;
 
-      const existingUser = await User.findOne({
-        $or: [{ email }, { username }],
+      // First check for existing verified accounts with the same email or username
+      const existingVerifiedUser = await User.findOne({
+        $or: [
+          { email, emailVerified: true },
+          { username, emailVerified: true },
+        ],
       });
 
-      if (existingUser) {
+      if (existingVerifiedUser) {
         return res.status(400).json({
           success: false,
           error: `${
-            existingUser.email === email ? "Email" : "Username"
+            existingVerifiedUser.email === email ? "Email" : "Username"
           } already exists`,
         });
       }
 
-      const hashedPassword = await AuthService.hashPassword(password);
+      // Check for existing unverified accounts with the same email
+      const existingUnverifiedUser = await User.findOne({
+        email,
+        emailVerified: false,
+      });
 
+      const hashedPassword = await AuthService.hashPassword(password);
       const verificationCode = Math.floor(
         100000 + Math.random() * 900000
       ).toString();
 
-      const newUser = new User({
-        email,
-        username,
-        password: hashedPassword,
-        fullname,
-        emailVerified: false,
-        emailVerificationToken: verificationCode,
-        emailVerificationExpires: Date.now() + 3600000,
-      });
+      let user;
 
-      await newUser.save();
+      if (existingUnverifiedUser) {
+        // Update existing unverified account
+        existingUnverifiedUser.username = username;
+        existingUnverifiedUser.password = hashedPassword;
+        existingUnverifiedUser.fullname = fullname;
+        existingUnverifiedUser.emailVerificationToken = verificationCode;
+        existingUnverifiedUser.emailVerificationExpires = Date.now() + 3600000;
+
+        user = await existingUnverifiedUser.save();
+      } else {
+        // Check if username already exists in another unverified account
+        const existingUnverifiedUsername = await User.findOne({
+          username,
+          email: { $ne: email },
+          emailVerified: false,
+        });
+
+        if (existingUnverifiedUsername) {
+          return res.status(400).json({
+            success: false,
+            error: "Username already exists",
+          });
+        }
+
+        // Create new user
+        const newUser = new User({
+          email,
+          username,
+          password: hashedPassword,
+          fullname,
+          emailVerified: false,
+          emailVerificationToken: verificationCode,
+          emailVerificationExpires: Date.now() + 3600000,
+        });
+
+        user = await newUser.save();
+      }
 
       await AuthService.sendVerificationEmail(email, verificationCode);
 
@@ -46,7 +83,7 @@ export const AuthController = {
         data: {
           verificationData: {
             email,
-            userId: newUser._id,
+            userId: user._id,
           },
         },
       });
@@ -392,6 +429,83 @@ export const AuthController = {
       return res.status(500).json({
         success: false,
         error: "Failed to set password",
+      });
+    }
+  },
+
+  changePassword: async (req, res) => {
+    try {
+      console.log("Change password request:", {
+        user: req.user,
+        body: req.body,
+      });
+
+      const { currentPassword, newPassword } = req.body;
+      const userId = req.user._id;
+
+      // Lấy thông tin user từ database
+      const user = await User.findById(userId);
+      if (!user) {
+        console.log("User not found for ID:", userId);
+        return res.status(404).json({
+          success: false,
+          error: "User not found",
+        });
+      }
+
+      // Kiểm tra xem user có mật khẩu hay không (trường hợp đăng nhập qua social)
+      if (!user.password) {
+        console.log("User has no password (social login account):", userId);
+        return res.status(400).json({
+          success: false,
+          error:
+            "You cannot change password when using a Facebook or Google account.",
+        });
+      }
+
+      // Kiểm tra mật khẩu hiện tại
+      const isPasswordValid = await AuthService.comparePassword(
+        currentPassword,
+        user.password
+      );
+
+      if (!isPasswordValid) {
+        console.log("Invalid current password for user:", userId);
+        return res.status(400).json({
+          success: false,
+          error: "Current password is incorrect",
+        });
+      }
+
+      // Kiểm tra mật khẩu mới không trùng với mật khẩu cũ
+      if (currentPassword === newPassword) {
+        console.log("New password same as current for user:", userId);
+        return res.status(400).json({
+          success: false,
+          error: "New password cannot be the same as current password",
+        });
+      }
+
+      // Mã hóa và lưu mật khẩu mới
+      const hashedPassword = await AuthService.hashPassword(newPassword);
+      user.password = hashedPassword;
+
+      await user.save();
+
+      console.log("Password changed successfully for user:", userId);
+      return res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Change password error details:", {
+        message: error.message,
+        stack: error.stack,
+        user: req.user ? req.user._id : "unknown",
+      });
+      return res.status(500).json({
+        success: false,
+        error: "Failed to change password",
       });
     }
   },

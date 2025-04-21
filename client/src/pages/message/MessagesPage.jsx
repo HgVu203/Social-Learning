@@ -1,11 +1,13 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { motion } from "framer-motion";
 import MessagesContainer from "../../components/message/MessagesContainer";
 import { useAuth } from "../../contexts/AuthContext";
 
 const MessagesPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const { userId } = useParams(); // Get userId from URL params
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -14,10 +16,16 @@ const MessagesPage = () => {
   }, [isAuthenticated, navigate]);
 
   return (
-    <div className="w-full h-full flex flex-col p-4">
-      <h1 className="text-2xl font-bold mb-4">Messages</h1>
-      <div className="flex-1">
-        <MessagesContainer />
+    <div className="max-w-7xl mx-auto py-6 px-4">
+      <motion.h1
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-2xl font-bold text-[var(--color-text-primary)] pb-4"
+      >
+        Messages
+      </motion.h1>
+      <div className="w-full h-[calc(100vh-140px)]">
+        <MessagesContainer userId={userId} />
       </div>
     </div>
   );

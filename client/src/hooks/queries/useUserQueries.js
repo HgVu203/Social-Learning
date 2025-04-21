@@ -3,6 +3,7 @@ import axiosService from "../../services/axiosService";
 
 export const USER_QUERY_KEYS = {
   all: ["users"],
+  me: ["users", "me"],
   profile: () => [...USER_QUERY_KEYS.all, "profile"],
   userProfile: (userId) => [...USER_QUERY_KEYS.profile(), userId],
   search: () => [...USER_QUERY_KEYS.all, "search"],
@@ -14,80 +15,62 @@ export const useUserProfile = (userId) => {
     queryKey: USER_QUERY_KEYS.userProfile(userId),
     queryFn: async () => {
       if (!userId) {
-        console.log("No userId provided to useUserProfile, returning null");
         return null;
       }
 
-      // Cố gắng xử lý ID để đảm bảo đúng định dạng
-      let formattedUserId = userId;
-
-      // Nếu ID có định dạng MongoDB ObjectId (24 ký tự hex)
-      if (typeof userId === "string" && /^[0-9a-fA-F]{24}$/.test(userId)) {
-        console.log(`userId appears to be a valid MongoDB ObjectId: ${userId}`);
-      }
-      // Nếu ID có thể ở định dạng khác (có thể bỏ qua đoạn này nếu không cần)
-      else if (typeof userId === "string") {
-        console.log(`userId may have unusual format: ${userId}`);
-        // Có thể thực hiện xử lý đặc biệt nếu cần
-      }
-
-      try {
-        console.log(`Fetching user profile for userId: ${formattedUserId}`);
-
-        // Log đường dẫn API để debug
-        const apiPath = `/user/profile/${formattedUserId}`;
-        console.log(`Requesting API: ${apiPath}`);
-
-        const response = await axiosService.get(apiPath);
-        console.log(`User profile API response status: ${response.status}`);
-        console.log(`User profile API response data:`, response.data);
-
-        // Kiểm tra dữ liệu trả về và đảm bảo nó có định dạng đúng
-        if (response.data && !response.data.data) {
-          // Nếu API trả về dữ liệu nhưng không có thuộc tính data, tạo cấu trúc đúng
-          const result = {
-            success: true,
-            data: response.data,
-          };
-          console.log("Transformed user profile data:", result);
-          return result;
-        }
-
-        console.log("Original user profile data fetched:", response.data);
-        return response.data;
-      } catch (error) {
-        console.error("Error fetching user profile:", error);
-        console.error("Error details:", error.response?.data || error.message);
-        console.error("Error status:", error.response?.status);
-        console.error("Error request URL:", error.config?.url);
-
-        if (error.response?.status === 404) {
-          console.log("User not found (404 error). Returning empty profile.");
-          return { success: false, data: null, error: "User not found" };
-        }
-
-        throw error;
-      }
+      const apiPath = `/users/profile/${userId}`;
+      const response = await axiosService.get(apiPath);
+      return response.data;
     },
     enabled: !!userId,
     retry: 1,
     refetchOnWindowFocus: false,
+    staleTime: 0,
+    cacheTime: 1000 * 60 * 5,
   });
 };
 
-export const useSearchUsers = (query) => {
+export const useSearchUsers = (query, options = {}) => {
+  const { page = 1, limit = 10, enabled = true } = options;
+
   return useQuery({
-    queryKey: USER_QUERY_KEYS.searchResults(query),
+    queryKey: [...USER_QUERY_KEYS.searchResults(query), { page, limit }],
     queryFn: async () => {
-      if (!query || query.trim().length < 2) return { results: [] };
-      console.log(`Searching users with query: ${query}`);
-      const response = await axiosService.get(`/users/search`, {
-        params: { query },
-      });
-      console.log("Search users response:", response.data);
-      return response.data;
+      if (!query || query.trim().length < 2) {
+        return {
+          success: true,
+          data: [],
+          pagination: {
+            total: 0,
+            page: 1,
+            totalPages: 0,
+          },
+        };
+      }
+
+      try {
+        const response = await axiosService.get(`/users/search`, {
+          params: { query, page, limit },
+        });
+
+        return response.data;
+      } catch (error) {
+        console.error("Error searching users:", error);
+
+        return {
+          success: false,
+          data: [],
+          error: error.response?.data?.error || error.message,
+          pagination: {
+            total: 0,
+            page: page,
+            totalPages: 0,
+          },
+        };
+      }
     },
-    enabled: !!query && query.trim().length >= 2,
+    enabled: enabled && !!query && query.trim().length >= 2,
+    staleTime: 1000 * 60,
   });
 };
 
@@ -96,18 +79,19 @@ export const useUserMutations = () => {
 
   const updateProfile = useMutation({
     mutationFn: async (userData) => {
-      console.log("Updating user profile with data:", userData);
-      const response = await axiosService.put(`/users/profile`, userData);
-      console.log("Update profile response:", response.data);
+      console.log("Updating profile with data:", userData);
+      const response = await axiosService.patch(
+        `/users/update-profile`,
+        userData
+      );
+      console.log("Profile update API response:", response.data);
       return response.data;
     },
-    onSuccess: (data, variables) => {
-      console.log("Profile update success, invalidating queries");
-      // Invalidate the user's profile
+    onSuccess: () => {
+      console.log("Profile update successful, invalidating queries");
       queryClient.invalidateQueries({
-        queryKey: USER_QUERY_KEYS.userProfile(variables.userId),
+        queryKey: USER_QUERY_KEYS.all,
       });
-      // Also invalidate auth session as user data might have changed
       queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
     },
   });
@@ -116,7 +100,6 @@ export const useUserMutations = () => {
     mutationFn: async (passwordData) => {
       console.log("Changing password");
       const response = await axiosService.put(`/users/password`, passwordData);
-      console.log("Change password response:", response.data);
       return response.data;
     },
   });
@@ -127,7 +110,6 @@ export const useUserMutations = () => {
   };
 };
 
-// Add a useUserQueries object that combines all the query hooks
 export const useUserQueries = {
   useUserProfile,
   useSearchUsers,

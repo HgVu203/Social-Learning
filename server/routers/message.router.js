@@ -9,8 +9,9 @@ router.use(protectedRouter);
 // Message routes
 router.post("/send", MessageController.sendMessage);
 router.get("/", MessageController.getMessages);
-router.get("/unread", MessageController.getUnreadCount);
+router.get("/unread-count", MessageController.getUnreadCount);
 router.patch("/:id/read", MessageController.markAsRead);
+router.patch("/read-all", MessageController.markAllAsRead);
 router.delete("/:id", MessageController.deleteMessage);
 router.get("/conversations", MessageController.getConversations);
 

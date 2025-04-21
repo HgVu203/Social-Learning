@@ -121,4 +121,20 @@ export const authValidationSchema = {
           "Password must contain uppercase, lowercase and numbers",
       }),
   }),
+
+  changePassword: Joi.object({
+    currentPassword: Joi.string().required().messages({
+      "string.empty": "Current password is required",
+    }),
+    newPassword: Joi.string()
+      .min(8)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .required()
+      .messages({
+        "string.min": "Password must be at least 8 characters",
+        "string.pattern.base":
+          "Password must contain uppercase, lowercase and numbers",
+        "string.empty": "New password is required",
+      }),
+  }),
 };

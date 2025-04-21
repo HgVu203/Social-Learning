@@ -4,7 +4,7 @@ import Notification from "../models/notification.model.js";
 export const FriendshipController = {
   sendFriend: async (req, res) => {
     try {
-      const { friendId } = req.body;
+      const { userId: friendId } = req.body;
       const userId = req.user._id;
 
       if (userId.toString() === friendId) {
@@ -54,14 +54,14 @@ export const FriendshipController = {
 
   acceptFriend: async (req, res) => {
     try {
-      const { friendId } = req.body;
+      const { requestId: friendId } = req.body;
       const userId = req.user._id;
 
       const friendship = await Friendship.findOne({
         userId: friendId,
         friendId: userId,
         status: "pending",
-      }).populate("userId", "username email avatar fullName");
+      }).populate("userId", "username email avatar fullname");
 
       if (!friendship) {
         return res.status(400).json({
@@ -83,15 +83,18 @@ export const FriendshipController = {
         success: true,
         message: "Friend request accepted successfully",
         data: {
-          friendId: friendship.userId._id,
+          friendship: {
+            _id: friendship._id,
+            status: friendship.status,
+            createdAt: friendship.createdAt,
+            updatedAt: friendship.updatedAt,
+          },
           friend: {
             _id: friendship.userId._id,
             username: friendship.userId.username,
             email: friendship.userId.email,
             avatar: friendship.userId.avatar,
-            fullName: friendship.userId.fullName,
-            friendshipId: friendship._id,
-            createdAt: friendship.createdAt,
+            fullname: friendship.userId.fullname,
           },
         },
       });
@@ -103,14 +106,14 @@ export const FriendshipController = {
 
   rejectFriend: async (req, res) => {
     try {
-      const { friendId } = req.body;
+      const { requestId: friendId } = req.body;
       const userId = req.user._id;
 
       const friendship = await Friendship.findOneAndDelete({
         userId: friendId,
         friendId: userId,
         status: "pending",
-      });
+      }).populate("userId", "username email avatar fullname");
 
       if (!friendship) {
         return res.status(404).json({
@@ -124,6 +127,7 @@ export const FriendshipController = {
         message: "Friend request rejected successfully",
         data: {
           requestId: friendship._id,
+          rejectedUserId: friendship.userId._id,
         },
       });
     } catch (error) {
@@ -137,46 +141,70 @@ export const FriendshipController = {
       const { page = 1, limit = 10 } = req.query;
       const userId = req.user._id;
 
-      const friendships = await Friendship.find({
-        $or: [{ userId }, { friendId: userId }],
-        status: "accepted",
-      })
-        .populate("userId", "username email avatar")
-        .populate("friendId", "username email avatar")
-        .sort({ createdAt: -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      // Cấu hình để truy vấn với lượng dữ liệu nhỏ nhất
+      const projection = { userId: 1, friendId: 1, createdAt: 1 };
+      const populateOptions = "username email avatar fullname isOnline";
 
-      const total = await Friendship.countDocuments({
-        $or: [{ userId }, { friendId: userId }],
-        status: "accepted",
-      });
+      // Tối ưu truy vấn để giảm dữ liệu trả về và sử dụng index hiệu quả hơn
+      // 1. Sử dụng lean() để tăng tốc độ và giảm dung lượng bộ nhớ
+      // 2. Chỉ select những trường cần thiết
+      // 3. Sử dụng Promise.all để chạy song song các thao tác độc lập
+      const [friendships, total] = await Promise.all([
+        Friendship.find(
+          {
+            $or: [{ userId }, { friendId: userId }],
+            status: "accepted",
+          },
+          projection
+        )
+          .populate("userId", populateOptions)
+          .populate("friendId", populateOptions)
+          .sort({ createdAt: -1 })
+          .limit(parseInt(limit))
+          .skip((parseInt(page) - 1) * parseInt(limit))
+          .lean()
+          .exec(), // Thêm exec() để đảm bảo promise được trả về
 
+        Friendship.countDocuments({
+          $or: [{ userId }, { friendId: userId }],
+          status: "accepted",
+        }).lean(),
+      ]);
+
+      // Xử lý dữ liệu hiệu quả hơn với map thay vì vòng lặp
       const friends = friendships.map((friendship) => {
         const friend = friendship.userId._id.equals(userId)
           ? friendship.friendId
           : friendship.userId;
+
         return {
           _id: friend._id,
           username: friend.username,
           email: friend.email,
           avatar: friend.avatar,
+          fullname: friend.fullname,
+          isOnline: friend.isOnline || false,
           friendshipId: friendship._id,
           createdAt: friendship.createdAt,
         };
       });
 
+      // Trả về dữ liệu với định dạng nhất quán và bao gồm cache headers
+      res.set("Cache-Control", "private, max-age=10"); // Cache 10 giây ở client
+
+      // Trả về dữ liệu
       return res.status(200).json({
         success: true,
         data: friends,
         pagination: {
           total,
           page: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          totalPages: Math.ceil(total / parseInt(limit)),
         },
+        timestamp: new Date().toISOString(), // Thêm timestamp để client biết thời điểm dữ liệu
       });
     } catch (error) {
-      console.error(error);
+      console.error("Error getting friends:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
   },
@@ -186,23 +214,34 @@ export const FriendshipController = {
       const { page = 1, limit = 10 } = req.query;
       const userId = req.user._id;
 
+      // Tối ưu hóa truy vấn giống như getFriends
+      const projection = { userId: 1, createdAt: 1 };
+      const populateOptions = "username email avatar fullname";
 
-      const requests = await Friendship.find({
-        friendId: userId,
-        status: "pending",
-      })
-        .populate("userId", "username email avatar fullname")
-        .sort({ createdAt: -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      // Sử dụng Promise.all để chạy song song
+      const [requests, total] = await Promise.all([
+        Friendship.find(
+          {
+            friendId: userId,
+            status: "pending",
+          },
+          projection
+        )
+          .populate("userId", populateOptions)
+          .sort({ createdAt: -1 })
+          .limit(parseInt(limit))
+          .skip((parseInt(page) - 1) * parseInt(limit))
+          .lean()
+          .exec(),
 
-      
+        Friendship.countDocuments({
+          friendId: userId,
+          status: "pending",
+        }).lean(),
+      ]);
 
-      const total = await Friendship.countDocuments({
-        friendId: userId,
-        status: "pending",
-      });
-
+      // Cache header
+      res.set("Cache-Control", "private, max-age=10");
 
       return res.status(200).json({
         success: true,
@@ -210,8 +249,9 @@ export const FriendshipController = {
         pagination: {
           total,
           page: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          totalPages: Math.ceil(total / parseInt(limit)),
         },
+        timestamp: new Date().toISOString(),
       });
     } catch (error) {
       console.error("Error in getPendingRequests:", error);
@@ -246,6 +286,82 @@ export const FriendshipController = {
       });
     } catch (error) {
       console.error(error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  },
+
+  getFriendshipStatus: async (req, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      const userId = req.user._id;
+
+      if (userId.toString() === targetUserId) {
+        return res.status(200).json({
+          success: true,
+          status: "SELF",
+          message: "Cannot befriend yourself",
+        });
+      }
+
+      const friendship = await Friendship.findOne({
+        $or: [
+          { userId, friendId: targetUserId },
+          { userId: targetUserId, friendId: userId },
+        ],
+      });
+
+      if (!friendship) {
+        return res.status(200).json({
+          success: true,
+          status: "NOT_FRIEND",
+        });
+      }
+
+      if (friendship.status === "accepted") {
+        return res.status(200).json({
+          success: true,
+          status: "FRIEND",
+          friendshipId: friendship._id,
+        });
+      }
+
+      if (friendship.status === "pending") {
+        if (friendship.initiatedBy.toString() === userId.toString()) {
+          // Người dùng hiện tại đã gửi lời mời
+          return res.status(200).json({
+            success: true,
+            status: "PENDING_SENT",
+            friendshipId: friendship._id,
+          });
+        } else {
+          // Người dùng hiện tại đã nhận lời mời
+          return res.status(200).json({
+            success: true,
+            status: "PENDING_RECEIVED",
+            friendshipId: friendship._id,
+          });
+        }
+      }
+
+      if (friendship.status === "blocked") {
+        if (friendship.initiatedBy.toString() === userId.toString()) {
+          // Người dùng hiện tại đã chặn người kia
+          return res.status(200).json({
+            success: true,
+            status: "BLOCKED_BY_ME",
+            friendshipId: friendship._id,
+          });
+        } else {
+          // Người dùng hiện tại bị người kia chặn
+          return res.status(200).json({
+            success: true,
+            status: "BLOCKED_BY_OTHER",
+            friendshipId: friendship._id,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error checking friendship status:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
   },

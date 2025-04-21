@@ -1,9 +1,33 @@
-import { memo, useRef, useCallback } from "react";
+import { memo, useRef, useCallback, useEffect } from "react";
 import PostCard from "./PostCard";
 import Loading from "../common/Loading";
+import { usePostContext } from "../../contexts/PostContext";
 
-const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
+const PostList = ({
+  groupId,
+  posts: propPosts,
+  loading: propLoading,
+  error: propError,
+  hasMore: propHasMore,
+  loadMore: propLoadMore,
+}) => {
+  // Nếu props được cung cấp, sử dụng props, nếu không sử dụng context
+  const context = usePostContext();
+
+  const posts = propPosts || context.posts;
+  const loading = propLoading !== undefined ? propLoading : context.loading;
+  const error = propError || context.error;
+  const hasMore = propHasMore !== undefined ? propHasMore : context.hasMore;
+  const loadMoreFunc = propLoadMore || context.loadMorePosts;
+
   const observer = useRef();
+
+  // Khi component mount hoặc groupId thay đổi, tải bài đăng của nhóm
+  useEffect(() => {
+    if (groupId && context.fetchGroupPosts) {
+      context.fetchGroupPosts(groupId);
+    }
+  }, [groupId, context.fetchGroupPosts]);
 
   // Setup the intersection observer for infinite scroll
   const lastPostElementRef = useCallback(
@@ -12,11 +36,11 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
       if (observer.current) observer.current.disconnect();
 
       // Chỉ thiết lập observer nếu có hàm loadMore
-      if (loadMore && hasMore) {
+      if (loadMoreFunc && hasMore) {
         observer.current = new IntersectionObserver(
           (entries) => {
             if (entries[0].isIntersecting && hasMore) {
-              loadMore();
+              loadMoreFunc();
             }
           },
           { threshold: 0.5 }
@@ -25,7 +49,7 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
         if (node) observer.current.observe(node);
       }
     },
-    [loading, hasMore, loadMore]
+    [loading, hasMore, loadMoreFunc]
   );
 
   if (loading && !posts?.length) {
@@ -53,13 +77,16 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {posts.map((post, index) => (
         <div
           key={post._id}
           ref={
-            loadMore && index === posts.length - 1 ? lastPostElementRef : null
+            loadMoreFunc && index === posts.length - 1
+              ? lastPostElementRef
+              : null
           }
+          className="overflow-hidden"
         >
           <PostCard post={post} />
         </div>
@@ -70,7 +97,7 @@ const PostList = ({ posts, loading, error, hasMore, loadMore }) => {
         </div>
       )}
       {hasMore === false && posts.length > 0 && (
-        <div className="text-center text-gray-400 py-4 border-t border-gray-800 bg-[#16181c] rounded-lg">
+        <div className="text-center text-gray-400 py-4 border border-gray-800 bg-[#16181c] rounded-lg mt-6">
           You've reached the end of the feed
         </div>
       )}

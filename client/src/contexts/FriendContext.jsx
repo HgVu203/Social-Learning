@@ -1,9 +1,13 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useFriendQueries } from "../hooks/queries/useFriendQueries";
+import {
+  useFriendQueries,
+  FRIEND_QUERY_KEYS,
+} from "../hooks/queries/useFriendQueries";
 import { useFriendMutations } from "../hooks/mutations/useFriendMutations";
 import { useAuth } from "./AuthContext";
 import tokenService from "../services/tokenService";
+import axiosService from "../services/axiosService";
 
 const FriendContext = createContext({
   friends: [],
@@ -42,10 +46,75 @@ export const FriendProvider = ({ children }) => {
     removeFriend,
   } = useFriendMutations();
 
+  // Prefetch friends data when authenticated
+  useEffect(() => {
+    if (isAuthenticated && tokenService.isTokenValid()) {
+      // Định nghĩa các hàm fetchData riêng biệt để tránh gọi hooks trực tiếp
+      const fetchFriendsData = async () => {
+        try {
+          const response = await axiosService.get("/friendship", {
+            params: { page: 1, limit: 20 },
+          });
+          return response.data;
+        } catch (error) {
+          console.error("Error prefetching friends:", error);
+          return { success: false, data: [], message: "Failed to prefetch" };
+        }
+      };
+
+      const fetchFriendRequestsData = async () => {
+        try {
+          const response = await axiosService.get("/friendship/pending", {
+            params: { page: 1, limit: 20 },
+          });
+          return response.data;
+        } catch (error) {
+          console.error("Error prefetching friend requests:", error);
+          return { success: false, data: [], message: "Failed to prefetch" };
+        }
+      };
+
+      // Prefetch với priority cao để ưu tiên tải trước
+      const prefetchOptions = {
+        staleTime: 30 * 1000, // 30 giây
+        cacheTime: 5 * 60 * 1000, // 5 phút
+        retry: true,
+        retryDelay: 1000,
+        priority: "high", // Đặt priority cao
+      };
+
+      // Prefetch bằng Promise.all để tải song song
+      Promise.all([
+        // Prefetch friend list với ưu tiên cao
+        queryClient.prefetchQuery({
+          queryKey: FRIEND_QUERY_KEYS.lists(),
+          queryFn: fetchFriendsData,
+          ...prefetchOptions,
+        }),
+
+        // Prefetch friend requests
+        queryClient.prefetchQuery({
+          queryKey: FRIEND_QUERY_KEYS.requests(),
+          queryFn: fetchFriendRequestsData,
+          ...prefetchOptions,
+        }),
+      ]).catch((err) => {
+        console.error("Error during prefetching:", err);
+      });
+
+      // Fetch lại sau 2 giây để đảm bảo data được cập nhật
+      setTimeout(() => {
+        if (isAuthenticated && tokenService.isTokenValid()) {
+          queryClient.invalidateQueries({ queryKey: ["friends"] });
+        }
+      }, 2000);
+    }
+  }, [isAuthenticated, queryClient]);
+
   // Methods for fetching data
   const fetchFriends = () => {
     if (!isAuthenticated || !tokenService.isTokenValid()) {
-      console.log("Không thể fetch friends: Chưa đăng nhập");
+      console.log("Cannot fetch friends: Not logged in");
       return;
     }
     queryClient.invalidateQueries({ queryKey: ["friends"] });
@@ -53,7 +122,7 @@ export const FriendProvider = ({ children }) => {
 
   const fetchFriendRequests = () => {
     if (!isAuthenticated || !tokenService.isTokenValid()) {
-      console.log("Không thể fetch friend requests: Chưa đăng nhập");
+      console.log("Cannot fetch friend requests: Not logged in");
       return;
     }
     queryClient.invalidateQueries({ queryKey: ["friends", "requests"] });

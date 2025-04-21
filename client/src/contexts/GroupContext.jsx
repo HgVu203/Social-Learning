@@ -168,18 +168,16 @@ export const GroupProvider = ({ children }) => {
           } catch (uploadError) {
             console.error("Error uploading to group/create:", uploadError);
 
-            // If there's a CORS or network error, try with the alternative URL structure
-            if (
-              uploadError.code === "ERR_NETWORK" ||
-              uploadError.message?.includes("Network Error")
-            ) {
-              console.log("Attempting alternative endpoint");
-              const response = await axiosService.post(url, groupData);
-              console.log(
-                "Create group response (alternative):",
-                response.data
-              );
-              return response.data;
+            // Detailed error logging
+            console.error("Upload error details:", {
+              status: uploadError.response?.status,
+              data: uploadError.response?.data,
+              message: uploadError.message,
+            });
+
+            // Rethrow with more specific error message if available
+            if (uploadError.response?.data?.error) {
+              throw new Error(uploadError.response.data.error);
             }
 
             throw uploadError;
@@ -233,6 +231,14 @@ export const GroupProvider = ({ children }) => {
         queryKey: GROUP_QUERY_KEYS.userGroups(),
       });
     },
+    onError: (error) => {
+      console.error("Error joining group:", error);
+      const errorMsg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to join group";
+      console.error("Join group error details:", errorMsg);
+    },
   });
 
   // Mutation to leave a group
@@ -248,6 +254,14 @@ export const GroupProvider = ({ children }) => {
       queryClient.invalidateQueries({
         queryKey: GROUP_QUERY_KEYS.userGroups(),
       });
+    },
+    onError: (error) => {
+      console.error("Error leaving group:", error);
+      const errorMsg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to leave group";
+      console.error("Leave group error details:", errorMsg);
     },
   });
 
@@ -292,10 +306,12 @@ export const GroupProvider = ({ children }) => {
     queryKey: GROUP_QUERY_KEYS.detail(currentGroupId),
     queryFn: async () => {
       if (!currentGroupId) return null;
+      // Skip API call if trying to access the 'create' page
+      if (currentGroupId === "create") return null;
       const response = await axiosService.get(`/group/${currentGroupId}`);
       return response.data;
     },
-    enabled: !!currentGroupId,
+    enabled: !!currentGroupId && currentGroupId !== "create",
   });
 
   // Method to select a group

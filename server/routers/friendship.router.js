@@ -11,6 +11,7 @@ router.post("/accept", FriendshipController.acceptFriend);
 router.post("/reject", FriendshipController.rejectFriend);
 router.get("/", FriendshipController.getFriends);
 router.get("/pending", FriendshipController.getPendingRequests);
+router.get("/status/:userId", FriendshipController.getFriendshipStatus);
 router.delete("/:id", FriendshipController.unfriend);
 
 export default router;

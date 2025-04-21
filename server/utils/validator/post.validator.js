@@ -17,6 +17,7 @@ export const postValidationSchema = {
     images: Joi.alternatives()
       .try(Joi.array().items(Joi.any()), Joi.object(), Joi.string())
       .optional(),
+    groupId: Joi.string().allow(null, "").optional(),
   }),
 
   update: Joi.object({
@@ -28,6 +29,7 @@ export const postValidationSchema = {
     images: Joi.alternatives()
       .try(Joi.array().items(Joi.any()), Joi.object(), Joi.string())
       .optional(),
+    groupId: Joi.string().allow(null, "").optional(),
   }),
 
   comment: Joi.object({

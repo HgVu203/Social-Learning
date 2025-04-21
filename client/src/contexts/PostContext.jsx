@@ -64,11 +64,14 @@ export const PostProvider = ({ children }) => {
     deletePost,
     likePost,
     createComment,
+    updateComment,
     deleteComment,
     likeComment,
     reactToComment,
+    fetchComments,
     optimisticAddComment,
     optimisticToggleCommentLike,
+    initializeCommentsArray,
   } = usePostMutations();
 
   // Derived state
@@ -129,6 +132,18 @@ export const PostProvider = ({ children }) => {
     setSearchQuery(query);
   };
 
+  // Reset groupId method
+  const resetGroupId = () => {
+    if (groupId) {
+      console.log("Resetting groupId from:", groupId);
+      setGroupId(null);
+      // Invalidate các queries để tải lại dữ liệu
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      // Đảm bảo setPage về 1 để khi gọi fetchNextPage lấy từ đầu
+      setPage(1);
+    }
+  };
+
   // Clear data methods
   const clearPosts = () => {
     queryClient.invalidateQueries({ queryKey: ["posts"] });
@@ -166,6 +181,7 @@ export const PostProvider = ({ children }) => {
     clearPosts,
     clearSearchResults,
     fetchGroupPosts,
+    resetGroupId,
 
     // Mutations
     createPost,
@@ -173,11 +189,14 @@ export const PostProvider = ({ children }) => {
     deletePost,
     likePost,
     createComment,
+    updateComment,
     deleteComment,
     likeComment,
     reactToComment,
+    fetchComments,
     optimisticAddComment,
     optimisticToggleCommentLike,
+    initializeCommentsArray,
 
     // Refetch
     refetchPosts,

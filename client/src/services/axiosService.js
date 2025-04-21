@@ -48,6 +48,8 @@ const axiosInstance = axios.create({
   },
   withCredentials: true, // Đảm bảo cookies được gửi trong các request
   timeout: 10000, // Timeout sau 10 giây
+  xsrfCookieName: "XSRF-TOKEN",
+  xsrfHeaderName: "X-XSRF-TOKEN",
 });
 
 console.log("API Base URL (original):", import.meta.env.VITE_API_URL);
@@ -62,6 +64,19 @@ export const uploadFile = (url, data, config = {}) => {
   if (!(data instanceof FormData)) {
     console.error("uploadFile called without FormData");
     return Promise.reject(new Error("uploadFile requires FormData"));
+  }
+
+  // For debugging, log the FormData entries without exposing sensitive content
+  try {
+    const entries = [...data.entries()].map(([key, value]) => {
+      if (value instanceof File) {
+        return `${key}: File(${value.name}, ${value.size} bytes, ${value.type})`;
+      }
+      return `${key}: ${value}`;
+    });
+    console.log("FormData entries:", entries);
+  } catch (e) {
+    console.warn("Could not log FormData entries:", e.message);
   }
 
   // Make sure the URL follows the correct pattern
@@ -86,20 +101,66 @@ export const updateWithFormData = (url, data, config = {}) => {
   // Log the update attempt
   console.log(`Updating with FormData to ${url}`);
 
+  // Ensure FormData is handled properly
+  if (!(data instanceof FormData)) {
+    console.error("updateWithFormData called without FormData");
+    return Promise.reject(new Error("updateWithFormData requires FormData"));
+  }
+
+  // For debugging, log the FormData entries
+  try {
+    const entries = [...data.entries()].map(([key, value]) => {
+      if (value instanceof File) {
+        return `${key}: File(${value.name}, ${value.size} bytes, ${value.type})`;
+      }
+      return `${key}: ${value}`;
+    });
+    console.log("FormData entries for update:", entries);
+
+    // Check specifically for image files
+    for (let [key, value] of data.entries()) {
+      if (value instanceof File && value.type.startsWith("image/")) {
+        console.log(
+          `Found image file in FormData: ${key} = ${value.name} (${value.type}, ${value.size} bytes)`
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("Could not log FormData entries:", e.message);
+  }
+
   // Make sure the URL follows the correct pattern
   if (!url.startsWith("/")) {
     url = `/${url}`;
   }
 
+  // Create a clean copy of the FormData to avoid any potential mutations
+  const formDataCopy = new FormData();
+  for (let [key, value] of data.entries()) {
+    formDataCopy.append(key, value);
+  }
+
   // Don't set Content-Type for FormData - the browser will set it with the correct boundary
-  return axiosInstance.patch(url, data, {
+  return axiosInstance.patch(url, formDataCopy, {
     ...config,
     headers: {
       ...config.headers,
-      // Remove Content-Type to let the browser set it with boundary
+      // Content-Type is intentionally not set here - browser will handle it
     },
-    // Add timeout to prevent hanging requests
-    timeout: 30000, // 30 seconds for uploads
+    transformRequest: [
+      (data) => {
+        console.log("TransformRequest called with FormData");
+        // Return the original FormData object without modifications
+        return data;
+      },
+    ],
+    timeout: 60000, // 60 seconds for uploads (increased timeout)
+    onUploadProgress: (progressEvent) => {
+      const percentCompleted = Math.round(
+        (progressEvent.loaded * 100) / progressEvent.total
+      );
+      console.log(`Upload progress: ${percentCompleted}%`);
+    },
   });
 };
 
@@ -121,13 +182,14 @@ const processQueue = (error, token = null) => {
 // Request interceptor - thêm token vào header và log request
 axiosInstance.interceptors.request.use(
   (config) => {
+    // LUÔN lấy token mới nhất từ localStorage trước mỗi request
     const token = tokenService.getToken();
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
     // Kiểm tra nếu data là FormData thì không set Content-Type
-    // Browser sẽ tự động thêm Content-Type và boundary
     if (config.data instanceof FormData) {
       delete config.headers["Content-Type"];
     }
@@ -141,22 +203,15 @@ axiosInstance.interceptors.request.use(
     }
 
     // Fix incorrect 'groups' endpoint to 'group'
-    if (config.url.includes("/api/groups")) {
-      console.warn("Correcting '/api/groups' to '/api/group'");
+    if (config.url.includes("/api/groups/") || config.url === "/api/groups") {
       config.url = config.url.replace("/api/groups", "/api/group");
     }
 
-    // Enhanced logging during development to help troubleshoot API issues
-    console.log(
-      `API Request [${config.method.toUpperCase()}]: ${config.baseURL}${
-        config.url
-      }`,
-      config.params || {}
-    );
-
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
 // Response interceptor - xử lý refresh token khi gặp lỗi 401
@@ -165,6 +220,7 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     // Nếu lỗi không phải do response hoặc không có status code, trả về reject
     if (!error.response) {
+      console.error("Network error:", error);
       return Promise.reject({
         ...error,
         message:

@@ -14,27 +14,37 @@ export const usePostMutations = () => {
       // Handle FormData for image uploads
       if (postData instanceof FormData) {
         console.log("Uploading post with form data");
-        const response = await axiosService.post(
-          "/posts/create-post",
-          postData
-        );
+        const response = await axiosService.post("/posts", postData);
         console.log("Create post response:", response.data);
         return response.data;
       }
 
       // Regular JSON post
-      const response = await axiosService.post("/posts/create-post", postData);
+      const response = await axiosService.post("/posts", postData);
       console.log("Create post response:", response.data);
       return response.data;
     },
     onSuccess: (data) => {
       console.log("Post created successfully:", data);
-      queryClient.invalidateQueries({ queryKey: POST_QUERY_KEYS.lists() });
+
+      // Invalidate các query lists để làm mới danh sách bài viết
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+
+      // Nếu đăng bài trong group, invalidate query group posts tương ứng
+      if (data?.data?.groupId) {
+        console.log("Invalidating group posts for groupId:", data.data.groupId);
+        queryClient.invalidateQueries({
+          queryKey: ["posts", "group", data.data.groupId],
+        });
+      }
+
       // Toast được xử lý bởi component CreatePostPage
     },
     onError: (error) => {
       console.error("Error creating post:", error);
-      Toast.error(error.response?.data?.error || "Failed to create post");
+      // Sử dụng toastId để tránh thông báo trùng lặp
+      // Toast sẽ được xử lý bởi component CreatePostPage
+      // Không hiển thị thông báo ở đây, tránh trùng lặp
     },
   });
 
@@ -372,7 +382,7 @@ export const usePostMutations = () => {
     },
   });
 
-  // Add a like comment mutation
+  // Like a comment
   const likeComment = useMutation({
     mutationFn: async (postId) => {
       console.log(`[Mutation] Toggling like for post ${postId}`);
@@ -553,157 +563,6 @@ export const usePostMutations = () => {
     },
   });
 
-  // Add a react to comment mutation
-  const reactToComment = useMutation({
-    mutationFn: async ({ postId, commentId, isNestedComment = false }) => {
-      console.log(
-        `Liking comment ${commentId} in post ${postId}, isNested: ${isNestedComment}`
-      );
-
-      // If this is a nested comment, make sure to include that information in logs
-      if (isNestedComment) {
-        console.log("Processing a nested comment like operation");
-      }
-
-      const response = await axiosService.post(
-        `posts/${postId}/comment/${commentId}/like`,
-        {}
-      );
-      console.log("React to comment response:", response.data);
-      return { ...response.data, postId, commentId, isNestedComment };
-    },
-
-    onMutate: async ({ postId, commentId, isNestedComment = false }) => {
-      // Cancel any outgoing refetches to avoid race conditions
-      await queryClient.cancelQueries({
-        queryKey: POST_QUERY_KEYS.comment(postId),
-      });
-
-      // Get current user ID
-      const userId = getUserId();
-      if (!userId) return;
-
-      // Snapshot the previous value
-      const previousData = queryClient.getQueryData(
-        POST_QUERY_KEYS.comment(postId)
-      );
-
-      // Log that we're processing a nested comment if applicable
-      if (isNestedComment) {
-        console.log(
-          `Optimistic update for nested comment ${commentId} with parent`
-        );
-      }
-
-      // Apply optimistic update immediately
-      queryClient.setQueriesData(
-        { queryKey: POST_QUERY_KEYS.comment(postId) },
-        (oldData) => {
-          if (!oldData) return oldData;
-
-          // Deep clone to avoid mutation
-          const newData = JSON.parse(JSON.stringify(oldData));
-
-          // Function to find and update a comment recursively
-          const updateCommentLike = (comments) => {
-            if (!comments || !Array.isArray(comments)) return false;
-
-            for (let i = 0; i < comments.length; i++) {
-              const comment = comments[i];
-
-              // Found the comment to update
-              if (comment._id === commentId) {
-                // Initialize likes array if undefined
-                if (!comment.likes) comment.likes = [];
-
-                // Check if already liked
-                const isLiked = comment.isLiked || false;
-                const newIsLiked = !isLiked;
-
-                comment.isLiked = newIsLiked;
-                comment.likesCount = Math.max(
-                  0,
-                  (comment.likesCount || 0) + (newIsLiked ? 1 : -1)
-                );
-
-                console.log(
-                  `Optimistic update for comment ${commentId}: isLiked=${comment.isLiked}, count=${comment.likesCount}`
-                );
-                return true;
-              }
-
-              // Check in replies if they exist
-              if (comment.replies && comment.replies.length > 0) {
-                if (updateCommentLike(comment.replies)) {
-                  return true;
-                }
-              }
-            }
-            return false;
-          };
-
-          // Update in comments data
-          if (newData.data && newData.data.comments) {
-            updateCommentLike(newData.data.comments);
-          } else if (Array.isArray(newData)) {
-            // Handle case where it's just an array of comments
-            updateCommentLike(newData);
-          }
-
-          return newData;
-        }
-      );
-
-      return { previousData, isNestedComment };
-    },
-
-    onError: (error, { postId, commentId }, context) => {
-      console.error(`Error liking comment ${commentId}:`, error);
-
-      // Roll back to previous state
-      if (context?.previousData) {
-        queryClient.setQueryData(
-          POST_QUERY_KEYS.comment(postId),
-          context.previousData
-        );
-      }
-
-      // Display error message
-      Toast.error(
-        error.response?.data?.error || "Failed to update comment like"
-      );
-    },
-
-    onSuccess: (data) => {
-      console.log("Comment reaction updated successfully:", data);
-
-      if (!data || !data.success) {
-        console.warn("Like comment response indicates failure:", data);
-        return;
-      }
-
-      // Extract all relevant data including nested comment info
-      const { postId, commentId } = data.data || {};
-      const isNestedComment = data.isNestedComment;
-      const parentId = data.data?.parentId;
-
-      console.log(
-        `Successfully liked comment ${commentId}, nested: ${isNestedComment}, parent: ${
-          parentId || "none"
-        }`
-      );
-
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({
-        queryKey: POST_QUERY_KEYS.detail(postId),
-      });
-
-      queryClient.invalidateQueries({
-        queryKey: POST_QUERY_KEYS.comment(postId),
-      });
-    },
-  });
-
   // Fetch comments
   const fetchComments = useMutation({
     mutationFn: async ({ postId, page = 1, limit = 10 }) => {
@@ -722,20 +581,6 @@ export const usePostMutations = () => {
       Toast.error(error.response?.data?.error || "Failed to fetch comments");
     },
   });
-
-  // Function to get current user ID for optimistic updates
-  const getUserId = () => {
-    const userJson = localStorage.getItem("user");
-    if (userJson) {
-      try {
-        const userData = JSON.parse(userJson);
-        return userData._id;
-      } catch (e) {
-        console.error("Error parsing user data:", e);
-      }
-    }
-    return null;
-  };
 
   // Optimistic functions for UI updates
   const optimisticToggleCommentLike = ({ postId, commentId, userId }) => {
@@ -924,10 +769,157 @@ export const usePostMutations = () => {
     };
   };
 
+  // Add a react to comment mutation
+  const reactToComment = useMutation({
+    mutationFn: async ({ postId, commentId, isNestedComment = false }) => {
+      console.log(
+        `Liking comment ${commentId} in post ${postId}, isNested: ${isNestedComment}`
+      );
+
+      // If this is a nested comment, make sure to include that information in logs
+      if (isNestedComment) {
+        console.log("Processing a nested comment like operation");
+      }
+
+      const response = await axiosService.post(
+        `posts/${postId}/comment/${commentId}/like`,
+        {}
+      );
+      console.log("React to comment response:", response.data);
+      return { ...response.data, postId, commentId, isNestedComment };
+    },
+
+    onMutate: async ({ postId, commentId, isNestedComment = false }) => {
+      // Cancel any outgoing refetches to avoid race conditions
+      await queryClient.cancelQueries({
+        queryKey: POST_QUERY_KEYS.comment(postId),
+      });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData(
+        POST_QUERY_KEYS.comment(postId)
+      );
+
+      // Log that we're processing a nested comment if applicable
+      if (isNestedComment) {
+        console.log(
+          `Optimistic update for nested comment ${commentId} with parent`
+        );
+      }
+
+      // Apply optimistic update immediately
+      queryClient.setQueriesData(
+        { queryKey: POST_QUERY_KEYS.comment(postId) },
+        (oldData) => {
+          if (!oldData) return oldData;
+
+          // Deep clone to avoid mutation
+          const newData = JSON.parse(JSON.stringify(oldData));
+
+          // Function to find and update a comment recursively
+          const updateCommentLike = (comments) => {
+            if (!comments || !Array.isArray(comments)) return false;
+
+            for (let i = 0; i < comments.length; i++) {
+              const comment = comments[i];
+
+              // Found the comment to update
+              if (comment._id === commentId) {
+                // Initialize likes array if undefined
+                if (!comment.likes) comment.likes = [];
+
+                // Check if already liked
+                const isLiked = comment.isLiked || false;
+                const newIsLiked = !isLiked;
+
+                comment.isLiked = newIsLiked;
+                comment.likesCount = Math.max(
+                  0,
+                  (comment.likesCount || 0) + (newIsLiked ? 1 : -1)
+                );
+
+                console.log(
+                  `Optimistic update for comment ${commentId}: isLiked=${comment.isLiked}, count=${comment.likesCount}`
+                );
+                return true;
+              }
+
+              // Check in replies if they exist
+              if (comment.replies && comment.replies.length > 0) {
+                if (updateCommentLike(comment.replies)) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
+          // Update in comments data
+          if (newData.data && newData.data.comments) {
+            updateCommentLike(newData.data.comments);
+          } else if (Array.isArray(newData)) {
+            // Handle case where it's just an array of comments
+            updateCommentLike(newData);
+          }
+
+          return newData;
+        }
+      );
+
+      return { previousData, isNestedComment };
+    },
+
+    onError: (error, { postId, commentId }, context) => {
+      console.error(`Error liking comment ${commentId}:`, error);
+
+      // Roll back to previous state
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          POST_QUERY_KEYS.comment(postId),
+          context.previousData
+        );
+      }
+
+      // Display error message
+      Toast.error(
+        error.response?.data?.error || "Failed to update comment like"
+      );
+    },
+
+    onSuccess: (data) => {
+      console.log("Comment reaction updated successfully:", data);
+
+      if (!data || !data.success) {
+        console.warn("Like comment response indicates failure:", data);
+        return;
+      }
+
+      // Extract all relevant data including nested comment info
+      const { postId, commentId } = data.data || {};
+      const isNestedComment = data.isNestedComment;
+      const parentId = data.data?.parentId;
+
+      console.log(
+        `Successfully liked comment ${commentId}, nested: ${isNestedComment}, parent: ${
+          parentId || "none"
+        }`
+      );
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({
+        queryKey: POST_QUERY_KEYS.detail(postId),
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: POST_QUERY_KEYS.comment(postId),
+      });
+    },
+  });
+
   return {
-    createPostMutation,
+    createPost: createPostMutation,
     updatePost,
-    deletePostMutation,
+    deletePost: deletePostMutation,
     likePost: likePostMutation,
     createComment,
     updateComment,

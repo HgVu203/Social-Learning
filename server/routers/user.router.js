@@ -1,20 +1,34 @@
 import express from "express";
 import { UserController } from "../controllers/user.controller.js";
 import protectedRouter from "../middleware/protectedRouter.js";
+import optionalAuth from "../middleware/optionalAuth.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { userValidationSchema } from "../utils/validator/user.validator.js";
 import { userImageUpload } from "../middleware/upload.cloudinary.js";
 
 const router = express.Router();
 
-router.get("/profile/:id?", UserController.getUserProfile);
-
+// Public endpoints with optional authentication
+router.get("/profile/:id?", optionalAuth, UserController.getUserProfile);
 router.get("/leaderboard", UserController.getLeaderboard);
 
+// Protected routes below
 router.use(protectedRouter);
 
+// Tìm kiếm người dùng
+router.get("/search", UserController.searchUsers);
+
+// Profile update endpoints
 router.patch(
   "/update-profile",
+  userImageUpload,
+  validateRequest(userValidationSchema.updateProfile),
+  UserController.updateProfile
+);
+
+// For backward compatibility with existing client code
+router.patch(
+  "/profile",
   userImageUpload,
   validateRequest(userValidationSchema.updateProfile),
   UserController.updateProfile
@@ -27,5 +41,8 @@ router.post(
 );
 
 router.get("/profile/", UserController.myProfile);
+
+// Follow/Unfollow endpoint
+router.post("/:id/follow", UserController.toggleFollow);
 
 export default router;

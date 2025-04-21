@@ -4,23 +4,47 @@ import { FiLock, FiUsers } from "react-icons/fi";
 import { showConfirmToast } from "../../utils/toast";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGroupMutations } from "../../hooks/mutations/useGroupMutations";
+import { useQueryClient } from "@tanstack/react-query";
+import { GROUP_QUERY_KEYS } from "../../hooks/queries/useGroupQueries";
 
 const GroupCard = ({ group }) => {
   const { user } = useAuth();
   const [joining, setJoining] = useState(false);
   const { joinGroup, leaveGroup } = useGroupMutations();
+  const queryClient = useQueryClient();
+
+  // Sử dụng trực tiếp từ dữ liệu group thay vì lưu trong state
+  const isCreator = user?._id === group.createdBy?._id;
+  const isMember = group.isMember || isCreator;
+  const hasRequestedJoin = group.hasRequestedJoin;
 
   const handleJoinGroup = async (e) => {
-    e.preventDefault();
     e.stopPropagation();
+    e.preventDefault();
 
     if (joining) return;
-
     setJoining(true);
+
     try {
       await joinGroup.mutateAsync(group._id);
+
+      // Thay vì chỉ cập nhật local state, force refresh tất cả các query liên quan
+      queryClient.invalidateQueries({
+        queryKey: GROUP_QUERY_KEYS.myGroups(),
+        refetchType: "all",
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: GROUP_QUERY_KEYS.lists(),
+        refetchType: "all",
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: GROUP_QUERY_KEYS.popular(),
+        refetchType: "all",
+      });
     } catch (error) {
-      console.error("Failed to join group:", error);
+      console.error("Error joining group:", error);
     } finally {
       setJoining(false);
     }
@@ -36,6 +60,22 @@ const GroupCard = ({ group }) => {
       setJoining(true);
       try {
         await leaveGroup.mutateAsync(group._id);
+
+        // Force refresh tất cả các query liên quan
+        queryClient.invalidateQueries({
+          queryKey: GROUP_QUERY_KEYS.myGroups(),
+          refetchType: "all",
+        });
+
+        queryClient.invalidateQueries({
+          queryKey: GROUP_QUERY_KEYS.lists(),
+          refetchType: "all",
+        });
+
+        queryClient.invalidateQueries({
+          queryKey: GROUP_QUERY_KEYS.popular(),
+          refetchType: "all",
+        });
       } catch (error) {
         console.error("Failed to leave group:", error);
       } finally {
@@ -43,10 +83,6 @@ const GroupCard = ({ group }) => {
       }
     });
   };
-
-  const isCreator = user?._id === group.createdBy?._id;
-  const isMember = group.isMember || isCreator;
-  const hasRequestedJoin = group.hasRequestedJoin;
 
   return (
     <div className="flex bg-[#1E2024] rounded-lg border border-gray-800 hover:border-gray-700 transition-all duration-300 shadow-md hover:shadow-lg p-3 sm:p-4">

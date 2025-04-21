@@ -22,6 +22,12 @@ const PostSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+      default: null,
+      index: true,
+    },
     tags: [
       {
         type: String,

@@ -10,9 +10,11 @@ const router = express.Router();
 // Protected routes
 router.use(protectedRouter);
 
-// Group management
+// Group management - specific routes first, then parameterized routes
 router.post("/create", groupImageUpload, GroupController.createGroup);
 router.get("/", GroupController.getGroups);
+
+// Parameterized routes
 router.get("/:id", GroupController.getGroupById);
 router.patch("/:id", groupImageUpload, GroupController.updateGroup);
 router.delete("/:id", GroupController.deleteGroup);

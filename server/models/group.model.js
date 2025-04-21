@@ -8,6 +8,7 @@ const GroupSchema = new mongoose.Schema(
       trim: true,
       minlength: 3,
       maxlength: 50,
+      index: true,
     },
     description: {
       type: String,
@@ -22,12 +23,14 @@ const GroupSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
     members: [
       {
         user: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
+          index: true,
         },
         role: {
           type: String,
@@ -43,6 +46,7 @@ const GroupSchema = new mongoose.Schema(
     isPrivate: {
       type: Boolean,
       default: false,
+      index: true,
     },
     settings: {
       postApproval: {
@@ -58,6 +62,7 @@ const GroupSchema = new mongoose.Schema(
       type: String,
       enum: ["active", "inactive"],
       default: "active",
+      index: true,
     },
     tags: [
       {
@@ -75,8 +80,12 @@ const GroupSchema = new mongoose.Schema(
 );
 
 GroupSchema.virtual("memberCount").get(function () {
-  return this.members.length;
+  return this.members ? this.members.length : 0;
 });
+
+GroupSchema.index({ name: "text", description: "text", tags: "text" });
+GroupSchema.index({ isPrivate: 1, status: 1 });
+GroupSchema.index({ "members.user": 1, "members.role": 1 });
 
 const Group = mongoose.model("Group", GroupSchema);
 export default Group;

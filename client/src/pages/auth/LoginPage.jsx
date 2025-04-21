@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useLogin } from "../../hooks/mutations/useAuthMutations";
 import { useAuth } from "../../contexts/AuthContext";
+import { motion } from "framer-motion";
+import AuthForm from "../../components/auth/AuthForm";
+import AuthInput from "../../components/auth/AuthInput";
+import AuthButton from "../../components/auth/AuthButton";
+import { FaGoogle, FaFacebook, FaEnvelope, FaLock } from "react-icons/fa";
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -30,7 +35,7 @@ const LoginPage = () => {
   }, [isAuthenticated, navigate]);
 
   useEffect(() => {
-    // Kiểm tra lỗi từ OAuth redirect
+    // Check for OAuth redirect errors
     const oauthError = searchParams.get("error");
     if (oauthError) {
       setError(decodeURIComponent(oauthError));
@@ -40,7 +45,7 @@ const LoginPage = () => {
         facebook: false,
       });
 
-      // Xóa tham số lỗi khỏi URL sau khi đã đọc
+      // Remove error parameter from URL after reading
       const cleanParams = new URLSearchParams();
       for (const [key, value] of searchParams.entries()) {
         if (key !== "error") {
@@ -73,7 +78,7 @@ const LoginPage = () => {
   };
 
   const handleChange = (e) => {
-    // Xóa thông báo lỗi khi người dùng bắt đầu gõ
+    // Clear error message when user starts typing
     if (error) {
       setError(null);
     }
@@ -104,14 +109,22 @@ const LoginPage = () => {
     }
 
     try {
+      console.log("Attempting login with:", formData.email);
       const result = await login.mutateAsync(formData);
+      console.log("Login result:", result);
 
       // Handle login result
       if (result.success) {
         // Login successful
+        console.log("Login successful, navigating to home");
         navigate("/");
       } else if (result.data?.requiresVerification) {
-        // Account not verified
+        // Account not verified - clear any errors before redirecting
+        console.log(
+          "Email verification required, redirecting to verification page"
+        );
+        clearError();
+
         localStorage.setItem(
           "pendingVerification",
           JSON.stringify({
@@ -126,10 +139,40 @@ const LoginPage = () => {
             userId: result.data.userId,
           },
         });
+      } else {
+        // Other error scenarios
+        console.log(
+          "Login returned false success but no requiresVerification flag"
+        );
+        setError(result.message || "Login failed. Please try again.");
       }
     } catch (err) {
       console.error("Login failed:", err);
-      setError(err.response?.data?.error || "Login failed. Please try again.");
+      console.error("Login error details:", err.response?.data);
+      // Check if the error is due to email verification required
+      if (err.response?.data?.data?.requiresVerification) {
+        // Clear any error messages before redirecting to verification
+        clearError();
+
+        localStorage.setItem(
+          "pendingVerification",
+          JSON.stringify({
+            email: err.response.data.data.email,
+            userId: err.response.data.data.userId,
+          })
+        );
+
+        navigate("/verify-email", {
+          state: {
+            email: err.response.data.data.email,
+            userId: err.response.data.data.userId,
+          },
+        });
+      } else {
+        setError(
+          err.response?.data?.error || "Login failed. Please try again."
+        );
+      }
     }
   };
 
@@ -137,7 +180,7 @@ const LoginPage = () => {
     // Prevent multiple submissions
     if (isLoading) return;
 
-    // Xóa thông báo lỗi khi người dùng thử đăng nhập lại
+    // Clear error message when user tries to login again
     if (error) {
       setError(null);
     }
@@ -151,12 +194,6 @@ const LoginPage = () => {
 
       // Add timestamp and state to prevent caching and enhance security
       const timestamp = Date.now();
-
-      // Log API URL for debugging
-      console.log(
-        `Social login ${provider} - API URL:`,
-        import.meta.env.VITE_API_URL
-      );
 
       // Build the OAuth URL
       let oauthUrl;
@@ -172,27 +209,38 @@ const LoginPage = () => {
         throw new Error(`Unsupported provider: ${provider}`);
       }
 
-      console.log(`Redirecting to ${provider} OAuth:`, oauthUrl);
       window.location.href = oauthUrl;
     } catch (err) {
       console.error(`${provider} login failed:`, err);
-      setError(`Đăng nhập với ${provider} thất bại. Vui lòng thử lại.`);
+      setError(`Login with ${provider} failed. Please try again.`);
       setSocialLoading((prev) => ({ ...prev, [provider]: false }));
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200 hover:shadow-blue-900/10">
-          <div className="flex justify-center mb-6">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              Welcome Back
-            </div>
-          </div>
+  const clearError = () => {
+    setError(null);
+  };
 
+  return (
+    <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="max-w-md w-full"
+      >
+        <AuthForm
+          title="Welcome Back"
+          subtitle="Sign in to your account to continue"
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
           {error && (
-            <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg mb-4 animate-pulse">
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700"
+            >
               <div className="flex">
                 <svg
                   className="w-5 h-5 mr-2"
@@ -205,174 +253,101 @@ const LoginPage = () => {
                     clipRule="evenodd"
                   />
                 </svg>
-                {error}
+                <span>{error}</span>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="email"
-              >
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.email
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Enter your email"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={isLoading}
-                autoComplete="email"
-              />
-              {validationErrors.email && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.email}
-                </p>
-              )}
-            </div>
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="password"
-              >
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.password
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Enter your password"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={isLoading}
-                autoComplete="current-password"
-              />
-              {validationErrors.password && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.password}
-                </p>
-              )}
-              <div className="mt-2 flex justify-end">
-                <Link
-                  to="/forgot-password"
-                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-            </div>
-            <button
-              type="submit"
-              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-2.5 rounded-lg transition-all duration-200 font-medium ${
-                isLoading
-                  ? "opacity-70 cursor-not-allowed"
-                  : "hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/20"
-              }`}
-              disabled={isLoading}
-            >
-              {login.isPending ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                  Logging in...
-                </div>
-              ) : (
-                "Login"
-              )}
-            </button>
-          </form>
+          <AuthInput
+            label="Email Address"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="Enter your email"
+            error={validationErrors.email}
+            icon={<FaEnvelope />}
+            autoComplete="email"
+            disabled={isLoading}
+            required
+          />
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-700"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-[#1d1f23] text-gray-400">
-                  Or continue with
-                </span>
-              </div>
-            </div>
-            <div className="mt-6 grid grid-cols-2 gap-4">
-              <button
-                onClick={() => handleSocialLogin("google")}
-                className={`flex items-center justify-center px-4 py-2.5 border border-gray-700 rounded-lg transition-all duration-200 text-white ${
-                  isLoading
-                    ? "opacity-70 cursor-not-allowed"
-                    : "hover:bg-gray-800 hover:shadow-md"
-                }`}
-                disabled={isLoading}
-                type="button"
-              >
-                {socialLoading.google ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                    Loading...
-                  </div>
-                ) : (
-                  <>
-                    <img
-                      className="h-5 w-5 mr-2"
-                      src="https://www.svgrepo.com/show/475656/google-color.svg"
-                      alt="Google"
-                    />
-                    <span>Google</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => handleSocialLogin("facebook")}
-                className={`flex items-center justify-center px-4 py-2.5 border border-gray-700 rounded-lg transition-all duration-200 text-white ${
-                  isLoading
-                    ? "opacity-70 cursor-not-allowed"
-                    : "hover:bg-gray-800 hover:shadow-md"
-                }`}
-                disabled={isLoading}
-                type="button"
-              >
-                {socialLoading.facebook ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                    Loading...
-                  </div>
-                ) : (
-                  <>
-                    <img
-                      className="h-5 w-5 mr-2"
-                      src="https://www.svgrepo.com/show/475647/facebook-color.svg"
-                      alt="Facebook"
-                    />
-                    <span>Facebook</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          <AuthInput
+            label="Password"
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Enter your password"
+            error={validationErrors.password}
+            icon={<FaLock />}
+            autoComplete="current-password"
+            disabled={isLoading}
+            required
+          />
 
-          <div className="mt-6 text-center text-gray-400">
-            Don't have an account?{" "}
+          <div className="flex justify-end">
             <Link
-              to="/signup"
-              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              to="/forgot-password"
+              className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200"
             >
-              Sign up now
+              Forgot password?
             </Link>
           </div>
-        </div>
-      </div>
+
+          <AuthButton
+            type="submit"
+            isLoading={login.isPending}
+            disabled={isLoading}
+            variant="primary"
+            fullWidth
+          >
+            Sign In
+          </AuthButton>
+
+          <div className="relative flex items-center justify-center mt-6">
+            <div className="absolute border-t border-[var(--color-border)] w-full"></div>
+            <div className="relative bg-[var(--color-bg-secondary)] px-4 text-sm text-[var(--color-text-secondary)]">
+              Or continue with
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <AuthButton
+              onClick={() => handleSocialLogin("google")}
+              isLoading={socialLoading.google}
+              disabled={isLoading}
+              variant="secondary"
+              icon={<FaGoogle />}
+            >
+              Google
+            </AuthButton>
+
+            <AuthButton
+              onClick={() => handleSocialLogin("facebook")}
+              isLoading={socialLoading.facebook}
+              disabled={isLoading}
+              variant="secondary"
+              icon={<FaFacebook />}
+              className="text-blue-600"
+            >
+              Facebook
+            </AuthButton>
+          </div>
+
+          <div className="text-center mt-6">
+            <p className="text-[var(--color-text-secondary)]">
+              Don't have an account?{" "}
+              <Link
+                to="/signup"
+                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
+              >
+                Sign up now
+              </Link>
+            </p>
+          </div>
+        </AuthForm>
+      </motion.div>
     </div>
   );
 };

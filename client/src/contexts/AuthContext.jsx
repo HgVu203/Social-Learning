@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useAuthSession } from "../hooks/queries/useAuthQueries";
 import useAuthMutations from "../hooks/mutations/useAuthMutations";
 import tokenService from "../services/tokenService";
-// import { initSocket, closeSocket } from "../socket";
+import { initSocket, closeSocket } from "../socket";
 
 const AuthContext = createContext({
   isAuthenticated: false,
@@ -63,15 +63,17 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       setLoading(false);
 
-      // Socket temporarily disabled
-      // initSocket();
+      // Initialize socket connection when user is authenticated
+      console.log("Initializing socket connection after authentication");
+      initSocket();
     } else {
       console.log("No valid user data in session response:", data);
       setUser(null);
       setLoading(false);
 
-      // Socket temporarily disabled
-      // closeSocket();
+      // Close socket if no valid user
+      console.log("Closing socket due to missing authentication");
+      closeSocket();
     }
   }, [data]);
 
@@ -92,11 +94,21 @@ export const AuthProvider = ({ children }) => {
         const userData = result.data.user;
         userData.token = result.data.accessToken;
         setUser(userData);
+      } else if (result.data?.requiresVerification) {
+        // Don't set error for verification redirects
+        console.log("Login requires verification, skipping error message");
       }
 
       return result;
     } catch (error) {
-      setError(error.response?.data?.message || "Login failed");
+      // Only set error if it's not a verification required error
+      if (!error.response?.data?.data?.requiresVerification) {
+        setError(error.response?.data?.message || "Login failed");
+      } else {
+        console.log(
+          "Verification required error, not displaying general error"
+        );
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -152,6 +164,10 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     console.log("Logging out user");
     setLoading(true);
+
+    // Close socket before clearing user data
+    console.log("Closing socket connection on logout");
+    closeSocket();
 
     // Đặt user về null trước khi gửi request để ngăn người dùng tiếp tục sử dụng app
     setUser(null);
@@ -228,54 +244,70 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const setCredentials = (userData) => {
-    try {
-      console.log("AuthContext.setCredentials called with:", userData);
-
-      if (!userData) {
-        console.error("userData is undefined or null");
-        return { success: false, error: "Invalid user data" };
-      }
-
-      if (userData?.user) {
-        // Đảm bảo token được gán cho user
-        if (userData.accessToken && !userData.user.token) {
-          console.log("Adding token to user data:", userData.accessToken);
-          userData.user.token = userData.accessToken;
-        } else if (!userData.accessToken && !userData.user.token) {
-          console.error("No token found in credentials");
-          return { success: false, error: "No token provided" };
-        }
-
-        // Set userstate và lưu vào localStorage
-        console.log("Setting user state with:", userData.user);
-        setUser(userData.user);
-
-        // Update token trong localStorage và axios header
-        const token = userData.accessToken || userData.user.token;
-        if (token) {
-          tokenService.setToken(token);
-        }
-
-        // Lưu user vào localStorage
-        tokenService.setUser(userData.user);
-
-        // Cập nhật các query liên quan
-        const result = authMutations.setCredentials(userData);
-        console.log("setCredentials result:", result);
-        return result;
-      }
-
-      console.error("Invalid user data format:", userData);
-      return { success: false, error: "Invalid user data format" };
-    } catch (error) {
-      console.error("Error in AuthContext.setCredentials:", error);
-      return { success: false, error: error.message };
-    }
-  };
-
   const clearError = () => {
     setError(null);
+  };
+
+  // Enhance this function to be more robust
+  const setCredentials = (userData) => {
+    try {
+      if (!userData) {
+        console.error("Attempted to set empty user credentials");
+        return false;
+      }
+
+      console.log(
+        "Setting credentials with userData:",
+        JSON.stringify(userData, null, 2)
+      );
+
+      if (userData.accessToken && userData.user) {
+        try {
+          // Create user object with token included
+          const user = { ...userData.user, token: userData.accessToken };
+          console.log("Setting user with accessToken:", user);
+
+          // Set user in state first
+          setUser(user);
+
+          // Then try to save to localStorage
+          tokenService.setToken(userData.accessToken);
+          tokenService.setUser(user);
+
+          return true;
+        } catch (storageError) {
+          console.error("Error saving credentials to storage:", storageError);
+          // Even if localStorage fails, we can still set the user in memory
+          // This allows the session to work for this session only
+          setUser({ ...userData.user, token: userData.accessToken });
+          return true;
+        }
+      } else if (userData.token && userData.user) {
+        try {
+          console.log("Setting user with token property:", userData.user);
+
+          // Set user in state first
+          setUser(userData.user);
+
+          // Then try to save to localStorage
+          tokenService.setToken(userData.token);
+          tokenService.setUser(userData.user);
+
+          return true;
+        } catch (storageError) {
+          console.error("Error saving credentials to storage:", storageError);
+          // Even if localStorage fails, we can still set the user in memory
+          setUser(userData.user);
+          return true;
+        }
+      } else {
+        console.error("Invalid user credentials format", userData);
+        return false;
+      }
+    } catch (error) {
+      console.error("Error setting credentials:", error);
+      return false;
+    }
   };
 
   const value = {

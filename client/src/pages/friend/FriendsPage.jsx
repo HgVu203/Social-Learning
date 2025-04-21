@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import Avatar from "../../components/common/Avatar";
-import Loading from "../../components/common/Loading";
-import { FiUsers, FiUserX, FiMessageSquare, FiSearch } from "react-icons/fi";
-import { showConfirmToast } from "../../utils/toast";
-import { FiBell } from "react-icons/fi";
+import {
+  FiUsers,
+  FiUserX,
+  FiMessageSquare,
+  FiSearch,
+  FiUserPlus,
+  FiClock,
+  FiUserCheck,
+  FiBell,
+} from "react-icons/fi";
+import { showErrorToast } from "../../utils/toast";
 import { useFriend } from "../../contexts/FriendContext";
+import { useSearchUsers } from "../../hooks/queries/useUserQueries";
+import { useFriendshipStatus } from "../../hooks/queries/useFriendQueries";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
+import { useQueryClient } from "@tanstack/react-query";
 
 const FriendsPage = () => {
+  const queryClient = useQueryClient();
   const {
     friends,
     friendRequests: pendingRequests,
@@ -18,71 +31,355 @@ const FriendsPage = () => {
     acceptFriendRequest,
     rejectFriendRequest,
     removeFriend: unfriend,
+    sendFriendRequest,
   } = useFriend();
 
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [processingIds, setProcessingIds] = useState([]);
 
+  // State để lưu danh sách tạm thời cho optimistic updates
+  const [localPendingRequests, setLocalPendingRequests] = useState([]);
+  const [localFriends, setLocalFriends] = useState([]);
+  // Thêm flag để theo dõi xem đã fetch dữ liệu hay chưa
+  const [hasFetched, setHasFetched] = useState(false);
+
+  // Đồng bộ state cục bộ với dữ liệu từ server khi có thay đổi
   useEffect(() => {
-    // Load all data on component mount
-    fetchFriends();
-    fetchFriendRequests();
-  }, [fetchFriends, fetchFriendRequests]);
+    if (pendingRequests?.length > 0) {
+      setLocalPendingRequests(pendingRequests);
+    }
+  }, [pendingRequests]);
+
+  useEffect(() => {
+    if (friends?.length > 0) {
+      setLocalFriends(friends);
+    }
+  }, [friends]);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+      if (searchQuery.trim().length >= 2) {
+        setShowSearchResults(true);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch data immediately when component mounts - CRITICAL
+  useEffect(() => {
+    const fetchData = async () => {
+      // First immediate fetch - highest priority
+      console.log("Initial friends data fetch");
+      fetchFriends();
+      fetchFriendRequests();
+
+      // Mark as fetched
+      setHasFetched(true);
+
+      // Second fetch after a short delay to ensure fresh data
+      setTimeout(() => {
+        console.log("Follow-up friends data fetch");
+        fetchFriends();
+        fetchFriendRequests();
+      }, 1000);
+    };
+
+    // Only fetch once on initial load
+    if (!hasFetched) {
+      fetchData();
+    }
+
+    // Initialize local state with any available data from cache
+    if (friends?.length > 0 && localFriends.length === 0) {
+      setLocalFriends(friends);
+    }
+
+    if (pendingRequests?.length > 0 && localPendingRequests.length === 0) {
+      setLocalPendingRequests(pendingRequests);
+    }
+  }, [
+    fetchFriends,
+    fetchFriendRequests,
+    friends,
+    pendingRequests,
+    hasFetched,
+    localFriends.length,
+    localPendingRequests.length,
+  ]);
+
+  // Get search results
+  const { data: searchResults, isLoading: searchLoading } = useSearchUsers(
+    debouncedQuery,
+    {
+      enabled: debouncedQuery.length >= 2,
+      page: 1,
+      limit: 10,
+    }
+  );
+
+  // Handle friend request actions
+  const handleSendFriendRequest = async (userId) => {
+    // Đánh dấu ngay là đang xử lý
+    setProcessingIds((prev) => [...prev, userId]);
+
+    try {
+      // Gọi API
+      await sendFriendRequest.mutateAsync({ userId });
+
+      // Cập nhật cache và invalidate queries sau khi API thành công
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+      queryClient.invalidateQueries({ queryKey: ["search-users"] });
+    } catch (error) {
+      console.error("Error sending friend request:", error);
+      showErrorToast(
+        error?.response?.data?.error || "Failed to send friend request"
+      );
+
+      // Khôi phục trạng thái nếu có lỗi
+      queryClient.setQueryData(["friendship-status", userId], {
+        status: "NOT_FRIEND",
+      });
+    } finally {
+      // Gỡ bỏ ID khỏi danh sách đang xử lý
+      setProcessingIds((prev) => prev.filter((id) => id !== userId));
+    }
+  };
 
   const handleAcceptRequest = async (userId) => {
     setProcessingIds((prev) => [...prev, userId]);
-    try {
-      await acceptFriendRequest.mutateAsync(userId);
-    } catch (error) {
-      console.error("Failed to accept friend request:", error);
-    } finally {
-      setProcessingIds((prev) => prev.filter((id) => id !== userId));
+
+    // Tìm request cần xử lý
+    const requestToAccept = localPendingRequests.find(
+      (request) => request.userId._id === userId
+    );
+
+    if (requestToAccept) {
+      // 1. Optimistic UI update - xóa khỏi danh sách yêu cầu
+      setLocalPendingRequests((prev) =>
+        prev.filter((request) => request.userId._id !== userId)
+      );
+
+      // 2. Thêm vào danh sách bạn bè tạm thời
+      const newFriend = {
+        _id: requestToAccept.userId._id,
+        username: requestToAccept.userId.username,
+        fullname: requestToAccept.userId.fullname,
+        avatar: requestToAccept.userId.avatar,
+        email: requestToAccept.userId.email,
+        friendshipId: requestToAccept._id,
+      };
+
+      setLocalFriends((prev) => [newFriend, ...prev]);
+
+      try {
+        // 3. Gọi API
+        await acceptFriendRequest.mutateAsync({
+          requestId: userId,
+        });
+
+        // 4. Cập nhật cache để đảm bảo tính đồng bộ
+        queryClient.invalidateQueries({ queryKey: ["friends"] });
+        queryClient.invalidateQueries({ queryKey: ["friends", "requests"] });
+      } catch (error) {
+        console.error("Failed to accept friend request:", error);
+        showErrorToast(
+          error?.response?.data?.error || "Failed to accept friend request"
+        );
+
+        // 5. Khôi phục lại UI nếu có lỗi
+        setLocalPendingRequests(pendingRequests);
+        setLocalFriends(friends);
+      } finally {
+        setProcessingIds((prev) => prev.filter((id) => id !== userId));
+      }
     }
   };
 
   const handleRejectRequest = async (userId) => {
     setProcessingIds((prev) => [...prev, userId]);
+
+    // Optimistic UI update - xóa khỏi danh sách yêu cầu
+    setLocalPendingRequests((prev) =>
+      prev.filter((request) => request.userId._id !== userId)
+    );
+
     try {
-      await rejectFriendRequest.mutateAsync(userId);
+      await rejectFriendRequest.mutateAsync({
+        requestId: userId,
+      });
+
+      // Cập nhật cache
+      queryClient.invalidateQueries({ queryKey: ["friends", "requests"] });
     } catch (error) {
       console.error("Failed to reject friend request:", error);
+      showErrorToast(
+        error?.response?.data?.error || "Failed to reject friend request"
+      );
+
+      // Khôi phục UI nếu có lỗi
+      setLocalPendingRequests(pendingRequests);
     } finally {
       setProcessingIds((prev) => prev.filter((id) => id !== userId));
     }
   };
 
   const handleUnfriend = async (userId) => {
-    showConfirmToast(
-      "Are you sure you want to unfriend this person?",
-      async () => {
-        setProcessingIds((prev) => [...prev, userId]);
-        try {
-          await unfriend.mutateAsync(userId);
-        } catch (error) {
-          console.error("Failed to unfriend:", error);
-        } finally {
-          setProcessingIds((prev) => prev.filter((id) => id !== userId));
-        }
+    setProcessingIds((prev) => [...prev, userId]);
+
+    // Optimistic UI update - xóa người dùng khỏi danh sách bạn bè
+    setLocalFriends((prev) => prev.filter((friend) => friend._id !== userId));
+
+    try {
+      await unfriend.mutateAsync(userId);
+
+      // Cập nhật cache
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+    } catch (error) {
+      console.error("Failed to unfriend:", error);
+      showErrorToast(error?.response?.data?.error || "Failed to unfriend");
+
+      // Khôi phục UI nếu có lỗi
+      setLocalFriends(friends);
+    } finally {
+      setProcessingIds((prev) => prev.filter((id) => id !== userId));
+    }
+  };
+
+  // Render friendship button based on status
+  const FriendRequestButton = ({ userId }) => {
+    const { data: statusData, isLoading: statusLoading } =
+      useFriendshipStatus(userId);
+    const status = statusData?.status || "NOT_FRIEND";
+
+    // Tạo state local để kiểm soát UI hiển thị
+    const [localStatus, setLocalStatus] = useState(status);
+
+    // Đồng bộ status từ API với local status khi có thay đổi
+    useEffect(() => {
+      if (status && !processingIds.includes(userId)) {
+        setLocalStatus(status);
       }
-    );
+    }, [status, userId]);
+
+    // Local handlers để cập nhật UI ngay lập tức
+    const handleLocalSendRequest = () => {
+      // Cập nhật UI ngay lập tức, không đợi API
+      setLocalStatus("PENDING_SENT");
+
+      // Cập nhật cache trước khi gọi API
+      queryClient.setQueryData(["friendship-status", userId], {
+        status: "PENDING_SENT",
+      });
+
+      // Sau đó gọi API trong background
+      handleSendFriendRequest(userId);
+    };
+
+    const handleLocalUnfriend = () => {
+      setLocalStatus("NOT_FRIEND");
+      handleUnfriend(userId);
+    };
+
+    const handleLocalAccept = () => {
+      setLocalStatus("FRIEND");
+      handleAcceptRequest(userId);
+    };
+
+    const handleLocalReject = () => {
+      setLocalStatus("NOT_FRIEND");
+      handleRejectRequest(userId);
+    };
+
+    if (statusLoading || processingIds.includes(userId)) {
+      return <LoadingSpinner size="sm" />;
+    }
+
+    switch (localStatus) {
+      case "NOT_FRIEND":
+        return (
+          <button
+            onClick={handleLocalSendRequest}
+            className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
+          >
+            <FiUserPlus className="mr-2" size={16} /> Add Friend
+          </button>
+        );
+      case "FRIEND":
+        return (
+          <div className="flex space-x-2">
+            <Link
+              to={`/messages/${userId}`}
+              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
+            >
+              <FiMessageSquare className="mr-2" size={16} /> Message
+            </Link>
+            <button
+              onClick={handleLocalUnfriend}
+              className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors flex items-center justify-center shadow-sm"
+            >
+              <FiUserX className="mr-2" size={16} /> Unfriend
+            </button>
+          </div>
+        );
+      case "PENDING_SENT":
+        return (
+          <button
+            disabled
+            className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-sm font-medium rounded-xl opacity-75 cursor-not-allowed flex items-center justify-center shadow-sm"
+          >
+            <FiClock className="mr-2" size={16} /> Request Sent
+          </button>
+        );
+      case "PENDING_RECEIVED":
+        return (
+          <div className="flex space-x-2 flex-shrink-0 ml-3">
+            <button
+              onClick={handleLocalAccept}
+              disabled={processingIds.includes(userId)}
+              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+            >
+              <FiUserCheck className="mr-2" size={16} /> Confirm
+            </button>
+            <button
+              onClick={handleLocalReject}
+              disabled={processingIds.includes(userId)}
+              className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+            >
+              Delete
+            </button>
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   const renderFriendRequests = () => {
-    if (pendingRequests.length === 0) {
+    if (localPendingRequests.length === 0) {
       return (
-        <div className="bg-[#18191a] rounded-lg p-6 text-center shadow-md border border-gray-700">
-          <p className="text-gray-400">No new friend requests.</p>
+        <div className="card p-6 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            No new friend requests.
+          </p>
         </div>
       );
     }
 
     return (
       <div className="space-y-3">
-        {pendingRequests.map((request) => (
-          <div
+        {localPendingRequests.map((request) => (
+          <motion.div
             key={request._id}
-            className="bg-[#242526] rounded-lg p-3 flex items-center justify-between shadow-sm border border-gray-700 hover:bg-[#3a3b3c] transition-colors"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="card p-3 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl"
           >
             <div className="flex items-center space-x-3 flex-1 min-w-0">
               <Link
@@ -99,44 +396,49 @@ const FriendsPage = () => {
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/profile/${request.userId._id}`}
-                  className="font-semibold text-white hover:underline truncate"
+                  className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
                 >
-                  {request.userId.username}
+                  {request.userId.fullname || request.userId.username}
                 </Link>
+                <p className="text-sm text-[var(--color-text-secondary)] truncate">
+                  @{request.userId.username}
+                </p>
               </div>
             </div>
             <div className="flex space-x-2 flex-shrink-0 ml-3">
               <button
                 onClick={() => handleAcceptRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
               >
-                Confirm
+                <FiUserCheck className="mr-2" size={16} /> Confirm
               </button>
               <button
                 onClick={() => handleRejectRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 px-4 bg-[#4e4f50] text-white text-sm font-semibold rounded-lg hover:bg-[#5f6061] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
               >
                 Delete
               </button>
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
     );
   };
 
   const renderAllFriends = () => {
-    if (friends.length === 0) {
+    if (localFriends.length === 0) {
       return (
-        <div className="bg-[#18191a] rounded-lg p-6 text-center shadow-md border border-gray-700">
-          <p className="text-gray-400">You don't have any friends yet.</p>
+        <div className="card p-6 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            You don't have any friends yet.
+          </p>
         </div>
       );
     }
 
-    const filteredFriends = friends.filter(
+    const filteredFriends = localFriends.filter(
       (friend) =>
         searchQuery.trim() === "" ||
         friend.username.toLowerCase().includes(searchQuery.toLowerCase())
@@ -144,24 +446,14 @@ const FriendsPage = () => {
 
     return (
       <>
-        <div className="mb-4">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search friends..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-[#3a3b3c] border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-            />
-            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          </div>
-        </div>
-
         <div className="space-y-3">
           {filteredFriends.map((friend) => (
-            <div
+            <motion.div
               key={friend._id}
-              className="bg-[#242526] rounded-lg p-3 flex items-center justify-between shadow-sm border border-gray-700 hover:bg-[#3a3b3c] transition-colors"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="card p-3 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl"
             >
               <div className="flex items-center space-x-3 flex-1 min-w-0">
                 <Link to={`/profile/${friend._id}`} className="flex-shrink-0">
@@ -175,93 +467,304 @@ const FriendsPage = () => {
                 <div className="flex-1 min-w-0">
                   <Link
                     to={`/profile/${friend._id}`}
-                    className="font-semibold text-white hover:underline truncate"
+                    className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
                   >
                     {friend.fullname || friend.username}
                   </Link>
-                  <p className="text-sm text-gray-400 truncate">
-                    {friend.email}
+                  <p className="text-sm text-[var(--color-text-secondary)] truncate">
+                    @{friend.username}
                   </p>
                 </div>
               </div>
               <div className="flex space-x-2 flex-shrink-0 ml-3">
                 <Link
-                  to={`/chat/${friend._id}`}
-                  className="py-1.5 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+                  to={`/messages/${friend._id}`}
+                  className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
                 >
                   <FiMessageSquare className="mr-2" size={16} /> Message
                 </Link>
                 <button
                   onClick={() => handleUnfriend(friend._id)}
                   disabled={processingIds.includes(friend._id)}
-                  className="py-1.5 px-4 bg-[#4e4f50] text-white text-sm font-semibold rounded-lg hover:bg-[#5f6061] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
                 >
                   <FiUserX className="mr-2" size={16} /> Unfriend
                 </button>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </>
     );
   };
 
+  const renderSearchResults = () => {
+    if (!showSearchResults || debouncedQuery.length < 2) {
+      return null;
+    }
+
+    return (
+      <div className="card mb-6">
+        <div className="p-4 border-b border-[var(--color-border)] flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+            Search Results
+          </h2>
+          {searchLoading && <LoadingSpinner size="sm" />}
+        </div>
+
+        {searchResults?.data && searchResults.data.length > 0 ? (
+          <div className="p-4 space-y-3">
+            {searchResults.data.map((user) => {
+              // Kiểm tra xem user này có đang được xử lý không
+              const isProcessing = processingIds.includes(user._id);
+
+              // Cách hiển thị nút dựa trên trạng thái hiện tại
+              const renderFriendshipButton = () => {
+                // Nếu có trong processingIds, hiển thị spinner
+                if (isProcessing) {
+                  return <LoadingSpinner size="sm" />;
+                }
+
+                // Sử dụng FriendRequestButton có sẵn
+                return <FriendRequestButton userId={user._id} />;
+              };
+
+              return (
+                <div
+                  key={user._id}
+                  className="bg-[var(--color-bg-secondary)] rounded-xl p-3 flex items-center justify-between shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors"
+                >
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <Link to={`/profile/${user._id}`} className="flex-shrink-0">
+                      <Avatar
+                        src={user.avatar}
+                        alt={user.username}
+                        size="xl"
+                        className="flex-shrink-0 hover:opacity-90 transition-opacity border-2 border-[var(--color-bg-primary)]"
+                      />
+                    </Link>
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/profile/${user._id}`}
+                        className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
+                      >
+                        {user.fullname || user.username}
+                      </Link>
+                      <p className="text-sm text-[var(--color-text-secondary)] truncate">
+                        @{user.username}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 ml-3">
+                    {renderFriendshipButton()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-6 text-center">
+            <p className="text-gray-400">
+              {searchLoading
+                ? "Searching..."
+                : `No users found matching "${debouncedQuery}"`}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Thêm SkeletonLoader khi đang tải dữ liệu
+  const renderSkeletonFriends = () => {
+    return Array(5)
+      .fill(0)
+      .map((_, index) => (
+        <div
+          key={`skeleton-${index}`}
+          className="card p-3 flex items-center justify-between animate-pulse mb-3"
+        >
+          <div className="flex items-center space-x-3 flex-1">
+            <div className="w-14 h-14 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+            <div className="flex-1">
+              <div className="h-5 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/2"></div>
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <div className="h-9 w-24 bg-blue-300 dark:bg-blue-700 rounded-xl"></div>
+            <div className="h-9 w-24 bg-gray-300 dark:bg-gray-700 rounded-xl"></div>
+          </div>
+        </div>
+      ));
+  };
+
+  // Cập nhật hàm renderContent() để hiển thị skeleton
   const renderContent = () => {
-    if (loading && !friends.length && !pendingRequests.length) {
+    // Display skeleton loader when no cached data available
+    if (loading && !localFriends.length) {
       return (
-        <div className="flex justify-center items-center min-h-[300px]">
-          <Loading />
+        <div className="space-y-3">
+          <div className="flex justify-center my-2 mb-4">
+            <div className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm">
+              <LoadingSpinner size="sm" className="mr-2" />
+              <span>Loading friends...</span>
+            </div>
+          </div>
+          {renderSkeletonFriends()}
+        </div>
+      );
+    } else if (loading && localFriends.length > 0) {
+      // If we have cached data, show it with a small loading indicator
+      return (
+        <>
+          <div className="flex justify-center my-2 mb-4">
+            <div className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm">
+              <LoadingSpinner size="sm" className="mr-2" />
+              <span>Updating...</span>
+            </div>
+          </div>
+          {showSearchResults
+            ? renderSearchResults()
+            : activeTab === "requests"
+            ? renderFriendRequests()
+            : renderAllFriends()}
+        </>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="bg-red-900/20 text-red-500 p-4 rounded-lg">
+          {error.message || "Could not load friends data"}
         </div>
       );
     }
 
-    if (activeTab === "requests") {
-      return renderFriendRequests();
-    } else if (activeTab === "all") {
-      return renderAllFriends();
+    if (showSearchResults) {
+      return renderSearchResults();
     }
 
-    return null;
+    switch (activeTab) {
+      case "requests":
+        return renderFriendRequests();
+      case "all":
+      default:
+        return renderAllFriends();
+    }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-4">Friends</h1>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`py-2 px-4 rounded-md text-sm font-medium flex-1 sm:flex-none flex items-center justify-center ${
-              activeTab === "all"
-                ? "bg-blue-600 text-white"
-                : "bg-[#3a3b3c] text-gray-300 hover:bg-[#4d4e4f]"
-            } transition-colors`}
-          >
-            <FiUsers className="mr-2" /> All Friends
-          </button>
-          <button
-            onClick={() => setActiveTab("requests")}
-            className={`py-2 px-4 rounded-md text-sm font-medium flex-1 sm:flex-none flex items-center justify-center ${
-              activeTab === "requests"
-                ? "bg-blue-600 text-white"
-                : "bg-[#3a3b3c] text-gray-300 hover:bg-[#4d4e4f]"
-            } transition-colors`}
-          >
-            <FiBell className="mr-2" /> Friend Requests
-            {pendingRequests.length > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {pendingRequests.length}
-              </span>
-            )}
-          </button>
+    <div className="p-4 max-w-7xl mx-auto">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex justify-between items-center mb-6"
+      >
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          Friends
+        </h1>
+
+        {/* Search Input */}
+        <div className="relative max-w-md w-full">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <FiSearch className="text-[var(--color-text-tertiary)]" />
+          </div>
+          <input
+            type="text"
+            placeholder="Search people..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full py-2 pl-10 pr-4 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+          />
+          {showSearchResults && (
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setShowSearchResults(false);
+              }}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          )}
         </div>
-      </div>
+      </motion.div>
 
-      {error && (
-        <div className="bg-red-500 text-white p-3 rounded-md mb-4">{error}</div>
-      )}
+      {/* Tabs */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="flex mb-6 border-b border-[var(--color-border)] overflow-x-auto"
+      >
+        <button
+          onClick={() => {
+            setActiveTab("all");
+            setShowSearchResults(false);
+          }}
+          className={`flex items-center py-3 px-4 text-base relative transition-colors ${
+            activeTab === "all" && !showSearchResults
+              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
+              : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          }`}
+        >
+          <FiUsers className="mr-2" />
+          <span>All Friends</span>
+          {friends.length > 0 && (
+            <span className="ml-2 bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full text-xs">
+              {friends.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab("requests");
+            setShowSearchResults(false);
+          }}
+          className={`flex items-center py-3 px-4 text-base relative transition-colors ${
+            activeTab === "requests" && !showSearchResults
+              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
+              : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          }`}
+        >
+          <FiBell className="mr-2" />
+          <span>Friend Requests</span>
+          {pendingRequests.length > 0 && (
+            <span className="ml-2 bg-[var(--color-primary)] text-white px-2 py-0.5 rounded-full text-xs">
+              {pendingRequests.length}
+            </span>
+          )}
+        </button>
+        {showSearchResults && (
+          <div className="flex items-center py-3 px-4 text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]">
+            <FiSearch className="mr-2" />
+            <span>Search Results</span>
+          </div>
+        )}
+      </motion.div>
 
-      {renderContent()}
+      {/* Content */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        {renderContent()}
+      </motion.div>
     </div>
   );
 };

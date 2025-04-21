@@ -30,25 +30,48 @@ styles.innerHTML = `
 
 /* Comment Thread Lines Styling */
 .comment-thread {
-  padding-bottom: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 12px;
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+/* Thread line coloring and visibility */
+.comment-thread .absolute[class*="bg-[var(--color-border)]"],
+.comment-reply .absolute[class*="bg-[var(--color-border)]"] {
+  background-color: var(--color-border-hover);
+  opacity: 0.3;
 }
 
 .comment-root {
   position: relative;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
 .comment-reply {
   position: relative;
+  margin-bottom: 10px;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
-/* Apply smoothing to the thread lines */
-.comment-thread [class*="bg-[#4e4f50]"] {
-  opacity: 0.8;
+/* Apply proper opacity to the thread lines */
+.comment-thread [class*="bg-[#4e4f50]"],
+.comment-thread [class*="bg-[var(--color-border)]"] {
+  opacity: 0.3;
+  background-color: var(--color-border-hover);
 }
 
 /* Comment connector lines */
-.ml-8 .bg-[#4e4f50] {
-  opacity: 0.8;
+.ml-8 .bg-[#4e4f50],
+.ml-8 .bg-[var(--color-border)] {
+  opacity: 0.7;
+}
+
+/* Add more spacing between comments */
+.comment-thread + .comment-thread {
+  margin-top: 16px;
 }
 
 .like-button {
@@ -192,10 +215,12 @@ const CommentForm = ({
     }
 
     return (
-      <div className="absolute left-0 top-0 w-full h-full pointer-events-none px-4 py-3 text-sm text-transparent">
-        <span>{parts[0]}</span>
-        <span className="user-tag">@{replyingToUser}</span>
-        <span>{parts[1]}</span>
+      <div className="absolute left-0 top-0 w-full h-full pointer-events-none px-5 py-2.5 text-[15px] text-transparent">
+        <span className="invisible">{parts[0]}</span>
+        <span className="user-tag bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+          @{replyingToUser}
+        </span>
+        <span className="invisible">{parts[1]}</span>
       </div>
     );
   };
@@ -337,10 +362,14 @@ const CommentForm = ({
   };
 
   return (
-    <div className="comment-form-wrapper">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="comment-form-wrapper"
+    >
       <form
         onSubmit={handleSubmit}
-        className="flex items-start gap-2 w-full mt-2"
+        className="flex items-start gap-3 w-full mt-2 px-0.5"
         ref={(formElement) => {
           if (formElement) {
             // Gắn pendingLikeRef vào element DOM để có thể truy cập từ bên ngoài
@@ -352,13 +381,15 @@ const CommentForm = ({
           <Avatar
             src={user?.avatar}
             alt={user?.username}
-            className="w-8 h-8 rounded-full flex-shrink-0"
+            className="w-10 h-10 rounded-full flex-shrink-0 border-2 border-[var(--color-bg-primary)] shadow-sm"
           />
         )}
         <div
-          className={`relative flex-1 rounded-full overflow-hidden ${
-            isFocused ? "ring-1 ring-blue-500" : ""
-          } transition-all duration-200 bg-[#3a3b3c]`}
+          className={`relative border border-gray-400 flex-1 rounded-2xl overflow-hidden ${
+            isFocused
+              ? "ring-2 border-gray-800 ring-[var(--color-primary)]"
+              : ""
+          } transition-all duration-200 bg-[var(--color-bg-secondary)] shadow-sm hover:bg-[var(--color-bg-hover)]`}
         >
           {replyingToUser && renderHighlightedInput()}
           <input
@@ -375,37 +406,39 @@ const CommentForm = ({
                 ? `Reply${replyingToUser ? " to " + replyingToUser : ""}...`
                 : "Write a comment..."
             }
-            className="w-full bg-transparent text-[#e4e6eb] rounded-full px-4 py-2 text-[15px] focus:outline-none placeholder-[#b0b3b8] border-none"
+            className="w-full bg-transparent text-[var(--color-text-primary)] rounded-2xl px-5 py-2.5 text-[15px] focus:outline-none placeholder-[var(--color-text-tertiary)] border-none"
             disabled={isSubmitting}
           />
           {content.trim() && !isSubmitting && (
-            <button
+            <motion.button
+              whileTap={{ scale: 0.95 }}
               type="submit"
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-blue-300 p-1.5 rounded-full hover:bg-[#4e4f50] transition-colors"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] p-1.5 rounded-full hover:bg-[var(--color-bg-hover)] transition-colors"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
               </svg>
-            </button>
+            </motion.button>
           )}
           {isSubmitting && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
             </div>
           )}
         </div>
         {(isEditing || replyToId) && onCancel && (
-          <button
+          <motion.button
+            whileTap={{ scale: 0.95 }}
             type="button"
             onClick={onCancel}
-            className="text-[#b0b3b8] hover:text-[#e4e6eb] py-2 px-3 rounded-lg hover:bg-[#4e4f50] transition-colors"
+            className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] py-2 px-3 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors font-medium text-sm"
             disabled={isSubmitting}
           >
             Cancel
-          </button>
+          </motion.button>
         )}
       </form>
-    </div>
+    </motion.div>
   );
 };
 
@@ -862,7 +895,7 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
 
       parts.push(
         <Link key={`mention-${match.index}`} to={profilePath}>
-          <span className="text-blue-500 font-semibold">
+          <span className="text-[var(--color-primary)] font-semibold">
             @{fullMentionedName}
           </span>
         </Link>
@@ -889,15 +922,15 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
     const visibleReplies = viewAllReplies ? replies : replies.slice(0, 2);
 
     return (
-      <div className="ml-8 mt-1 relative">
+      <div className="ml-8 mt-2 relative">
         {/* Vertical line connecting all replies */}
-        <div className="absolute left-0 top-4 bottom-0 w-[1.5px] bg-[#4e4f50]"></div>
+        <div className="absolute left-0 top-4 bottom-0 w-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
 
-        <div className="pl-3">
+        <div className="pl-4">
           {visibleReplies.map((reply, index) => (
-            <div key={reply._id} className="relative pt-1">
+            <div key={reply._id} className="relative pt-2">
               {/* Horizontal connector line from vertical line to each reply */}
-              <div className="absolute left-[-3px] top-5 w-[3px] h-[1.5px] bg-[#4e4f50]"></div>
+              <div className="absolute left-[-3px] top-5 w-[3px] h-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
 
               {/* Last reply special styling */}
               {index === visibleReplies.length - 1 &&
@@ -918,10 +951,10 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
           {!viewAllReplies && replies.length > 2 && (
             <div className="relative">
               {/* Horizontal connector for "View more" button */}
-              <div className="absolute left-[-3px] top-3 w-[3px] h-[1.5px] bg-[#4e4f50]"></div>
+              <div className="absolute left-[-3px] top-3 w-[3px] h-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
               <button
                 onClick={() => setViewAllReplies(true)}
-                className="text-blue-400 hover:text-blue-300 text-xs mt-1 ml-3"
+                className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] text-xs mt-1 ml-3 font-medium"
               >
                 View {replies.length - 2} more{" "}
                 {replies.length - 2 === 1 ? "reply" : "replies"}
@@ -966,22 +999,22 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
       className={`mb-2 text-sm ${depth > 0 ? "comment-reply" : "comment-root"}`}
       data-comment-id={localComment._id}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-3 px-2">
         <Link to={`/profile/${comment.userId.username}`}>
           <Avatar
             src={comment.userId.avatar}
             alt={comment.userId.username}
-            className="w-8 h-8 rounded-full"
+            className="w-9 h-9 rounded-full border-2 border-[var(--color-bg-primary)] shadow-sm"
           />
         </Link>
 
         <div className="flex-1">
           <div className="flex flex-col">
-            <div className="bg-[#303030] rounded-2xl px-3 py-2">
+            <div className="bg-[var(--color-bg-secondary)] rounded-2xl px-4 py-3 shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors">
               <div className="flex flex-col">
                 <Link
                   to={`/profile/${comment.userId.username}`}
-                  className="font-medium text-white hover:underline"
+                  className="font-medium text-[var(--color-text-primary)] hover:underline"
                 >
                   {comment.userId.fullname || comment.userId.username}
                 </Link>
@@ -996,14 +1029,14 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
                     onEditComplete={handleEditComplete}
                   />
                 ) : (
-                  <div className="text-[#e4e6eb] break-words whitespace-pre-wrap text-[15px]">
+                  <div className="text-[var(--color-text-secondary)] break-words whitespace-pre-wrap text-[15px]">
                     {parseContent(comment.content)}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-4 mt-1 pl-2 text-xs">
+            <div className="flex items-center gap-4 mt-1.5 pl-2 text-xs">
               <button
                 className={`font-medium flex items-center gap-1 like-button ${
                   isLikeAnimating ? "active-interaction" : ""
@@ -1029,7 +1062,7 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
                   className={`text-[13px] ${
                     localComment.isLiked
                       ? "text-red-500 font-medium"
-                      : "text-[#b0b3b8]"
+                      : "text-[var(--color-text-tertiary)]"
                   }`}
                 >
                   Like
@@ -1037,7 +1070,7 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
               </button>
 
               <button
-                className="font-medium text-[#b0b3b8] hover:text-[#e4e6eb] flex items-center gap-1"
+                className="font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors flex items-center gap-1"
                 onClick={() => setShowReplyForm(!showReplyForm)}
               >
                 <svg
@@ -1057,7 +1090,7 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
                 <span className="text-[13px]">Reply</span>
               </button>
 
-              <span className="text-[#b0b3b8] flex items-center gap-1">
+              <span className="text-[var(--color-text-tertiary)] flex items-center gap-1">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -1077,45 +1110,96 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
 
               {isOwner && (
                 <div className="relative ml-auto">
-                  <button
-                    className="text-[#b0b3b8] hover:text-[#e4e6eb]"
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    className="p-1.5 rounded-full hover:bg-[var(--color-bg-tertiary)] transition-colors"
                     onClick={() => setShowMenu(!showMenu)}
+                    aria-label="Comment options"
                   >
-                    •••
-                  </button>
-
-                  {showMenu && (
-                    <motion.div
-                      ref={menuRef}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="absolute right-0 top-full mt-1 bg-[#242526] shadow-lg rounded-md py-1 z-10 min-w-[120px] border border-gray-700"
+                    <svg
+                      className="w-4 h-4 text-[var(--color-text-tertiary)]"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      <button
-                        className="w-full text-left px-4 py-2 hover:bg-gray-700 text-white transition-colors"
-                        onClick={() => {
-                          setIsEditing(true);
-                          setShowMenu(false);
-                        }}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                      />
+                    </svg>
+                  </motion.button>
+
+                  <AnimatePresence>
+                    {showMenu && (
+                      <motion.div
+                        ref={menuRef}
+                        initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-full mt-1 bg-[var(--color-bg-primary)] shadow-lg rounded-xl py-1.5 z-10 min-w-[130px] border border-[var(--color-border)]"
                       >
-                        Edit
-                      </button>
-                      <button
-                        className="w-full text-left px-4 py-2 hover:bg-gray-700 text-red-400 transition-colors"
-                        onClick={handleDelete}
-                      >
-                        Delete
-                      </button>
-                    </motion.div>
-                  )}
+                        <motion.button
+                          whileHover={{
+                            backgroundColor: "var(--color-bg-tertiary)",
+                          }}
+                          className="flex items-center w-full text-left px-4 py-2 text-[var(--color-text-primary)] transition-colors gap-2"
+                          onClick={() => {
+                            setIsEditing(true);
+                            setShowMenu(false);
+                          }}
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                          <span className="text-sm font-medium">Edit</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{
+                            backgroundColor: "var(--color-bg-danger-hover)",
+                          }}
+                          className="flex items-center w-full text-left px-4 py-2 text-red-500 transition-colors gap-2"
+                          onClick={handleDelete}
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                          <span className="text-sm font-medium">Delete</span>
+                        </motion.button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
             </div>
 
             {/* Hiển thị số like */}
             {localComment.likesCount > 0 && (
-              <div className="flex items-center text-xs text-[#b0b3b8] mt-1 pl-2">
-                <span className="inline-flex items-center bg-[#3a3b3c] px-2 py-0.5 rounded-full heart-count">
+              <div className="flex items-center text-xs text-[var(--color-text-tertiary)] mt-1 pl-2">
+                <span className="inline-flex items-center bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full heart-count shadow-sm">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -1133,8 +1217,8 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
           {showReplyForm && (
             <div className="relative mt-2">
               {/* Connector line for reply form */}
-              <div className="absolute left-[-28px] top-0 h-full w-[1.5px] bg-[#4e4f50]"></div>
-              <div className="absolute left-[-28px] top-4 w-[3px] h-[1.5px] bg-[#4e4f50]"></div>
+              <div className="absolute left-[-28px] top-0 h-full w-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
+              <div className="absolute left-[-28px] top-4 w-[3px] h-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
               <CommentForm
                 postId={postId}
                 replyToId={comment._id}
@@ -1336,10 +1420,10 @@ const PostComments = ({ postId }) => {
         if (likeText) {
           if (likedComment.isLiked) {
             likeText.classList.add("text-red-500", "font-medium");
-            likeText.classList.remove("text-[#b0b3b8]");
+            likeText.classList.remove("text-[var(--color-text-tertiary)]");
           } else {
             likeText.classList.remove("text-red-500", "font-medium");
-            likeText.classList.add("text-[#b0b3b8]");
+            likeText.classList.add("text-[var(--color-text-tertiary)]");
           }
         }
 
@@ -1364,9 +1448,9 @@ const PostComments = ({ postId }) => {
           if (!existingLikesContainer) {
             const likesContainer = document.createElement("div");
             likesContainer.className =
-              "flex items-center text-xs text-[#b0b3b8] mt-1 pl-2";
+              "flex items-center text-xs text-[var(--color-text-tertiary)] mt-1 pl-2";
             likesContainer.innerHTML = `
-              <span class="inline-flex items-center bg-[#3a3b3c] px-2 py-0.5 rounded-full heart-count">
+              <span class="inline-flex items-center bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full heart-count">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3 text-red-500 mr-1">
                   <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
                 </svg>
@@ -1581,11 +1665,11 @@ const PostComments = ({ postId }) => {
     });
   };
 
+  // Load more comments from API
   const loadMoreComments = async () => {
-    if (!hasMore || loading) return;
-
-    setPage((prev) => prev + 1);
+    if (loading || !hasMore) return;
     setLoading(true);
+    setPage((prevPage) => prevPage + 1);
 
     try {
       const response = await fetch(
@@ -1627,20 +1711,42 @@ const PostComments = ({ postId }) => {
   const commentCount = comments.length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Comment header and input form */}
-      <div className="border-t border-[#3e4042] pt-3 mt-3">
+      <div className="border-t border-[var(--color-border)] pt-4 mt-4 mb-5 px-2.5">
         {/* Comment count and most relevant filter */}
         {commentCount > 0 && (
-          <div className="flex justify-between items-center mb-2 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[15px] font-medium text-[#e4e6eb]">
+          <div className="flex justify-between items-center mb-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-2"
+            >
+              <span className="text-[15px] font-medium text-[var(--color-text-primary)]">
                 {commentCount} {commentCount === 1 ? "Comment" : "Comments"}
               </span>
-            </div>
-            <div className="text-[13px] text-[#b0b3b8] hover:underline cursor-pointer">
-              Most relevant ▾
-            </div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors cursor-pointer flex items-center"
+            >
+              <span className="mr-1">Most relevant</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </motion.div>
           </div>
         )}
 
@@ -1651,7 +1757,7 @@ const PostComments = ({ postId }) => {
       {/* Error message */}
       {errorMessage && (
         <motion.div
-          className="p-3 bg-red-900/20 text-red-400 rounded-lg border border-red-800/30 text-[13px]"
+          className="p-3 bg-red-500/10 text-red-400 rounded-lg border border-red-500/20 text-[13px]"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
@@ -1683,12 +1789,13 @@ const PostComments = ({ postId }) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5 }}
+              className="rounded-lg"
             >
               {displayedComments.map((comment, index) => (
-                <div key={comment._id} className="relative comment-thread">
+                <div key={comment._id} className="relative comment-thread mb-4">
                   {/* Vertical connection line between comments */}
                   {index < displayedComments.length - 1 && (
-                    <div className="absolute left-4 top-9 bottom-0 w-[1.5px] bg-[#4e4f50] opacity-30"></div>
+                    <div className="absolute left-4 top-9 bottom-0 w-[1px] bg-[var(--color-border-hover)] opacity-30"></div>
                   )}
                   <Comment
                     postId={postId}
@@ -1700,12 +1807,14 @@ const PostComments = ({ postId }) => {
 
               {/* Show more button for local comments */}
               {hasMoreToShow && (
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={showMoreComments}
-                  className="text-[#b0b3b8] hover:text-[#e4e6eb] text-[13px] font-medium mt-2 hover:underline"
+                  className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] text-[13px] font-medium mt-3 hover:underline transition-colors"
                 >
                   View {comments.length - displayLimit} more comments
-                </button>
+                </motion.button>
               )}
 
               {/* Load more button from API (only shown if all local comments are displayed) */}
@@ -1714,16 +1823,18 @@ const PostComments = ({ postId }) => {
                   className="flex justify-center mt-4"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3, duration: 0.3 }}
+                  transition={{ delay: 0.2, duration: 0.3 }}
                 >
                   <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={loadMoreComments}
                     disabled={loading}
-                    className="py-1.5 px-4 text-[#b0b3b8] hover:text-[#e4e6eb] bg-[#3a3b3c] rounded-md hover:bg-[#4e4f50] transition-colors text-[13px] font-medium"
+                    className="py-2 px-5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] bg-[var(--color-bg-secondary)] rounded-full hover:bg-[var(--color-bg-hover)] transition-colors text-[13px] font-medium shadow-sm"
                   >
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
-                        <div className="w-3 h-3 border-2 border-t-blue-400 border-blue-300/30 rounded-full animate-spin"></div>
+                        <div className="w-3 h-3 border-2 border-t-[var(--color-primary)] border-[var(--color-primary)]/30 rounded-full animate-spin"></div>
                         <span>Loading...</span>
                       </div>
                     ) : (
@@ -1736,22 +1847,24 @@ const PostComments = ({ postId }) => {
           </AnimatePresence>
         ) : loading ? (
           <motion.div
-            className="flex flex-col items-center justify-center py-6"
+            className="flex flex-col items-center justify-center py-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="w-8 h-8 border-3 border-t-blue-400 border-blue-200/10 rounded-full animate-spin mb-3"></div>
-            <p className="text-[#b0b3b8] text-[13px]">Loading comments...</p>
+            <div className="w-8 h-8 border-3 border-t-[var(--color-primary)] border-[var(--color-primary)]/10 rounded-full animate-spin mb-3"></div>
+            <p className="text-[var(--color-text-secondary)] text-[14px]">
+              Loading comments...
+            </p>
           </motion.div>
         ) : (
           <motion.div
-            className="py-6 text-center"
+            className="py-8 text-center bg-[var(--color-bg-secondary)]/40 rounded-lg"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <p className="text-[#b0b3b8] text-[15px]">
+            <p className="text-[var(--color-text-secondary)] text-[15px]">
               No comments yet. Be the first to share your thoughts!
             </p>
           </motion.div>

@@ -10,12 +10,23 @@ export const useAuthMutations = () => {
   // Đăng nhập
   const login = useMutation({
     mutationFn: async (credentials) => {
-      const response = await axiosService.post("/auth/login", credentials);
-      return response.data;
+      console.log("Login mutation called with:", credentials.email);
+      try {
+        const response = await axiosService.post("/auth/login", credentials);
+        console.log("Login API response:", response.data);
+        return response.data;
+      } catch (error) {
+        console.error("Login API error:", error);
+        console.error("Login error response:", error.response?.data);
+        throw error;
+      }
     },
     onSuccess: (data) => {
       if (data?.success && data?.data?.accessToken) {
-        console.log("Setting token from login success:", data.data.accessToken);
+        console.log(
+          "Setting token from login success:",
+          data.data.accessToken.substring(0, 15) + "..."
+        );
         tokenService.setToken(data.data.accessToken);
 
         if (data.data.user) {
@@ -24,11 +35,12 @@ export const useAuthMutations = () => {
         }
 
         queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.all });
+      } else {
+        console.warn("Login success but no accessToken or missing data:", data);
       }
     },
     onError: (error) => {
-      console.error("Login error:", error);
-      showErrorToast(error.response?.data?.message || "Login failed");
+      console.error("Login error in mutation:", error);
     },
   });
 
@@ -47,7 +59,6 @@ export const useAuthMutations = () => {
     },
     onError: (error) => {
       console.error("Signup error:", error);
-      showErrorToast(error.response?.data?.message || "Registration failed");
     },
   });
 

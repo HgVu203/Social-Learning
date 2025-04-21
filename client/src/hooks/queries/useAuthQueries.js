@@ -15,21 +15,16 @@ export const useAuthSession = () => {
       try {
         // Kiểm tra xem có token không trước khi gọi API
         if (!tokenService.getToken()) {
-          console.log("Không có token, bỏ qua kiểm tra phiên đăng nhập");
           return { success: false, data: null };
         }
-
-        console.log("Checking auth session");
         const response = await axiosService.get("/auth/check");
-        console.log("Auth session response:", response.data);
         return response.data;
       } catch (error) {
         // Return null instead of throwing error
+        console.log("Error checking auth session:", error);
         if (error.response?.status === 401) {
-          console.log("Auth session failed - Unauthorized");
           return { success: false, data: null };
         }
-        console.error("Error checking auth session:", error);
         throw error;
       }
     },
@@ -37,9 +32,7 @@ export const useAuthSession = () => {
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     staleTime: 300000, // 5 minutes
-    // Set short timeout to prevent long loading states
     cacheTime: 60000, // 1 minute
-    // Kích hoạt ngay cả khi không có token để đặt trạng thái loading nhanh chóng
-    enabled: true,
+  
   });
 };

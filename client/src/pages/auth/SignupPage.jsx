@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { motion } from "framer-motion";
+import AuthForm from "../../components/auth/AuthForm";
+import AuthInput from "../../components/auth/AuthInput";
+import AuthButton from "../../components/auth/AuthButton";
+import { FaEnvelope, FaUser, FaLock, FaUserAlt } from "react-icons/fa";
 
 const SignupPage = () => {
   const [formData, setFormData] = useState({
@@ -205,17 +210,25 @@ const SignupPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200 hover:shadow-blue-900/10">
-          <div className="flex justify-center mb-6">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              Create Account
-            </div>
-          </div>
-
+    <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="max-w-md w-full"
+      >
+        <AuthForm
+          title="Create Account"
+          subtitle="Sign up to get started with your new account"
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
           {error && (
-            <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg mb-4 animate-pulse">
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700"
+            >
               <div className="flex">
                 <svg
                   className="w-5 h-5 mr-2"
@@ -228,197 +241,127 @@ const SignupPage = () => {
                     clipRule="evenodd"
                   />
                 </svg>
-                {error}
+                <span>{error}</span>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="email"
-              >
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.email
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Enter your email"
-                value={formData.email}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                disabled={loading}
-                autoComplete="email"
-              />
-              {validationErrors.email && touched.email && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.email}
-                </p>
-              )}
-            </div>
+          <AuthInput
+            label="Email Address"
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            placeholder="Enter your email"
+            error={validationErrors.email}
+            icon={<FaEnvelope />}
+            autoComplete="email"
+            disabled={loading}
+            required
+          />
 
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="username"
-              >
-                Username
-              </label>
-              <input
-                type="text"
-                id="username"
-                name="username"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.username
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Choose a username"
-                value={formData.username}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                disabled={loading}
-                autoComplete="username"
-              />
-              {validationErrors.username && touched.username && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.username}
-                </p>
-              )}
-            </div>
+          <AuthInput
+            label="Full Name"
+            type="text"
+            name="fullname"
+            value={formData.fullname}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            placeholder="Enter your full name"
+            error={validationErrors.fullname}
+            icon={<FaUserAlt />}
+            autoComplete="name"
+            disabled={loading}
+            required
+          />
 
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="fullname"
-              >
-                Full Name
-              </label>
-              <input
-                type="text"
-                id="fullname"
-                name="fullname"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.fullname
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Enter your full name"
-                value={formData.fullname}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                disabled={loading}
-                autoComplete="name"
-              />
-              {validationErrors.fullname && touched.fullname && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.fullname}
-                </p>
-              )}
-            </div>
+          <AuthInput
+            label="Username"
+            type="text"
+            name="username"
+            value={formData.username}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            placeholder="Choose a username"
+            error={validationErrors.username}
+            icon={<FaUser />}
+            autoComplete="username"
+            disabled={loading}
+            required
+          />
 
-            <div>
-              <label
-                className="block text-gray-300 mb-1 font-medium"
-                htmlFor="password"
-              >
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  validationErrors.password
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                placeholder="Create a password"
-                value={formData.password}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                disabled={loading}
-                autoComplete="new-password"
-              />
-
-              {/* Password strength indicator */}
-              {formData.password && (
-                <div className="mt-2">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-xs text-gray-400">
-                      Password strength:
-                    </span>
-                    <span
-                      className={`text-xs font-medium ${
-                        passwordStrength < 2
-                          ? "text-red-400"
-                          : passwordStrength < 4
-                          ? "text-yellow-400"
-                          : "text-green-400"
-                      }`}
-                    >
-                      {getPasswordStrengthLabel()}
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${getPasswordStrengthColor()} transition-all duration-300`}
-                      style={{ width: `${passwordStrength * 20}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-
-              {validationErrors.password && touched.password && (
-                <p className="mt-1 text-sm text-red-400">
-                  {validationErrors.password}
-                </p>
-              )}
-
-              <p className="text-xs text-gray-400 mt-2">
-                Password must be at least 8 characters long, include uppercase,
-                lowercase letters and numbers.
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-2.5 rounded-lg transition-all duration-200 font-medium mt-6 ${
-                loading
-                  ? "opacity-70 cursor-not-allowed"
-                  : "hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/20"
-              }`}
+          <div className="space-y-1">
+            <AuthInput
+              label="Password"
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="Create a strong password"
+              error={validationErrors.password}
+              icon={<FaLock />}
+              autoComplete="new-password"
               disabled={loading}
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                  Creating Account...
-                </div>
-              ) : (
-                "Sign Up"
-              )}
-            </button>
-          </form>
+              required
+            />
 
-          <div className="mt-6 text-center text-gray-400">
-            Already have an account?{" "}
-            <Link
-              to="/login"
-              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
-            >
-              Login now
-            </Link>
+            {formData.password && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="mt-2"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-[var(--color-text-secondary)]">
+                    Password Strength:
+                  </span>
+                  <span
+                    className={`text-xs font-medium ${
+                      passwordStrength <= 1
+                        ? "text-red-500"
+                        : passwordStrength <= 3
+                        ? "text-yellow-500"
+                        : "text-green-500"
+                    }`}
+                  >
+                    {getPasswordStrengthLabel()}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${getPasswordStrengthColor()} transition-all duration-300`}
+                    style={{ width: `${(passwordStrength / 5) * 100}%` }}
+                  ></div>
+                </div>
+              </motion.div>
+            )}
           </div>
-        </div>
-      </div>
+
+          <AuthButton
+            type="submit"
+            isLoading={loading}
+            disabled={loading}
+            variant="primary"
+            fullWidth
+          >
+            Create Account
+          </AuthButton>
+
+          <div className="text-center mt-6">
+            <p className="text-[var(--color-text-secondary)]">
+              Already have an account?{" "}
+              <Link
+                to="/login"
+                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
+              >
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </AuthForm>
+      </motion.div>
     </div>
   );
 };

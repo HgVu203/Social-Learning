@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { motion } from "framer-motion";
+import AuthForm from "../../components/auth/AuthForm";
+import AuthInput from "../../components/auth/AuthInput";
+import AuthButton from "../../components/auth/AuthButton";
+import { FaEnvelope } from "react-icons/fa";
 
 const ForgotPasswordPage = () => {
   const navigate = useNavigate();
@@ -48,22 +53,25 @@ const ForgotPasswordPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200 hover:shadow-blue-900/10">
-          <div className="flex justify-center mb-6">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              Forgot Password
-            </div>
-          </div>
-
-          <p className="text-gray-300 mb-6 text-center">
-            Enter your email address and we'll send you a verification code to
-            reset your password.
-          </p>
-
+    <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="max-w-md w-full"
+      >
+        <AuthForm
+          title="Reset Password"
+          subtitle="Enter your email to receive a password reset code"
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
           {error && (
-            <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg mb-4 animate-pulse">
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700"
+            >
               <div className="flex">
                 <svg
                   className="w-5 h-5 mr-2"
@@ -78,66 +86,46 @@ const ForgotPasswordPage = () => {
                 </svg>
                 <span>{error}</span>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-gray-300 mb-1 font-medium"
+          <AuthInput
+            label="Email Address"
+            type="email"
+            name="email"
+            value={email}
+            onChange={handleEmailChange}
+            placeholder="Enter your email"
+            error={emailError}
+            icon={<FaEnvelope />}
+            autoComplete="email"
+            disabled={loading}
+            required
+          />
+
+          <AuthButton
+            type="submit"
+            isLoading={loading}
+            disabled={loading}
+            variant="primary"
+            fullWidth
+          >
+            Send Reset Code
+          </AuthButton>
+
+          <div className="text-center mt-6">
+            <p className="text-[var(--color-text-secondary)]">
+              Remembered your password?{" "}
+              <Link
+                to="/login"
+                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
               >
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={handleEmailChange}
-                placeholder="your@email.com"
-                className={`w-full px-4 py-2 bg-[#16181c] border ${
-                  emailError
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-gray-700 focus:ring-blue-500"
-                } rounded-lg focus:outline-none focus:ring-2 text-white transition-all duration-200`}
-                disabled={loading}
-              />
-              {emailError && (
-                <p className="mt-1 text-sm text-red-400">{emailError}</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-2.5 rounded-lg transition-all duration-200 font-medium mt-4 ${
-                loading
-                  ? "opacity-70 cursor-not-allowed"
-                  : "hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/20"
-              }`}
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                  Sending...
-                </div>
-              ) : (
-                "Send Reset Code"
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-gray-400">
-            Remembered your password?{" "}
-            <Link
-              to="/login"
-              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
-            >
-              Login now
-            </Link>
+                Sign in
+              </Link>
+            </p>
           </div>
-        </div>
-      </div>
+        </AuthForm>
+      </motion.div>
     </div>
   );
 };

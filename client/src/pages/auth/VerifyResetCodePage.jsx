@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { motion } from "framer-motion";
+import AuthForm from "../../components/auth/AuthForm";
+import AuthButton from "../../components/auth/AuthButton";
+import { FaEnvelope } from "react-icons/fa";
 
 const VerifyResetCodePage = () => {
   const [codeDigits, setCodeDigits] = useState(["", "", "", "", "", ""]);
@@ -136,37 +140,37 @@ const VerifyResetCodePage = () => {
   const isCodeComplete = codeDigits.every((digit) => digit !== "");
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200 hover:shadow-blue-900/10">
-          <div className="flex justify-center mb-6">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              Verify Code
-            </div>
-          </div>
-
+    <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="max-w-md w-full"
+      >
+        <AuthForm
+          title="Verify Code"
+          subtitle="Enter the verification code to reset your password"
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
           {message && (
-            <div className="bg-blue-900/20 border border-blue-500/30 text-blue-300 px-4 py-3 rounded-lg mb-6">
-              <div className="flex items-center">
-                <svg
-                  className="w-5 h-5 mr-2"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 7a1 1 0 01-1-1v-3a1 1 0 112 0v3a1 1 0 01-1 1z"
-                    clipRule="evenodd"
-                  ></path>
-                </svg>
-                <span>{message}</span>
-              </div>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 flex items-start p-4 rounded-lg border border-[var(--color-primary)] bg-[var(--color-primary)] bg-opacity-20"
+            >
+              <FaEnvelope className="h-5 w-5 mr-3 mt-0.5 text-[var(--color-primary)]" />
+              <p className="text-[var(--color-text-primary)]">{message}</p>
+            </motion.div>
           )}
 
           {error && (
-            <div className="bg-red-900/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg mb-6">
-              <div className="flex items-center">
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700 mb-6"
+            >
+              <div className="flex">
                 <svg
                   className="w-5 h-5 mr-2"
                   fill="currentColor"
@@ -174,84 +178,77 @@ const VerifyResetCodePage = () => {
                 >
                   <path
                     fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1 7a1 1 0 01-1-1v-3a1 1 0 112 0v3a1 1 0 01-1 1z"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
                     clipRule="evenodd"
-                  ></path>
+                  />
                 </svg>
                 <span>{error}</span>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label
-                className="block text-gray-300 mb-2 font-medium"
-                htmlFor="code-0"
-              >
-                Verification Code
-              </label>
+          <div>
+            <label
+              className="block text-[var(--color-text-primary)] mb-2 font-medium"
+              htmlFor="code-0"
+            >
+              Verification Code
+            </label>
 
-              <div
-                className="flex justify-between gap-2 mb-2"
-                onPaste={handlePaste}
-              >
-                {codeDigits.map((digit, index) => (
-                  <div key={index} className="w-full relative">
-                    <input
-                      ref={(el) => (inputRefs.current[index] = el)}
-                      type="text"
-                      id={`code-${index}`}
-                      value={digit}
-                      onChange={(e) => handleDigitChange(index, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(index, e)}
-                      className="w-full aspect-square bg-[#16181c] border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white text-center text-2xl transition-all duration-200"
-                      maxLength={1}
-                      inputMode="numeric"
-                      autoComplete={index === 0 ? "one-time-code" : "off"}
-                      disabled={isSubmitting}
-                      autoFocus={index === 0}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-sm text-gray-400 mt-2 text-center">
-                We've sent a 6-digit code to your email address.
-              </p>
+            <div
+              className="flex justify-between gap-2 mb-2"
+              onPaste={handlePaste}
+            >
+              {codeDigits.map((digit, index) => (
+                <div key={index} className="w-full relative">
+                  <input
+                    ref={(el) => (inputRefs.current[index] = el)}
+                    type="text"
+                    id={`code-${index}`}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    className="w-full aspect-square bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-center text-2xl transition-all duration-200"
+                    maxLength={1}
+                    inputMode="numeric"
+                    autoComplete={index === 0 ? "one-time-code" : "off"}
+                    disabled={isSubmitting}
+                    autoFocus={index === 0}
+                  />
+                </div>
+              ))}
             </div>
 
-            <button
+            <p className="text-sm text-[var(--color-text-secondary)] mt-2 text-center">
+              We've sent a 6-digit code to your email address.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <AuthButton
               type="submit"
               disabled={isSubmitting || !isCodeComplete}
-              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-2.5 rounded-lg transition-all duration-200 font-medium ${
-                isSubmitting || !isCodeComplete
-                  ? "opacity-70 cursor-not-allowed"
-                  : "hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/20"
-              }`}
+              isLoading={isSubmitting}
+              variant="primary"
+              fullWidth
             >
-              {isSubmitting ? (
-                <div className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/30 border-t-white mr-2"></div>
-                  Verifying...
-                </div>
-              ) : (
-                "Verify & Continue"
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-gray-400">
-            Didn't receive a code?{" "}
-            <Link
-              to="/forgot-password"
-              className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
-            >
-              Request again
-            </Link>
+              Verify & Continue
+            </AuthButton>
           </div>
-        </div>
-      </div>
+
+          <div className="text-center mt-6">
+            <p className="text-[var(--color-text-secondary)]">
+              Didn't receive a code?{" "}
+              <Link
+                to="/forgot-password"
+                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
+              >
+                Request again
+              </Link>
+            </p>
+          </div>
+        </AuthForm>
+      </motion.div>
     </div>
   );
 };

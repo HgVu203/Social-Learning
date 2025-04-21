@@ -1,102 +1,24 @@
-import { io } from "socket.io-client";
-import tokenService from "./tokenService";
-
-// Lấy URL từ biến môi trường với cơ chế dự phòng
-const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
-const SOCKET_URL = apiUrl.replace("/api", "");
-
-console.log("Socket URL configuration:", SOCKET_URL);
-
-// Tạo kết nối socket đến server
-const socket = io(SOCKET_URL, {
-  autoConnect: false,
-  withCredentials: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 1000,
-  timeout: 30000,
-  transports: ["websocket", "polling"],
-});
-
-// Xử lý các sự kiện socket
-socket.on("connect", () => {
-  console.log("Socket connected successfully with ID:", socket.id);
-});
-
-socket.on("connect_error", (err) => {
-  console.error("Socket connection error:", err.message);
-  if (err.message.includes("Authentication error")) {
-    // Token failure - no need to retry
-    socket.disconnect();
-    console.warn("Socket authentication failed - token may be invalid");
-  } else {
-    // Other errors may be temporary - continue retrying
-    console.warn("Will retry socket connection...");
-  }
-});
-
-socket.on("disconnect", (reason) => {
-  console.log("Socket disconnected:", reason);
-});
-
-socket.on("error", (error) => {
-  console.error("Socket general error:", error);
-});
-
-// Hàm kết nối socket
-export const connectSocket = (token) => {
+/**
+ * Connect to the socket server
+ * @returns {boolean} Whether the connection was successful
+ */
+export const connectSocket = () => {
   try {
-    // Nếu không có token được truyền vào, thử lấy từ localStorage
-    if (!token) {
-      token = tokenService.getToken();
-      console.log(
-        "Token not provided, retrieved from localStorage:",
-        token ? "Found" : "Not found"
-      );
-    }
+    // Dynamically import socket.js to prevent circular dependency
+    import("../socket").then(({ initSocket }) => {
+      const socket = initSocket();
 
-    if (!token) {
-      console.error("Token is required to connect to socket server");
-      return false;
-    }
-
-    // Kiểm tra định dạng token
-    if (token.trim() === "" || token === "undefined" || token === "null") {
-      console.error("Invalid token format:", token);
-      return false;
-    }
-
-    // Kiểm tra nếu socket đã kết nối thì không cần kết nối lại
-    if (socket.connected) {
-      console.log("Socket is already connected");
-      return true;
-    }
-
-    // Trước khi kết nối, ngắt kết nối cũ nếu có
-    if (socket.connected) {
-      socket.disconnect();
-    }
-
-    // Thêm token vào auth options
-    socket.auth = { token };
-
-    console.log("Connecting socket with token...");
-    socket.connect();
-
-    // Kiểm tra timeout để báo nếu kết nối không thành công sau khoảng thời gian
-    const timeoutId = setTimeout(() => {
-      if (!socket.connected) {
-        console.warn("Socket connection timed out after 15 seconds");
-        // Tự động thử kết nối lại nếu không thành công
-        if (!socket.connected) {
-          console.log("Attempting to reconnect socket...");
-          socket.connect();
-        }
+      if (!socket) {
+        console.error("Failed to initialize socket connection");
+        return false;
       }
-    }, 15000);
 
-    // Clear timeout nếu kết nối thành công
-    socket.on("connect", () => {
-      clearTimeout(timeoutId);
+      // Dispatch event for socket connection
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("socket_reconnected"));
+      }, 500);
+
+      return true;
     });
 
     return true;
@@ -106,16 +28,17 @@ export const connectSocket = (token) => {
   }
 };
 
-// Hàm ngắt kết nối socket
-export const disconnectSocket = () => {
+/**
+ * Disconnect from the socket server
+ * @param {boolean} isNavigation - Whether the disconnect is due to navigation
+ * @returns {boolean} Whether the disconnection was successful
+ */
+export const disconnectSocket = (isNavigation = false) => {
   try {
-    // Kiểm tra nếu socket chưa kết nối thì không cần ngắt kết nối
-    if (!socket.connected) {
-      console.log("Socket is already disconnected");
-      return true;
-    }
-
-    socket.disconnect();
+    // Dynamically import socket.js to prevent circular dependency
+    import("../socket").then(({ closeSocket }) => {
+      closeSocket(isNavigation);
+    });
     return true;
   } catch (error) {
     console.error("Error disconnecting socket:", error);
@@ -123,9 +46,73 @@ export const disconnectSocket = () => {
   }
 };
 
-// Kiểm tra trạng thái kết nối socket
+/**
+ * Check if the socket is currently connected
+ * @returns {boolean} Whether the socket is connected
+ */
 export const isSocketConnected = () => {
-  return socket.connected;
+  try {
+    // Use a more direct approach to check connection status
+    const { socket } = window.socketState || {};
+    return socket && socket.connected;
+  } catch {
+    return false;
+  }
 };
 
-export default socket;
+/**
+ * Get the socket instance
+ * @returns {Object} The socket instance
+ */
+export const getSocketInstance = () => {
+  try {
+    // Dynamically import socket.js to prevent circular dependency
+    return import("../socket").then(({ getSocket }) => {
+      return getSocket();
+    });
+  } catch (error) {
+    console.error("Error getting socket instance:", error);
+    return null;
+  }
+};
+
+/**
+ * Force reconnect the socket and refresh message subscriptions
+ * @param {string} conversationId - Optional ID of current conversation to refresh
+ */
+export const reconnectAndRefresh = (conversationId) => {
+  try {
+    // Disconnect first
+    disconnectSocket(true);
+
+    // Wait a brief moment
+    setTimeout(() => {
+      // Reconnect
+      connectSocket();
+
+      // Trigger a message refresh event if we have a conversation ID
+      if (conversationId) {
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("force_message_refresh", {
+              detail: { conversationId },
+            })
+          );
+        }, 200);
+      }
+    }, 50);
+
+    return true;
+  } catch (error) {
+    console.error("Error during reconnect and refresh:", error);
+    return false;
+  }
+};
+
+export default {
+  connectSocket,
+  disconnectSocket,
+  isSocketConnected,
+  getSocketInstance,
+  reconnectAndRefresh,
+};

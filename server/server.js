@@ -15,6 +15,7 @@ import friendshipRouter from "./routers/friendship.router.js";
 import messageRouter from "./routers/message.router.js";
 import userRouter from "./routers/user.router.js";
 import groupRouter from "./routers/group.router.js";
+import uploadRouter from "./routers/upload.router.js";
 
 import "./config/passport.js";
 
@@ -25,7 +26,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8000;
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -72,8 +73,8 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.ENV === "production",
+      sameSite: process.env.ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
   })
@@ -88,12 +89,34 @@ app.use("/api/auth", authRouter);
 app.use("/api/posts", postRouter);
 app.use("/api/friendship", friendshipRouter);
 app.use("/api/message", messageRouter);
-app.use("/api/user", userRouter);
+app.use("/api/users", userRouter);
 app.use("/api/group", groupRouter);
+app.use("/api/upload", uploadRouter);
 
 app.get("/", (req, res) => {
   res.send("Hello World");
 });
+
+// CRITICAL FIX: Cấu hình Socket.io với độ trễ thấp
+const io = initSocketServer(server);
+
+// Cấu hình thêm cho Socket.io để giảm độ trễ
+if (io) {
+  // Giảm thời gian polling và tăng tần suất ping
+  io.engine.pingInterval = 10000; // 10 giây
+  io.engine.pingTimeout = 5000; // 5 giây
+
+  // Ưu tiên WebSocket hơn polling
+  io.engine.transports = ["websocket", "polling"];
+
+  // Ghi log khi có kết nối mới - Sửa để tránh lỗi
+  io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+
+    // Gửi ping ngay lập tức để kiểm tra kết nối
+    socket.emit("ping_test");
+  });
+}
 
 // MongoDB connection
 mongoose
@@ -104,10 +127,6 @@ mongoose
     // Start HTTP server instead of Express app directly
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`Server is running on port ${PORT}`);
-
-      // Initialize Socket.io server
-      const io = initSocketServer(server);
-      console.log("Socket.io server initialized");
     });
   })
   .catch((error) => {

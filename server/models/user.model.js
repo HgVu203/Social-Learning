@@ -116,10 +116,50 @@ UserSchema.virtual("postCount", {
   match: { deleted: false },
 });
 
+UserSchema.virtual("posts", {
+  ref: "Post",
+  localField: "_id",
+  foreignField: "author",
+  match: { deleted: false },
+  options: { sort: { createdAt: -1 } },
+});
+
 UserSchema.virtual("activityCount", {
   ref: "UserActivity",
   localField: "_id",
   foreignField: "userId",
+  count: true,
+});
+
+// Thêm virtual cho followers - những người theo dõi user này
+UserSchema.virtual("followers", {
+  ref: "Follow",
+  localField: "_id",
+  foreignField: "following",
+  justOne: false,
+});
+
+// Thêm virtual cho following - những người mà user này theo dõi
+UserSchema.virtual("following", {
+  ref: "Follow",
+  localField: "_id",
+  foreignField: "follower",
+  justOne: false,
+});
+
+// Thêm virtual đếm số followers
+UserSchema.virtual("followersCount", {
+  ref: "Follow",
+  localField: "_id",
+  foreignField: "following",
+  count: true,
+});
+
+// Thêm virtual đếm số following
+UserSchema.virtual("followingCount", {
+  ref: "Follow",
+  localField: "_id",
+  foreignField: "follower",
   count: true,
 });
 

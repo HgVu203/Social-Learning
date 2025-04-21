@@ -5,6 +5,8 @@ import { validateRequest } from "../middleware/validateRequest.js";
 import { authValidationSchema } from "../utils/validator/auth.validator.js";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import { AuthService } from "../services/auth.service.js";
+import User from "../models/user.model.js";
 dotenv.config();
 
 const router = express.Router();
@@ -85,38 +87,73 @@ router.get("/google/callback", AuthController.googleCallback);
 router.get("/facebook", AuthController.facebookLogin);
 router.get("/facebook/callback", AuthController.facebookCallback);
 
+// Special route for verifying social auth tokens
+// This route doesn't use the regular protected middleware to allow temp tokens
+router.get("/check", async (req, res) => {
+  try {
+    // Get token from header
+    const token = AuthService.getTokenFromHeader(req);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Access token is required",
+      });
+    }
+
+    // Verify token
+    const { valid, decoded, error } = AuthService.verifyAccessToken(token);
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        error: error || "Invalid access token",
+      });
+    }
+
+    // Get user data
+    const user = await User.findById(decoded.userId).select("-password");
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Return user data
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+          fullname: user.fullname,
+          avatar: user.avatar,
+          role: user.role,
+          emailVerified: user.emailVerified || false,
+          lastLogin: user.lastLogin,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error in /auth/check:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Authentication check failed",
+    });
+  }
+});
+
 // Protected routes
 router.use(protectedRouter);
 
-// Route để kiểm tra xác thực - trả về thông tin người dùng nếu đã xác thực
-router.get("/check", (req, res) => {
-  // Ensure we have the user from the auth middleware
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: "Unauthorized access",
-    });
-  }
-
-  return res.status(200).json({
-    success: true,
-    data: {
-      user: {
-        _id: req.user._id,
-        username: req.user.username,
-        email: req.user.email,
-        fullname: req.user.fullname,
-        avatar: req.user.avatar,
-        role: req.user.role,
-        emailVerified: req.user.emailVerified || false,
-        lastLogin: req.user.lastLogin,
-        // Add any other user fields needed by the client
-      },
-    },
-  });
-});
-
+// Route for logout (requires authentication)
 router.post("/logout", AuthController.logout);
+
+router.post(
+  "/change-password",
+  validateRequest(authValidationSchema.changePassword),
+  AuthController.changePassword
+);
 
 router.post(
   "/set-password/:id",

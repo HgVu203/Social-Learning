@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import PostList from "../../components/post/PostList";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -6,8 +6,22 @@ import { usePostContext } from "../../contexts/PostContext";
 
 const HomePage = () => {
   const { user } = useAuth();
-  const { posts, loading, error, hasMore, filter, setFilter, loadMorePosts } =
-    usePostContext();
+  const {
+    posts,
+    loading,
+    error,
+    hasMore,
+    filter,
+    setFilter,
+    loadMorePosts,
+    resetGroupId,
+  } = usePostContext();
+
+  // Reset groupId khi component Home được mount
+  useEffect(() => {
+    // Khi người dùng vào trang chủ, reset groupId để hiển thị tất cả bài viết
+    resetGroupId();
+  }, [resetGroupId]);
 
   const handleFilterChange = (newFilter) => {
     if (newFilter !== filter) {
@@ -24,16 +38,16 @@ const HomePage = () => {
   return (
     <div className="max-w-2xl mx-auto pt-10 px-4 sm:px-6 lg:px-8">
       {/* Welcome and Create Post Section */}
-      <div className="bg-[#16181c] shadow-sm rounded-lg mb-6 p-6">
+      <div className="bg-[var(--color-bg-secondary)] shadow-sm rounded-lg mb-6 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
               Welcome{user ? `, ${user.fullname}` : ""}!
             </h1>
           </div>
           <Link
             to="/create-post"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] transition duration-150 ease-in-out"
           >
             <svg
               className="h-5 w-5 mr-2"
@@ -54,15 +68,15 @@ const HomePage = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 bg-[#16181c] shadow-sm rounded-lg">
-        <div className="border-b border-gray-800">
+      <div className="mb-6 bg-[var(--color-bg-secondary)] shadow-sm rounded-lg">
+        <div className="border-b border-[var(--color-border)]">
           <nav className="flex -mb-px">
             <button
               onClick={() => handleFilterChange("latest")}
               className={`w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm ${
                 filter === "latest"
-                  ? "border-blue-500 text-blue-500"
-                  : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-700"
+                  ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                  : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
               }`}
             >
               Latest
@@ -71,8 +85,8 @@ const HomePage = () => {
               onClick={() => handleFilterChange("popular")}
               className={`w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm ${
                 filter === "popular"
-                  ? "border-blue-500 text-blue-500"
-                  : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-700"
+                  ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                  : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
               }`}
             >
               Popular
@@ -81,8 +95,8 @@ const HomePage = () => {
               onClick={() => handleFilterChange("following")}
               className={`w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm ${
                 filter === "following"
-                  ? "border-blue-500 text-blue-500"
-                  : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-700"
+                  ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                  : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
               }`}
             >
               Following
@@ -104,7 +118,7 @@ const HomePage = () => {
       <div className="fixed bottom-4 right-4 sm:hidden">
         <Link
           to="/create-post"
-          className="inline-flex items-center justify-center p-3 rounded-full shadow-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="inline-flex items-center justify-center p-3 rounded-full shadow-lg text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]"
         >
           <svg
             className="h-6 w-6"

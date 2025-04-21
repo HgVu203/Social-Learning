@@ -25,14 +25,6 @@ if (missingVars.length > 0) {
     `Missing required environment variables: ${missingVars.join(", ")}`
   );
 }
-
-console.log("OAuth Config:", {
-  googleCallbackURL: `${process.env.SERVER_URL}/api/auth/google/callback`,
-  facebookCallbackURL: `${process.env.SERVER_URL}/api/auth/facebook/callback`,
-  serverURL: process.env.SERVER_URL,
-  clientURL: process.env.CLIENT_URL,
-});
-
 passport.use(
   new GoogleStrategy(
     {
