@@ -6,7 +6,6 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
 import PostList from "../../components/post/PostList";
 import Avatar from "../../components/common/Avatar";
-import Loading from "../../components/common/Loading";
 import GroupMemberList from "../../components/group/GroupMemberList";
 import {
   showErrorToast,
@@ -24,6 +23,7 @@ import {
   FiSave,
   FiTrash2,
 } from "react-icons/fi";
+import { SkeletonGroup, SkeletonList } from "../../components/skeleton";
 
 const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
   const { groupId } = useParams();
@@ -373,8 +373,14 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
   if (loading && !currentGroup) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loading />
+      <div className="max-w-7xl mx-auto p-4">
+        <div className="mb-6">
+          <SkeletonGroup />
+        </div>
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-lg p-6 border border-[var(--color-border)]">
+          <div className="mb-4 h-8 bg-[var(--color-bg-light)] w-24 rounded"></div>
+          <SkeletonList count={5} />
+        </div>
       </div>
     );
   }

@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import Loading from "../../components/common/Loading";
 import PostList from "../../components/post/PostList";
 import defaultAvatar from "../../assets/images/default-avatar.svg";
 import { useAuth } from "../../contexts/AuthContext";
@@ -9,6 +8,7 @@ import { useUserProfile } from "../../hooks/queries/useUserQueries";
 import EditProfileModal from "../../components/profile/EditProfileModal";
 import { BiCalendar, BiPhone, BiMap, BiUser } from "react-icons/bi";
 import { useUserFollow } from "../../hooks/mutations/useUserMutations";
+import { SkeletonProfile, SkeletonCard } from "../../components/skeleton";
 
 // Mapping của màu sắc cho từng rank
 const rankColors = {
@@ -221,7 +221,30 @@ const ProfilePage = () => {
   ]);
 
   if (loading) {
-    return <Loading />;
+    return (
+      <div className="max-w-7xl mx-auto py-6 px-4">
+        <motion.h1
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-2xl font-bold text-[var(--color-text-primary)] pb-4"
+        >
+          Profile
+        </motion.h1>
+        <div className="card mb-6 overflow-hidden relative p-6">
+          <SkeletonProfile />
+        </div>
+
+        {/* Skeleton posts */}
+        <div className="card p-6">
+          <div className="bg-[var(--color-bg-light)] h-6 w-24 rounded mb-6"></div>
+          <div className="space-y-6">
+            {[...Array(3)].map((_, index) => (
+              <SkeletonCard key={index} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (error) {

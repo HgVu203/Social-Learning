@@ -26,6 +26,7 @@ import EmptyPlaceholder from "../common/EmptyPlaceholder";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMessageContext } from "../../contexts/MessageContext";
 import { useFriend } from "../../contexts/FriendContext";
+import { SkeletonList } from "../skeleton";
 
 const MessageList = ({ onSelectFriend }) => {
   const { user } = useAuth();
@@ -564,7 +565,7 @@ const MessageList = ({ onSelectFriend }) => {
   const renderFriends = () => {
     // Check for loading and error states first
     if (isFriendsLoading) {
-      return <Loading text="Loading friends..." />;
+      return <SkeletonList count={5} />;
     }
 
     // Ensure localFriends is an array (defensive programming)

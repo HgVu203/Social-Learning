@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { usePostContext } from "../../contexts/PostContext";
 import PostCard from "../../components/post/PostCard";
 import UserCard from "../../components/user/UserCard";
-import Loading from "../../components/common/Loading";
+import { SkeletonCard, SkeletonList } from "../../components/skeleton";
 
 const SearchPage = () => {
   const location = useLocation();
@@ -50,8 +50,12 @@ const SearchPage = () => {
 
         {/* Loading State */}
         {searchLoading && (
-          <div className="flex justify-center py-8">
-            <Loading />
+          <div className="space-y-6">
+            {activeTab === "posts" ? (
+              [...Array(3)].map((_, index) => <SkeletonCard key={index} />)
+            ) : (
+              <SkeletonList count={5} />
+            )}
           </div>
         )}
 
@@ -70,15 +74,17 @@ const SearchPage = () => {
         )}
 
         {/* Results */}
-        <div className="space-y-4">
-          {filteredResults.map((result) =>
-            activeTab === "posts" ? (
-              <PostCard key={result.id} post={result} />
-            ) : (
-              <UserCard key={result.id} user={result} />
-            )
-          )}
-        </div>
+        {!searchLoading && filteredResults.length > 0 && (
+          <div className="space-y-4">
+            {filteredResults.map((result) =>
+              activeTab === "posts" ? (
+                <PostCard key={result.id} post={result} />
+              ) : (
+                <UserCard key={result.id} user={result} />
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

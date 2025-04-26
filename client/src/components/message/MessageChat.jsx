@@ -35,6 +35,7 @@ import { uploadImage } from "../../services/uploadService";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { Link } from "react-router-dom";
 import { reconnectAndRefresh } from "../../services/socket";
+import { SkeletonMessage } from "../skeleton";
 
 // Animation variants outside component
 const messageVariants = {
@@ -1342,10 +1343,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     if (loading && page === 1) {
       return (
         <div className="flex flex-col items-center justify-center h-full p-8">
-          <LoadingSpinner size="lg" />
-          <p className="mt-4 text-[var(--color-text-secondary)]">
-            Loading messages...
-          </p>
+          <SkeletonMessage />
         </div>
       );
     }
@@ -1370,7 +1368,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         {/* Load more messages indicator */}
         {loading && page > 1 && (
           <div className="flex justify-center my-2">
-            <LoadingSpinner size="sm" />
+            <SkeletonMessage />
           </div>
         )}
 
@@ -1459,7 +1457,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   if (isLoadingConversation) {
     return (
       <div className="flex h-full justify-center items-center bg-[var(--color-card-bg)]">
-        <LoadingSpinner size="lg" />
+        <SkeletonMessage />
       </div>
     );
   }

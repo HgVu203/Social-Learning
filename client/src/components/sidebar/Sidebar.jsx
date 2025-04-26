@@ -4,6 +4,7 @@ import Avatar from "../../components/common/Avatar";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { FiSettings } from "react-icons/fi";
+import { SkeletonSidebar } from "../skeleton";
 
 const Sidebar = ({ onClose }) => {
   const location = useLocation();
@@ -87,23 +88,7 @@ const Sidebar = ({ onClose }) => {
     : publicMenuItems;
 
   if (loading) {
-    return (
-      <div className="h-screen p-4 flex flex-col">
-        {/* Logo */}
-        <Link to="/" className="flex items-center mb-6 px-3">
-          <span className="text-2xl font-bold text-[var(--color-primary)]">
-            DevConnect
-          </span>
-        </Link>
-
-        {/* Loading indicator */}
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="animate-pulse flex space-x-3">
-            <div className="h-6 w-20 bg-[var(--color-bg-light)] rounded-md"></div>
-          </div>
-        </div>
-      </div>
-    );
+    return <SkeletonSidebar />;
   }
 
   // Animation variants for staggered menu items

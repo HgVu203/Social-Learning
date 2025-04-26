@@ -25,7 +25,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
 import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
 import { usePostQueries } from "../../hooks/queries/usePostQueries";
-import Loading from "../../components/common/Loading";
+import { SkeletonPostDetail } from "../../components/skeleton";
 
 const CreatePostPage = ({ isEditing = false }) => {
   const navigate = useNavigate();
@@ -410,7 +410,17 @@ const CreatePostPage = ({ isEditing = false }) => {
   );
 
   if (groupLoading) {
-    return <Loading />;
+    return (
+      <div className="max-w-3xl mx-auto mt-8 p-4">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-[var(--color-bg-light)] w-1/3 rounded"></div>
+          <div className="h-24 bg-[var(--color-bg-light)] rounded"></div>
+          <div className="flex justify-end">
+            <div className="h-10 bg-[var(--color-bg-light)] w-24 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Handle unauthorized user
@@ -448,8 +458,8 @@ const CreatePostPage = ({ isEditing = false }) => {
 
       {/* Show loading indicator while fetching post data in edit mode */}
       {isEditing && postLoading ? (
-        <div className="flex justify-center py-8">
-          <Loading />
+        <div className="max-w-2xl mx-auto py-8">
+          <SkeletonPostDetail />
         </div>
       ) : (
         <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 shadow-lg border border-[var(--color-border)]">

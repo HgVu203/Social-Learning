@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import useGroupQueries from "../../hooks/queries/useGroupQueries";
-import Loading from "../../components/common/Loading";
+import { SkeletonGroup } from "../../components/skeleton";
 
 const GroupsListPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,7 +41,13 @@ const GroupsListPage = () => {
 
   const renderGroupList = () => {
     if (myGroupsLoading) {
-      return <Loading />;
+      return (
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, index) => (
+            <SkeletonGroup key={index} />
+          ))}
+        </div>
+      );
     }
 
     if (myGroupsError) {

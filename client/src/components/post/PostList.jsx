@@ -1,7 +1,7 @@
 import { memo, useRef, useCallback, useEffect } from "react";
 import PostCard from "./PostCard";
-import Loading from "../common/Loading";
 import { usePostContext } from "../../contexts/PostContext";
+import { SkeletonCard } from "../skeleton";
 
 const PostList = ({
   groupId,
@@ -54,8 +54,10 @@ const PostList = ({
 
   if (loading && !posts?.length) {
     return (
-      <div className="flex justify-center items-center min-h-[200px]">
-        <Loading />
+      <div className="flex flex-col gap-6">
+        {[...Array(3)].map((_, index) => (
+          <SkeletonCard key={index} />
+        ))}
       </div>
     );
   }
@@ -92,8 +94,8 @@ const PostList = ({
         </div>
       ))}
       {loading && (
-        <div className="flex justify-center py-4">
-          <Loading />
+        <div className="py-4">
+          <SkeletonCard />
         </div>
       )}
       {hasMore === false && posts.length > 0 && (

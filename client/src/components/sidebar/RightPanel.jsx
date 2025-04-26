@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useGroup } from "../../contexts/GroupContext";
 import { useFriend } from "../../contexts/FriendContext";
 import Avatar from "../common/Avatar";
-import Loading from "../common/Loading";
+import { SkeletonRightPanel } from "../skeleton";
 import {
   FiUsers,
   FiSearch,
@@ -39,6 +39,11 @@ const RightPanel = () => {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
   };
+
+  // If both popular groups and friends are loading, show skeleton loader
+  if (popularGroupsLoading && friendsLoading) {
+    return <SkeletonRightPanel />;
+  }
 
   return (
     <div className="h-full p-4">
@@ -78,8 +83,26 @@ const RightPanel = () => {
 
         <div className="divide-y divide-[var(--color-border)]">
           {popularGroupsLoading ? (
-            <div className="p-4 flex justify-center">
-              <Loading />
+            <div className="p-4">
+              <div className="space-y-3">
+                {Array(3)
+                  .fill()
+                  .map((_, index) => (
+                    <div
+                      key={index}
+                      className="animate-pulse flex items-center justify-between"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 bg-[var(--color-bg-light)] rounded-md"></div>
+                        <div>
+                          <div className="h-4 bg-[var(--color-bg-light)] rounded w-24 mb-1"></div>
+                          <div className="h-3 bg-[var(--color-bg-light)] rounded w-16"></div>
+                        </div>
+                      </div>
+                      <div className="h-8 w-16 bg-[var(--color-bg-light)] rounded-md"></div>
+                    </div>
+                  ))}
+              </div>
             </div>
           ) : !popularGroups || popularGroups.length === 0 ? (
             <div className="p-4 text-[var(--color-text-tertiary)] text-center">
@@ -147,8 +170,24 @@ const RightPanel = () => {
 
         <div className="divide-y divide-[var(--color-border)]">
           {friendsLoading ? (
-            <div className="p-4 flex justify-center">
-              <Loading />
+            <div className="p-4">
+              <div className="space-y-3">
+                {Array(3)
+                  .fill()
+                  .map((_, index) => (
+                    <div
+                      key={index}
+                      className="animate-pulse flex items-center"
+                    >
+                      <div className="w-10 h-10 bg-[var(--color-bg-light)] rounded-full mr-3"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-[var(--color-bg-light)] rounded w-24 mb-1"></div>
+                        <div className="h-3 bg-[var(--color-bg-light)] rounded w-16"></div>
+                      </div>
+                      <div className="h-8 w-8 bg-[var(--color-bg-light)] rounded-full"></div>
+                    </div>
+                  ))}
+              </div>
             </div>
           ) : !onlineFriends || onlineFriends.length === 0 ? (
             <div className="p-4 text-[var(--color-text-tertiary)] text-center">

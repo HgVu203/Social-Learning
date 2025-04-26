@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { usePost } from "../../hooks/queries/usePostQueries";
 import PostCard from "../../components/post/PostCard";
-import Loading from "../../components/common/Loading";
+import { SkeletonPostDetail } from "../../components/skeleton";
 
 const PostDetailPage = () => {
   const { postId } = useParams();
@@ -10,8 +10,8 @@ const PostDetailPage = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loading />
+      <div className="max-w-2xl mx-auto py-8">
+        <SkeletonPostDetail />
       </div>
     );
   }

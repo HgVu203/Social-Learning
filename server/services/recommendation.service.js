@@ -76,7 +76,6 @@ const RecommendationService = {
     });
 
     return profile;
-    
   },
 
   // Score a post for recommendation
