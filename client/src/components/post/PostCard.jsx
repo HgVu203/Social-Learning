@@ -208,7 +208,7 @@ const PostCard = ({ post }) => {
             <div className="relative" ref={menuRef}>
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                className="p-2 rounded-full hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                className="p-2 rounded-full hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                 disabled={isDeleting}
                 onClick={() => setShowMenu(!showMenu)}
                 aria-label="Post options"
@@ -243,7 +243,7 @@ const PostCard = ({ post }) => {
                         navigate(`/post/edit/${localPost._id}`);
                         setShowMenu(false);
                       }}
-                      className="flex items-center w-full text-left px-4 py-2.5 text-[var(--color-text-primary)] disabled:opacity-50 rounded-lg transition-colors gap-2"
+                      className="flex items-center w-full text-left px-4 py-2.5 text-[var(--color-text-primary)] disabled:opacity-50 rounded-lg transition-colors gap-2 cursor-pointer"
                     >
                       <svg
                         className="w-5 h-5"
@@ -267,7 +267,7 @@ const PostCard = ({ post }) => {
                       }}
                       onClick={handleDelete}
                       disabled={isDeleting}
-                      className="flex items-center w-full text-left px-4 py-2.5 text-red-500 hover:bg-red-50 disabled:opacity-50 rounded-lg transition-colors gap-2"
+                      className="flex items-center w-full text-left px-4 py-2.5 text-red-500 hover:bg-red-50 disabled:opacity-50 rounded-lg transition-colors gap-2 cursor-pointer"
                     >
                       <svg
                         className="w-5 h-5"
@@ -342,7 +342,7 @@ const PostCard = ({ post }) => {
               whileTap={{ scale: 0.9 }}
               onClick={handleLike}
               disabled={isLiking}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors ${
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 isLiked
                   ? "text-[var(--color-primary)] bg-[var(--color-primary-dark)]/10"
                   : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
@@ -369,7 +369,7 @@ const PostCard = ({ post }) => {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setShowComments(!showComments)}
-              className="flex items-center space-x-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] px-3 py-1.5 rounded-lg transition-colors"
+              className="flex items-center space-x-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <svg
                 className="w-5 h-5 stroke-current"
@@ -393,7 +393,7 @@ const PostCard = ({ post }) => {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleShare}
-              className="text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] p-2 rounded-lg transition-colors"
+              className="text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] p-2 rounded-lg transition-colors cursor-pointer"
             >
               <svg
                 className="w-5 h-5 stroke-current"
@@ -412,7 +412,7 @@ const PostCard = ({ post }) => {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleViewDetails}
-              className="text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] p-2 rounded-lg transition-colors"
+              className="text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] p-2 rounded-lg transition-colors cursor-pointer"
             >
               <svg
                 className="w-5 h-5 stroke-current"

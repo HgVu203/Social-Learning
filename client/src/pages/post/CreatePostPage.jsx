@@ -469,7 +469,7 @@ const CreatePostPage = ({ isEditing = false }) => {
             <div className="flex mb-4 sm:mb-0 rounded-md overflow-hidden border border-[var(--color-border)] shadow-sm">
               <button
                 onClick={() => setActiveTab("write")}
-                className={`px-4 py-2 flex items-center text-sm font-medium ${
+                className={`px-4 py-2 flex items-center text-sm font-medium cursor-pointer ${
                   activeTab === "write"
                     ? "bg-[var(--color-primary)] text-white"
                     : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
@@ -480,7 +480,7 @@ const CreatePostPage = ({ isEditing = false }) => {
               </button>
               <button
                 onClick={() => setActiveTab("preview")}
-                className={`px-4 py-2 flex items-center text-sm font-medium ${
+                className={`px-4 py-2 flex items-center text-sm font-medium cursor-pointer ${
                   activeTab === "preview"
                     ? "bg-[var(--color-primary)] text-white"
                     : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
@@ -686,7 +686,7 @@ const CreatePostPage = ({ isEditing = false }) => {
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveImage(index)}
-                                  className="p-2 bg-red-600 text-white rounded-full shadow-lg"
+                                  className="p-2 bg-red-600 text-white rounded-full shadow-lg cursor-pointer hover:bg-red-700 transition-colors"
                                 >
                                   <FiTrash2 className="w-4 h-4" />
                                 </button>
@@ -708,7 +708,7 @@ const CreatePostPage = ({ isEditing = false }) => {
                             <button
                               type="button"
                               onClick={() => fileInputRef.current?.click()}
-                              className="btn btn-secondary flex items-center"
+                              className="btn btn-secondary flex items-center cursor-pointer"
                             >
                               <FiPlus className="mr-2" />
                               Add More Images
@@ -737,7 +737,7 @@ const CreatePostPage = ({ isEditing = false }) => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="btn btn-primary flex items-center"
+                          className="btn btn-primary flex items-center cursor-pointer"
                         >
                           <FiUpload className="mr-2" />
                           Select Images
@@ -752,26 +752,36 @@ const CreatePostPage = ({ isEditing = false }) => {
                   <button
                     type="button"
                     onClick={() => navigate("/")}
-                    className="btn btn-secondary text-sm px-3 py-1.5"
+                    className="btn-secondary text-sm px-4 py-2 rounded-full border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-all cursor-pointer flex items-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="btn btn-primary text-sm px-3 py-1.5 flex items-center"
+                    className={`relative overflow-hidden text-sm px-6 py-2.5 rounded-full font-medium text-white cursor-pointer shadow-lg transition-all duration-300 ${
+                      isSubmitting
+                        ? "opacity-70"
+                        : "hover:shadow-xl hover:translate-y-[-1px]"
+                    }`}
+                    style={{
+                      background:
+                        "linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%)",
+                    }}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <FiLoader className="mr-2 animate-spin" />{" "}
-                        {isEditing ? "Updating..." : "Publishing..."}
-                      </>
-                    ) : (
-                      <>
-                        <FiCheck className="mr-2" />{" "}
-                        {isEditing ? "Update Post" : "Publish Post"}
-                      </>
-                    )}
+                    <span className="relative z-10 flex items-center">
+                      {isSubmitting ? (
+                        <>
+                          <FiLoader className="mr-2 animate-spin" />
+                          {isEditing ? "Updating..." : "Publishing..."}
+                        </>
+                      ) : (
+                        <>
+                          <FiCheck className="mr-2" />
+                          {isEditing ? "Update Post" : "Publish Post"}
+                        </>
+                      )}
+                    </span>
                   </button>
                 </div>
               </form>
@@ -786,9 +796,15 @@ const CreatePostPage = ({ isEditing = false }) => {
                 <div className="flex justify-end pt-4 border-t border-[var(--color-border)]">
                   <button
                     onClick={() => setActiveTab("write")}
-                    className="btn btn-primary text-sm px-3 py-1.5 flex items-center"
+                    className={`relative overflow-hidden text-sm px-6 py-2.5 rounded-full font-medium text-white cursor-pointer shadow-lg transition-all duration-300 hover:shadow-xl hover:translate-y-[-1px] flex items-center`}
+                    style={{
+                      background:
+                        "linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%)",
+                    }}
                   >
-                    <FiEdit className="mr-2" /> Continue Editing
+                    <span className="relative z-10 flex items-center">
+                      <FiEdit className="mr-2" /> Continue Editing
+                    </span>
                   </button>
                 </div>
               </div>

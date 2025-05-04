@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import AuthForm from "../../components/auth/AuthForm";
@@ -18,6 +18,7 @@ const SignupPage = () => {
   const [touched, setTouched] = useState({});
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { signup, isAuthenticated, verificationData, loading, error } =
     useAuth();
 
@@ -30,7 +31,10 @@ const SignupPage = () => {
 
   // Immediately redirect to verification page when verification data is available
   useEffect(() => {
-    if (verificationData) {
+    // Check if we're coming back from verification page with a special flag
+    const fromVerification = location?.state?.fromVerification === true;
+
+    if (verificationData && !fromVerification) {
       console.log(
         "Redirecting to verification page with data:",
         verificationData
@@ -40,8 +44,15 @@ const SignupPage = () => {
         JSON.stringify(verificationData)
       );
       navigate("/verify-email", { state: verificationData });
+    } else if (fromVerification) {
+      // If we're coming back from verification page, clear the verification data
+      localStorage.removeItem("pendingVerification");
+      sessionStorage.removeItem("pendingVerification");
+      sessionStorage.removeItem("emailVerification");
+      // And remove the state so future navigation won't trigger this condition
+      window.history.replaceState({}, document.title);
     }
-  }, [verificationData, navigate]);
+  }, [verificationData, navigate, location]);
 
   const validateField = (name, value) => {
     let error = null;

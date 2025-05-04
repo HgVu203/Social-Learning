@@ -68,7 +68,7 @@ const Navbar = ({ onMenuClick }) => {
             {!isDesktop && (
               <button
                 onClick={onMenuClick}
-                className="p-2 rounded-md text-[var(--color-text-primary)] mr-2 hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)]"
+                className="p-2 rounded-md text-[var(--color-text-primary)] mr-2 hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)] cursor-pointer"
                 aria-label="Open menu"
               >
                 <FiMenu className="w-6 h-6" />
@@ -98,7 +98,7 @@ const Navbar = ({ onMenuClick }) => {
                 />
                 <button
                   type="submit"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer"
                 >
                   <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
                 </button>
@@ -120,7 +120,7 @@ const Navbar = ({ onMenuClick }) => {
                 <button
                   type="button"
                   onClick={handleCloseSearch}
-                  className="p-2 mr-1"
+                  className="p-2 mr-1 cursor-pointer"
                   aria-label="Close search"
                 >
                   <FiX className="w-5 h-5 text-[var(--color-text-primary)]" />
@@ -138,14 +138,14 @@ const Navbar = ({ onMenuClick }) => {
                     <button
                       type="button"
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-10 top-1/2 transform -translate-y-1/2"
+                      className="absolute right-10 top-1/2 transform -translate-y-1/2 cursor-pointer"
                     >
                       <FiX className="w-4 h-4 text-[var(--color-text-tertiary)]" />
                     </button>
                   )}
                   <button
                     type="submit"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer"
                   >
                     <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
                   </button>
@@ -160,7 +160,7 @@ const Navbar = ({ onMenuClick }) => {
             {!isSearchOpen && !isTablet && (
               <button
                 onClick={() => setIsSearchOpen(true)}
-                className="p-2 rounded-full text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)]"
+                className="p-2 rounded-full text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)] cursor-pointer"
                 aria-label="Open search"
               >
                 <FiSearch className="w-6 h-6" />
@@ -170,7 +170,7 @@ const Navbar = ({ onMenuClick }) => {
             {/* Games link */}
             <Link
               to="/game"
-              className="p-2 rounded-full text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)]"
+              className="p-2 rounded-full text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)] cursor-pointer"
               aria-label="Games"
             >
               <IoGameControllerOutline className="w-6 h-6" />
@@ -183,7 +183,7 @@ const Navbar = ({ onMenuClick }) => {
                   <div className="relative">
                     <Link
                       to="/notifications"
-                      className="p-2 rounded-full hover:bg-[var(--color-bg-hover)]"
+                      className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] cursor-pointer"
                       aria-label="Notifications"
                     >
                       <FiBell className="text-2xl text-[var(--color-text-primary)]" />
@@ -202,7 +202,7 @@ const Navbar = ({ onMenuClick }) => {
                 {isTablet && (
                   <Link
                     to="/messages"
-                    className="relative p-2 rounded-full hover:bg-[var(--color-bg-hover)]"
+                    className="relative p-2 rounded-full hover:bg-[var(--color-bg-hover)] cursor-pointer"
                     aria-label="Messages"
                   >
                     <MdMessage className="text-2xl text-[var(--color-text-primary)]" />
@@ -235,19 +235,19 @@ const Navbar = ({ onMenuClick }) => {
                   <div className="absolute right-0 mt-1 w-48 bg-[var(--color-bg-secondary)] rounded-md shadow-lg py-1 hidden group-hover:block border border-[var(--color-border)]">
                     <Link
                       to={`${ROUTES.PROFILE}/${user?._id}`}
-                      className="block px-4 py-2 text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                      className="block px-4 py-2 text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
                     >
                       Profile
                     </Link>
                     <Link
                       to="/settings"
-                      className="block px-4 py-2 text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                      className="block px-4 py-2 text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] cursor-pointer"
                     >
                       Settings
                     </Link>
                     <button
                       onClick={handleLogout}
-                      className="block w-full text-left px-4 py-2 text-red-500 hover:bg-[var(--color-bg-hover)]"
+                      className="block w-full text-left px-4 py-2 text-red-500 hover:bg-[var(--color-bg-hover)] cursor-pointer"
                     >
                       Logout
                     </button>
@@ -258,13 +258,13 @@ const Navbar = ({ onMenuClick }) => {
               <div className="flex items-center space-x-2">
                 <Link
                   to="/login"
-                  className="px-3 py-1.5 md:px-4 md:py-2 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] text-sm md:text-base"
+                  className="px-3 py-1.5 md:px-4 md:py-2 rounded-md text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] text-sm md:text-base cursor-pointer"
                 >
                   Log In
                 </Link>
                 <Link
                   to="/signup"
-                  className="px-3 py-1.5 md:px-4 md:py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] text-sm md:text-base"
+                  className="px-3 py-1.5 md:px-4 md:py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] text-sm md:text-base cursor-pointer"
                 >
                   Sign Up
                 </Link>

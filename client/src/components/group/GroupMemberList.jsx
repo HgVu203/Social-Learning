@@ -16,6 +16,7 @@ import {
   FiUser,
   FiUserPlus,
 } from "react-icons/fi";
+import { Link } from "react-router-dom";
 
 const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
   const { user: currentUser } = useAuth();
@@ -258,41 +259,47 @@ const MemberItem = ({
   handleRemoveMember,
   updatingMember,
 }) => {
+  const isCreator = member.user?._id === currentGroup?.createdBy?._id;
+  const isCurrentUser = member.user?._id === currentUser?._id;
+  const canManage = isAdmin && !isCreator && !isCurrentUser;
+
   return (
-    <div className="p-4 hover:bg-gray-800/40 transition-colors flex items-center justify-between">
-      <div className="flex items-center">
-        <Avatar
-          src={member.user?.avatar}
-          alt={member.user?.username || "Unknown"}
-          size="md"
-          className="mr-3 border-2 border-gray-700"
-        />
+    <div className="p-4 flex items-center justify-between">
+      <div className="flex items-center space-x-3">
+        <Link to={`/profile/${member.user?._id}`}>
+          <Avatar
+            src={member.user?.avatar}
+            alt={member.user?.username}
+            size="md"
+            className="rounded-full"
+          />
+        </Link>
         <div>
-          <div className="flex items-center">
-            <p className="font-medium text-white">
-              {member.user?.username || "Unknown User"}
-            </p>
+          <Link
+            to={`/profile/${member.user?._id}`}
+            className="text-white hover:underline font-medium"
+          >
+            {member.user?.fullname || member.user?.username || "Unknown User"}
+          </Link>
+          <div className="flex items-center space-x-2 mt-1">
+            <span className="text-sm text-gray-400">
+              Joined {new Date(member.joinedAt).toLocaleDateString()}
+            </span>
             {member.role === "admin" && (
-              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-xs text-white rounded-full flex items-center">
+              <span className="flex items-center text-xs text-blue-400 bg-blue-900/30 px-2 py-0.5 rounded">
                 <FiShield className="mr-1" /> Admin
               </span>
             )}
-            {member.user?._id === currentGroup?.createdBy?._id && (
-              <span className="ml-2 px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-xs text-white rounded-full">
-                Creator
+            {isCreator && (
+              <span className="flex items-center text-xs text-purple-400 bg-purple-900/30 px-2 py-0.5 rounded">
+                <FiEdit className="mr-1" /> Creator
               </span>
             )}
-            {member.user?._id === currentUser?._id && (
-              <span className="ml-2 text-xs text-gray-400">(You)</span>
-            )}
           </div>
-          <p className="text-sm text-gray-400">
-            Joined {new Date(member.joinedAt).toLocaleDateString()}
-          </p>
         </div>
       </div>
 
-      {isAdmin && member.user?._id !== currentGroup?.createdBy?._id && (
+      {canManage && (
         <div className="flex space-x-2">
           <div className="relative">
             <button

@@ -73,8 +73,6 @@ export const useAuthMutations = () => {
     },
     onSuccess: (data) => {
       if (data.success) {
-        showSuccessToast("Email verified successfully!");
-
         // If we received user data and token in the response, set them
         if (data.data?.accessToken) {
           console.log(
@@ -97,10 +95,8 @@ export const useAuthMutations = () => {
       }
     },
     onError: (error) => {
+      // Không hiển thị toast thông báo lỗi
       console.error("Email verification error:", error);
-      showErrorToast(
-        error.response?.data?.message || "Email verification failed"
-      );
     },
   });
 
@@ -138,11 +134,8 @@ export const useAuthMutations = () => {
       return response.data;
     },
     onSuccess: (data) => {
-      if (data.success) {
-        showSuccessToast(
-          "Reset code sent to your email! Please check your inbox."
-        );
-      }
+      // Không hiển thị toast thông báo nữa
+      console.log("Password reset code sent successfully", data);
     },
     onError: (error) => {
       console.error("Forgot password error:", error);
@@ -159,15 +152,12 @@ export const useAuthMutations = () => {
       return response.data;
     },
     onSuccess: (data) => {
-      if (data.success) {
-        showSuccessToast("Reset code verified successfully!");
-      }
+      // Không hiển thị toast thông báo thành công
+      console.log("Reset code verification success:", data);
     },
     onError: (error) => {
+      // Không hiển thị toast thông báo lỗi
       console.error("Verify reset code error:", error);
-      showErrorToast(
-        error.response?.data?.message || "Verification code is invalid"
-      );
     },
   });
 
@@ -266,14 +256,13 @@ export const useAuthMutations = () => {
     },
     onSuccess: (data) => {
       if (data.success) {
-        showSuccessToast("A new verification code has been sent to your email");
+        // Không hiển thị toast thông báo thành công
+        console.log("Verification code resent successfully");
       }
     },
     onError: (error) => {
+      // Không hiển thị toast thông báo lỗi
       console.error("Resend verification error:", error);
-      showErrorToast(
-        error.response?.data?.message || "Failed to resend verification code"
-      );
     },
   });
 

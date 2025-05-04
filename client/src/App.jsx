@@ -8,6 +8,7 @@ import { useTheme } from "./contexts/ThemeContext";
 import { connectSocket, disconnectSocket } from "./services/socket";
 import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
+import ScrollToTop from "./components/common/ScrollToTop";
 
 // Layout
 import ProtectedRoute from "./utils/ProtectedRoute";
@@ -177,6 +178,7 @@ function App() {
 
   return (
     <>
+      <ScrollToTop />
       <Routes>
         {/* Public Routes with MainLayout */}
         <Route

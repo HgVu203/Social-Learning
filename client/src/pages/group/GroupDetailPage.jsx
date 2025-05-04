@@ -16,7 +16,6 @@ import {
   FiUsers,
   FiSettings,
   FiImage,
-  FiEdit2,
   FiEye,
   FiLock,
   FiCalendar,
@@ -468,31 +467,34 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
           {canCreatePost && (
             <div className="bg-[#1E2024] p-4 rounded-lg shadow-md mb-4 border border-gray-800">
               <div className="flex items-center space-x-3">
-                <Avatar
-                  src={user?.avatarImage}
-                  alt={user?.fullName}
-                  size="md"
-                />
+                <Link to={`/profile/${user?._id}`}>
+                  <Avatar
+                    src={user?.avatarImage}
+                    alt={user?.fullName}
+                    size="md"
+                  />
+                </Link>
                 <div
                   onClick={() => navigate(`/create-post?groupId=${groupId}`)}
-                  className="flex-grow bg-[#16181c] rounded-full px-4 py-2.5 cursor-pointer hover:bg-gray-800 transition-colors text-gray-400"
+                  className="flex-grow bg-gradient-to-r from-[#242830] to-[#1e2229] rounded-full px-5 py-3.5 cursor-pointer hover:from-[#2a2f3c] hover:to-[#222731] transition-all duration-300 text-[#9ca3af] shadow-inner border border-gray-700/40 hover:border-blue-600/40 hover:shadow-md hover:shadow-blue-900/10 flex items-center group relative overflow-hidden"
                 >
-                  Write something in the group...
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-blue-600 to-indigo-600 opacity-0 group-hover:opacity-70 group-hover:animate-pulse"></div>
+                  <FiImage className="mr-3 text-blue-500 group-hover:text-blue-400 transition-colors duration-300 relative z-10" />
+                  <span className="font-medium text-[#9ca3af] group-hover:text-[#cdd3de] transition-colors duration-300 relative z-10">
+                    Write something in the group...
+                  </span>
                 </div>
               </div>
-              <div className="flex mt-3 pt-2 border-t border-gray-800">
-                <button className="flex-1 flex items-center justify-center p-2 hover:bg-gray-800 rounded-md transition-colors text-gray-300">
-                  <FiImage className="mr-2 text-green-600" />
-                  <span>Photo/Video</span>
-                </button>
+              {/* <div className="flex mt-3 pt-2 border-t border-gray-800">
                 <button
                   onClick={() => navigate(`/create-post?groupId=${groupId}`)}
-                  className="flex-1 flex items-center justify-center p-2 hover:bg-gray-800 rounded-md transition-colors text-gray-300"
+                  className="flex-1 flex items-center justify-center p-2 hover:bg-gray-800 rounded-md transition-colors text-gray-300 cursor-pointer"
                 >
                   <FiEdit2 className="mr-2 text-blue-600" />
                   <span>Post</span>
                 </button>
-              </div>
+              </div> */}
             </div>
           )}
 
@@ -576,13 +578,13 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 <div className="space-y-2">
                   <button
                     onClick={() => navigate(`/groups/${groupId}/settings`)}
-                    className="flex items-center text-blue-500 hover:underline"
+                    className="flex items-center text-blue-500 hover:underline cursor-pointer"
                   >
                     <FiSettings className="mr-1" /> Manage group settings
                   </button>
                   <button
                     onClick={() => navigate(`/groups/${groupId}/manage`)}
-                    className="flex items-center text-blue-500 hover:underline"
+                    className="flex items-center text-blue-500 hover:underline cursor-pointer"
                   >
                     <FiUsers className="mr-1" /> Manage members
                   </button>
@@ -701,7 +703,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
             <div className="border-t border-gray-700 pt-6 flex justify-between">
               <button
                 onClick={handleDeleteGroup}
-                className="px-4 py-2 bg-red-600/30 hover:bg-red-700/50 text-red-300 rounded-lg flex items-center transition-colors"
+                className="px-4 py-2 bg-red-600/30 hover:bg-red-700/50 text-red-300 rounded-lg flex items-center transition-colors cursor-pointer"
               >
                 <FiTrash2 className="mr-1" /> Delete Group
               </button>
@@ -709,7 +711,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               <button
                 onClick={handleSaveSettings}
                 disabled={isSaving}
-                className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center disabled:opacity-50"
+                className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center disabled:opacity-50 cursor-pointer"
               >
                 <FiSave className="mr-1" />
                 {isSaving ? "Saving..." : "Save Changes"}
@@ -730,7 +732,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         <div className="flex flex-wrap space-x-2 mb-2 md:mb-0">
           <button
             onClick={() => navigate(`/groups/${groupId}`)}
-            className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800"
+            className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800 cursor-pointer"
           >
             Back to Group
           </button>
@@ -747,7 +749,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         <div className="flex flex-wrap space-x-2 mb-2 md:mb-0">
           <button
             onClick={() => navigate(`/groups/${groupId}`)}
-            className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800"
+            className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800 cursor-pointer"
           >
             Back to Group
           </button>
@@ -763,7 +765,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       <div className="flex flex-wrap space-x-2 mb-2 md:mb-0">
         <button
           onClick={() => setActiveTab("discussion")}
-          className={`px-4 py-2.5 font-medium rounded-lg transition-all ${
+          className={`px-4 py-2.5 font-medium rounded-lg transition-all cursor-pointer ${
             activeTab === "discussion"
               ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
               : "text-gray-300 hover:bg-gray-800"
@@ -773,7 +775,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         </button>
         <button
           onClick={() => setActiveTab("members")}
-          className={`px-4 py-2.5 font-medium rounded-lg transition-all ${
+          className={`px-4 py-2.5 font-medium rounded-lg transition-all cursor-pointer ${
             activeTab === "members"
               ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
               : "text-gray-300 hover:bg-gray-800"
@@ -783,7 +785,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         </button>
         <button
           onClick={() => setActiveTab("about")}
-          className={`px-4 py-2.5 font-medium rounded-lg transition-all ${
+          className={`px-4 py-2.5 font-medium rounded-lg transition-all cursor-pointer ${
             activeTab === "about"
               ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm"
               : "text-gray-300 hover:bg-gray-800"
@@ -863,7 +865,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               {isAdmin && (
                 <Link
                   to={`/groups/${groupId}/settings`}
-                  className="px-4 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all font-medium flex items-center shadow-sm"
+                  className="px-4 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all font-medium flex items-center shadow-sm cursor-pointer"
                 >
                   <FiSettings className="mr-1" /> Settings
                 </Link>
@@ -872,7 +874,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 <button
                   onClick={handleLeaveGroup}
                   disabled={isJoining}
-                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all disabled:opacity-50 font-medium shadow-sm"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all disabled:opacity-50 font-medium shadow-sm cursor-pointer"
                 >
                   {isJoining ? "Processing..." : "Leave Group"}
                 </button>
@@ -880,7 +882,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 <button
                   onClick={handleJoinGroup}
                   disabled={isJoining}
-                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white rounded-lg hover:from-[var(--color-primary-hover)] hover:to-[var(--color-primary)] transition-all disabled:opacity-50 font-medium shadow-sm"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white rounded-lg hover:from-[var(--color-primary-hover)] hover:to-[var(--color-primary)] transition-all disabled:opacity-50 font-medium shadow-sm cursor-pointer"
                 >
                   {isJoining ? "Processing..." : "Join Group"}
                 </button>

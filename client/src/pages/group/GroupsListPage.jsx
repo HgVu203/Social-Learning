@@ -149,7 +149,7 @@ const GroupsListPage = () => {
           <div className="inline-flex bg-[var(--color-bg-secondary)] rounded-lg p-1 border border-[var(--color-border)] shadow-md">
             <button
               onClick={() => setGridView(true)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 gridView
                   ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -160,7 +160,7 @@ const GroupsListPage = () => {
             </button>
             <button
               onClick={() => setGridView(false)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 !gridView
                   ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -290,7 +290,7 @@ const GroupsListPage = () => {
           <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
             <button
               onClick={() => setGridView(true)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 gridView
                   ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -300,7 +300,7 @@ const GroupsListPage = () => {
             </button>
             <button
               onClick={() => setGridView(false)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 !gridView
                   ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -436,7 +436,7 @@ const GroupsListPage = () => {
           <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
             <button
               onClick={() => setGridView(true)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 gridView
                   ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -446,7 +446,7 @@ const GroupsListPage = () => {
             </button>
             <button
               onClick={() => setGridView(false)}
-              className={`p-2.5 rounded-md transition-all duration-200 ${
+              className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 !gridView
                   ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -531,7 +531,7 @@ const GroupsListPage = () => {
                 setSearchQuery("");
                 setIsSearchFocused(false);
               }}
-              className={`flex items-center py-3 px-5 font-medium whitespace-nowrap flex-1 justify-center transition-colors ${
+              className={`flex items-center py-3 px-5 font-medium whitespace-nowrap flex-1 justify-center transition-colors cursor-pointer ${
                 activeTab === tab.id && !showSearchResults
                   ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -564,7 +564,7 @@ const GroupsListPage = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsSearchFocused(true)}
-            className="flex items-center gap-2 w-full p-3 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-text-tertiary)] border border-[var(--color-border)]"
+            className="flex items-center gap-2 w-full p-3 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-text-tertiary)] border border-[var(--color-border)] cursor-pointer"
           >
             <FiSearch className="text-[var(--color-text-tertiary)]" />
             <span className="text-sm">Search groups...</span>
@@ -581,7 +581,7 @@ const GroupsListPage = () => {
             <div className="flex items-center w-full bg-[var(--color-bg-secondary)] rounded-full border border-[var(--color-border)] overflow-hidden">
               <button
                 onClick={handleClearSearch}
-                className="p-3 text-[var(--color-text-secondary)]"
+                className="p-3 text-[var(--color-text-secondary)] cursor-pointer"
               >
                 <FiX className="w-5 h-5" />
               </button>

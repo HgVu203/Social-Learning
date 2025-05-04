@@ -67,7 +67,7 @@ const HomePage = () => {
           </div>
           <Link
             to="/create-post"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] transition duration-150 ease-in-out"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] transition duration-150 ease-in-out cursor-pointer"
           >
             <svg
               className="h-5 w-5 mr-2"
@@ -97,7 +97,7 @@ const HomePage = () => {
                 filter === "recommended"
                   ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                   : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
-              } ${!user ? "opacity-50 cursor-not-allowed" : ""}`}
+              } ${!user ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
               disabled={!user}
               title={
                 !user ? "Please log in to see personalized recommendations" : ""
@@ -124,7 +124,7 @@ const HomePage = () => {
             </button>
             <button
               onClick={() => handleFilterChange("latest")}
-              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm ${
+              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm cursor-pointer ${
                 filter === "latest"
                   ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                   : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
@@ -134,7 +134,7 @@ const HomePage = () => {
             </button>
             <button
               onClick={() => handleFilterChange("popular")}
-              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm ${
+              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm cursor-pointer ${
                 filter === "popular"
                   ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                   : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
@@ -144,7 +144,7 @@ const HomePage = () => {
             </button>
             <button
               onClick={() => handleFilterChange("following")}
-              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm ${
+              className={`w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm cursor-pointer ${
                 filter === "following"
                   ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                   : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-light)]"
@@ -169,7 +169,7 @@ const HomePage = () => {
       <div className="fixed bottom-4 right-4 sm:hidden">
         <Link
           to="/create-post"
-          className="inline-flex items-center justify-center p-3 rounded-full shadow-lg text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]"
+          className="inline-flex items-center justify-center p-3 rounded-full shadow-lg text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] cursor-pointer"
         >
           <svg
             className="h-6 w-6"

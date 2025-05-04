@@ -325,9 +325,9 @@ const FriendsPage = () => {
         return (
           <button
             onClick={handleLocalSendRequest}
-            className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
+            className="py-2 px-5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] cursor-pointer"
           >
-            <FiUserPlus className="mr-2" size={16} /> Add Friend
+            <FiUserPlus className="mr-2" size={18} /> Add Friend
           </button>
         );
       case "FRIEND":
@@ -335,15 +335,15 @@ const FriendsPage = () => {
           <div className="flex space-x-2">
             <Link
               to={`/messages/${userId}`}
-              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
+              className="py-2 px-5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] cursor-pointer"
             >
-              <FiMessageSquare className="mr-2" size={16} /> Message
+              <FiMessageSquare className="mr-2" size={18} /> Message
             </Link>
             <button
               onClick={handleLocalUnfriend}
-              className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors flex items-center justify-center shadow-sm"
+              className="py-2 px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] cursor-pointer"
             >
-              <FiUserX className="mr-2" size={16} /> Unfriend
+              <FiUserX className="mr-2" size={18} /> Unfriend
             </button>
           </div>
         );
@@ -351,9 +351,9 @@ const FriendsPage = () => {
         return (
           <button
             disabled
-            className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-sm font-medium rounded-xl opacity-75 cursor-not-allowed flex items-center justify-center shadow-sm"
+            className="py-2 px-5 bg-gradient-to-r from-gray-400 to-gray-500 text-white text-base font-medium rounded-md opacity-75 cursor-not-allowed flex items-center justify-center min-w-[140px]"
           >
-            <FiClock className="mr-2" size={16} /> Request Sent
+            <FiClock className="mr-2" size={18} /> Request Sent
           </button>
         );
       case "PENDING_RECEIVED":
@@ -362,14 +362,14 @@ const FriendsPage = () => {
             <button
               onClick={handleLocalAccept}
               disabled={processingIds.includes(userId)}
-              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+              className="py-2 px-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <FiUserCheck className="mr-2" size={16} /> Confirm
+              <FiUserCheck className="mr-2" size={18} /> Confirm
             </button>
             <button
               onClick={handleLocalReject}
               disabled={processingIds.includes(userId)}
-              className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+              className="py-2 px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               Delete
             </button>
@@ -413,7 +413,7 @@ const FriendsPage = () => {
             <div className="flex items-center space-x-3 flex-1 min-w-0">
               <Link
                 to={`/profile/${request.userId._id}`}
-                className="flex-shrink-0"
+                className="flex-shrink-0 rounded-full overflow-hidden"
               >
                 <Avatar
                   src={request.userId.avatar}
@@ -438,14 +438,14 @@ const FriendsPage = () => {
               <button
                 onClick={() => handleAcceptRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+                className="py-2 px-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <FiUserCheck className="mr-2" size={16} /> Confirm
+                <FiUserCheck className="mr-2" size={18} /> Confirm
               </button>
               <button
                 onClick={() => handleRejectRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+                className="py-2 px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 Delete
               </button>
@@ -488,7 +488,10 @@ const FriendsPage = () => {
               className="card p-3 flex items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl"
             >
               <div className="flex items-center space-x-3 flex-1 min-w-0">
-                <Link to={`/profile/${friend._id}`} className="flex-shrink-0">
+                <Link
+                  to={`/profile/${friend._id}`}
+                  className="flex-shrink-0 rounded-full overflow-hidden"
+                >
                   <Avatar
                     src={friend.avatar}
                     alt={friend.username}
@@ -511,16 +514,16 @@ const FriendsPage = () => {
               <div className="flex space-x-2 flex-shrink-0 ml-3">
                 <Link
                   to={`/messages/${friend._id}`}
-                  className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-sm"
+                  className="py-2 px-5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] cursor-pointer"
                 >
-                  <FiMessageSquare className="mr-2" size={16} /> Message
+                  <FiMessageSquare className="mr-2" size={18} /> Message
                 </Link>
                 <button
                   onClick={() => handleUnfriend(friend._id)}
                   disabled={processingIds.includes(friend._id)}
-                  className="py-1.5 px-4 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] text-sm font-medium rounded-xl hover:bg-[var(--color-bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+                  className="py-2 px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <FiUserX className="mr-2" size={16} /> Unfriend
+                  <FiUserX className="mr-2" size={18} /> Unfriend
                 </button>
               </div>
             </motion.div>
@@ -567,12 +570,15 @@ const FriendsPage = () => {
                   className="bg-[var(--color-bg-secondary)] rounded-xl p-3 flex items-center justify-between shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors"
                 >
                   <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <Link to={`/profile/${user._id}`} className="flex-shrink-0">
+                    <Link
+                      to={`/profile/${user._id}`}
+                      className="flex-shrink-0 rounded-full overflow-hidden"
+                    >
                       <Avatar
                         src={user.avatar}
                         alt={user.username}
                         size="xl"
-                        className="flex-shrink-0 hover:opacity-90 transition-opacity border-2 border-[var(--color-bg-primary)]"
+                        className="flex-shrink-0 hover:opacity-90 transition-opacity"
                       />
                     </Link>
                     <div className="flex-1 min-w-0">
@@ -756,7 +762,7 @@ const FriendsPage = () => {
             setActiveTab("all");
             setShowSearchResults(false);
           }}
-          className={`flex items-center py-3 px-4 text-base relative transition-colors ${
+          className={`flex items-center py-3 px-4 text-base relative transition-colors cursor-pointer ${
             activeTab === "all" && !showSearchResults
               ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
               : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -775,7 +781,7 @@ const FriendsPage = () => {
             setActiveTab("requests");
             setShowSearchResults(false);
           }}
-          className={`flex items-center py-3 px-4 text-base relative transition-colors ${
+          className={`flex items-center py-3 px-4 text-base relative transition-colors cursor-pointer ${
             activeTab === "requests" && !showSearchResults
               ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
               : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"

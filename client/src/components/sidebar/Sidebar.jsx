@@ -206,7 +206,7 @@ const Sidebar = ({ onClose }) => {
                 src={user.avatar}
                 alt={user.fullname || user.username}
                 size="md"
-                className="mr-3 border-2 border-[var(--color-bg-primary)]"
+                className="mr-3"
               />
               <div>
                 <div className="font-medium text-[var(--color-text-primary)]">

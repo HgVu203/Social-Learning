@@ -111,7 +111,7 @@ const GroupCard = ({
 
   return (
     <div
-      className={`group flex flex-col bg-[#1E2024] rounded-xl border border-gray-800 hover:border-blue-700/50 transition-all duration-300 shadow-md hover:shadow-xl transform hover:-translate-y-1 h-full ${
+      className={`group flex flex-col bg-[#1E2024] rounded-xl border border-gray-800 hover:border-blue-700/50 transition-all duration-300 shadow-md hover:shadow-xl h-full ${
         isCompact ? "p-3" : "p-3"
       }`}
     >
@@ -122,12 +122,12 @@ const GroupCard = ({
             <LazyImage
               src={group.coverImage}
               alt={group.name}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              className="w-full h-full object-cover"
               style={{ objectFit: "cover", objectPosition: "center" }}
               eager={index < 3} // Tải trước cho 3 nhóm đầu tiên
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-blue-600 to-indigo-800 transition-all duration-700 group-hover:from-blue-700 group-hover:to-indigo-900"></div>
+            <div className="w-full h-full bg-gradient-to-r from-blue-600 to-indigo-800 transition-all duration-700"></div>
           )}
           {group.isPrivate && (
             <span className="absolute top-2 right-2 bg-yellow-500/90 text-black p-1 rounded-lg flex items-center">
@@ -180,7 +180,7 @@ const GroupCard = ({
             ) : (
               <button
                 onClick={handleJoinGroup}
-                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium transition-all disabled:opacity-50 flex-1 shadow-lg hover:shadow-blue-700/20"
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-medium transition-all disabled:opacity-50 flex-1 shadow-lg hover:shadow-blue-700/20 cursor-pointer"
                 disabled={joining}
               >
                 {joining ? "..." : "Join"}
@@ -189,14 +189,14 @@ const GroupCard = ({
           ) : isCreator ? (
             <Link
               to={`/groups/${group._id}/manage`}
-              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white text-xs font-medium transition-all flex-1 text-center shadow-lg"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white text-sm font-medium transition-all flex-1 text-center shadow-lg cursor-pointer"
             >
               Manage
             </Link>
           ) : (
             <button
               onClick={handleLeaveGroup}
-              className="px-3 py-1.5 rounded-lg bg-gray-700/80 hover:bg-gray-600 text-white text-xs font-medium transition-colors disabled:opacity-50 flex-1"
+              className="px-4 py-2 rounded-lg bg-gray-700/80 hover:bg-gray-600 text-white text-sm font-medium transition-colors disabled:opacity-50 flex-1 cursor-pointer"
               disabled={joining}
             >
               {joining ? "..." : "Leave"}
@@ -204,7 +204,7 @@ const GroupCard = ({
           )}
           <Link
             to={`/groups/${group._id}`}
-            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium transition-all flex-1 text-center shadow-lg hover:shadow-blue-700/20"
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-medium transition-all flex-1 text-center shadow-lg hover:shadow-blue-700/20 cursor-pointer"
           >
             View
           </Link>

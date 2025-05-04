@@ -10,6 +10,9 @@ import EditProfileModal from "../../components/profile/EditProfileModal";
 import { BiCalendar, BiPhone, BiMap, BiUser } from "react-icons/bi";
 import { useUserFollow } from "../../hooks/mutations/useUserMutations";
 import { SkeletonProfile, SkeletonCard } from "../../components/skeleton";
+import { useFriend } from "../../contexts/FriendContext";
+import { useFriendQueries } from "../../hooks/queries/useFriendQueries";
+import { FiUserPlus, FiSettings } from "react-icons/fi";
 
 // Mapping của màu sắc cho từng rank
 const rankColors = {
@@ -73,6 +76,19 @@ const ProfilePage = () => {
   const userFollow = useUserFollow();
   const [followersCount, setFollowersCount] = useState(0);
   const prevUserId = useRef(null);
+  const { sendFriendRequest } = useFriend();
+  const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
+
+  // Get friendship status
+  const { data: friendshipData } = useFriendQueries.useFriendshipStatus(
+    userId,
+    {
+      enabled: !!userId && !!currentUser,
+    }
+  );
+
+  const friendshipStatus = friendshipData?.status || "NOT_FRIEND";
+  const isFriend = friendshipStatus === "FRIEND";
 
   // If no userId provided and user is logged in, use current user's id
   const targetUserId = userId || currentUser?._id;
@@ -221,6 +237,24 @@ const ProfilePage = () => {
     followersCount,
   ]);
 
+  const handleSendFriendRequest = async () => {
+    if (!currentUser) {
+      navigate("/login");
+      return;
+    }
+
+    if (!profile || !profile._id || sendingFriendRequest) return;
+
+    try {
+      setSendingFriendRequest(true);
+      await sendFriendRequest({ userId: profile._id });
+    } catch (error) {
+      console.error("Failed to send friend request:", error);
+    } finally {
+      setSendingFriendRequest(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto py-6 px-4">
@@ -315,6 +349,19 @@ const ProfilePage = () => {
         transition={{ duration: 0.4 }}
         className="card mb-6 overflow-hidden relative"
       >
+        {/* Settings button (only visible on own profile) */}
+        {isOwnProfile && (
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => navigate("/settings")}
+              className="bg-[var(--color-bg-secondary)] p-2.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors text-[var(--color-text-primary)] shadow-sm cursor-pointer"
+              title="Settings"
+            >
+              <FiSettings className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         {/* Profile Info */}
         <div className="px-6 py-6 relative">
           <div className="flex flex-col md:flex-row md:items-center">
@@ -330,26 +377,6 @@ const ProfilePage = () => {
                   className="w-36 h-36 rounded-full border-4 border-[var(--color-bg-secondary)] shadow-xl"
                   style={{ objectFit: "cover" }}
                 />
-                {isOwnProfile && (
-                  <button
-                    onClick={() => setIsEditModalOpen(true)}
-                    className="absolute bottom-1 right-1 bg-[var(--color-primary)] text-white p-2 rounded-full shadow-md hover:bg-[var(--color-primary-hover)] transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                      />
-                    </svg>
-                  </button>
-                )}
               </motion.div>
             </div>
 
@@ -386,46 +413,128 @@ const ProfilePage = () => {
                     @{profile.username}
                   </p>
 
-                  {/* Points Display */}
-                  <div className="mt-1 flex items-center">
-                    <svg
-                      className="w-5 h-5 text-yellow-400"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span className="ml-1 text-[var(--color-text-secondary)]">
-                      {profile.points || 0} points
-                    </span>
-
-                    {/* Progress to Next Rank */}
-                    {profile.rank !== "Master" && (
-                      <div className="ml-4 flex items-center">
-                        <div className="w-20 bg-[var(--color-bg-tertiary)] rounded-full h-2 mr-2">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${getPointsToNextRankPercentage(
-                                profile.rank,
-                                profile.points
-                              )}%`,
-                            }}
-                            transition={{ delay: 0.5, duration: 0.8 }}
-                            className="h-2 rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)]"
-                          ></motion.div>
-                        </div>
-                        <span className="text-xs text-[var(--color-text-tertiary)]">
-                          {getPointsToNextRank(profile.rank, profile.points)} to{" "}
-                          {getNextRank(profile.rank)}
+                  {/* Replace points display with Follow/Add Friend or Edit Profile buttons based on ownership */}
+                  {!isOwnProfile ? (
+                    <div className="mt-4 flex space-x-3">
+                      <button
+                        className={`relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
+                          isFollowing
+                            ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                            : "bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
+                        }`}
+                        onClick={handleToggleFollow}
+                      >
+                        <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
+                        <svg
+                          className="w-5 h-5 mr-2 relative z-10"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          {isFollowing ? (
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          ) : (
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 4v16m8-8H4"
+                            />
+                          )}
+                        </svg>
+                        <span className="font-semibold text-base relative z-10">
+                          {isFollowing ? "Following" : "Follow"}
                         </span>
-                      </div>
-                    )}
-                  </div>
+                      </button>
+
+                      {/* Message button - moved from bottom right to here */}
+                      {isFriend && (
+                        <button
+                          onClick={() => navigate(`/messages/${profile._id}`)}
+                          className="relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-gray-600 to-gray-700 text-white"
+                        >
+                          <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-gray-700 to-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
+                          <svg
+                            className="w-5 h-5 mr-2 relative z-10"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            />
+                          </svg>
+                          <span className="font-semibold text-base relative z-10">
+                            Message
+                          </span>
+                        </button>
+                      )}
+
+                      {!isFriend && (
+                        <button
+                          onClick={handleSendFriendRequest}
+                          disabled={
+                            friendshipStatus === "PENDING_SENT" ||
+                            sendingFriendRequest
+                          }
+                          className={`relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
+                            friendshipStatus === "PENDING_SENT"
+                              ? "bg-gray-500 text-white opacity-80 cursor-not-allowed"
+                              : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+                          }`}
+                        >
+                          <span
+                            className={`absolute inset-0 w-full h-full bg-gradient-to-r from-teal-500 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+                              friendshipStatus === "PENDING_SENT"
+                                ? "hidden"
+                                : ""
+                            } rounded-md`}
+                          ></span>
+                          <FiUserPlus className="w-5 h-5 mr-2 relative z-10" />
+                          <span className="font-semibold text-base relative z-10">
+                            {friendshipStatus === "PENDING_SENT"
+                              ? "Sent"
+                              : friendshipStatus === "PENDING_RECEIVED"
+                              ? "Accept"
+                              : "Add Friend"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex">
+                      <button
+                        onClick={() => setIsEditModalOpen(true)}
+                        className="relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-violet-500 to-purple-500 text-white"
+                      >
+                        <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-purple-500 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
+                        <svg
+                          className="w-5 h-5 mr-2 relative z-10"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                          />
+                        </svg>
+                        <span className="font-semibold text-base relative z-10">
+                          Edit Profile
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -436,7 +545,10 @@ const ProfilePage = () => {
                     <p className="mb-2 whitespace-pre-wrap line-clamp-3 group relative">
                       {profile.bio}
                       {profile.bio.length > 100 && (
-                        <button className="text-[var(--color-primary)] font-medium ml-1 hover:underline absolute">
+                        <button
+                          onClick={() => setIsEditModalOpen(true)}
+                          className="text-[var(--color-primary)] font-medium ml-1 hover:underline absolute cursor-pointer"
+                        >
                           more
                         </button>
                       )}
@@ -500,94 +612,14 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Action Buttons - Đặt ở góc dưới phải của card */}
+          {/* Message and Edit Profile buttons at the bottom right - removed Message button from here */}
           {!isOwnProfile ? (
-            <div className="absolute bottom-4 right-6 flex space-x-2">
-              <button
-                className={`btn rounded-md px-4 py-2 flex items-center justify-center min-w-[100px] transition-all duration-300 cursor-pointer hover:shadow-md active:scale-95 ${
-                  isFollowing
-                    ? "btn-secondary hover:bg-red-600 hover:text-white"
-                    : "btn-primary"
-                }`}
-                onClick={handleToggleFollow}
-              >
-                <div className="flex items-center group">
-                  <svg
-                    className="w-5 h-5 mr-1.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    {isFollowing ? (
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    ) : (
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    )}
-                  </svg>
-                  <span className="relative">
-                    <span
-                      className={`${
-                        isFollowing ? "group-hover:opacity-0" : "opacity-100"
-                      } inline-block min-w-[60px] text-center transition-opacity duration-200`}
-                    >
-                      {isFollowing ? "Following" : "Follow"}
-                    </span>
-                    {isFollowing && (
-                      <span className="absolute left-0 top-0 opacity-0 group-hover:opacity-100 whitespace-nowrap min-w-[60px] text-center transition-opacity duration-200 ease-in-out">
-                        Unfollow
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </button>
-              <button className="btn rounded-md px-4 py-2 btn-secondary flex items-center justify-center min-w-[100px] cursor-pointer hover:shadow-md active:scale-95">
-                <svg
-                  className="w-5 h-5 mr-1.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-                <span>Message</span>
-              </button>
+            <div className="absolute bottom-4 right-6">
+              {/* Message button moved up to be with the Follow button */}
             </div>
           ) : (
             <div className="absolute bottom-4 right-6">
-              <button
-                onClick={() => setIsEditModalOpen(true)}
-                className="btn rounded-md px-4 py-2 btn-primary flex items-center justify-center min-w-[100px] cursor-pointer hover:shadow-md active:scale-95"
-              >
-                <svg
-                  className="w-5 h-5 mr-1.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                  />
-                </svg>
-                <span>Edit Profile</span>
-              </button>
+              {/* Edit Profile button moved to below username */}
             </div>
           )}
         </div>
@@ -863,6 +895,7 @@ function getNextRank(currentRank) {
 }
 
 // Helper function để tính phần trăm tiến độ đến rank tiếp theo
+// eslint-disable-next-line no-unused-vars
 function getPointsToNextRank(currentRank, points) {
   // Định nghĩa số điểm cần cho mỗi rank
   const rankThresholds = {

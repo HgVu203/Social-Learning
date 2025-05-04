@@ -1292,14 +1292,18 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
                   <div className="flex-shrink-0 mr-2">
                     {typeof message.senderId === "object" &&
                     message.senderId.avatar ? (
-                      <Avatar
-                        src={message.senderId.avatar}
-                        alt={message.senderId.username || "User"}
-                        size="sm"
-                        priority={true}
-                      />
+                      <Link to={`/profile/${message.senderId._id}`}>
+                        <Avatar
+                          src={message.senderId.avatar}
+                          alt={message.senderId.username || "User"}
+                          size="sm"
+                          priority={true}
+                        />
+                      </Link>
                     ) : (
-                      <BsPersonCircle className="w-8 h-8 text-[var(--color-text-secondary)]" />
+                      <Link to={`/profile/${message.senderId}`}>
+                        <BsPersonCircle className="w-8 h-8 text-[var(--color-text-secondary)]" />
+                      </Link>
                     )}
                   </div>
                 )}
@@ -1602,25 +1606,33 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           <div className="flex-1 flex items-center">
             <div className="relative mr-2">
               {currentConversation?.avatar ? (
-                <Avatar
-                  src={currentConversation.avatar}
-                  alt={currentConversation.username || "User"}
-                  size="md"
-                  className="border-2 border-[var(--color-primary-light)] border-opacity-30"
-                />
+                <Link to={`/profile/${currentConversation._id}`}>
+                  <Avatar
+                    src={currentConversation.avatar}
+                    alt={currentConversation.username || "User"}
+                    size="md"
+                  />
+                </Link>
               ) : (
-                <BsPersonCircle className="w-9 h-9 text-[var(--color-text-secondary)]" />
+                <Link to={`/profile/${currentConversation._id}`}>
+                  <BsPersonCircle className="w-9 h-9 text-[var(--color-text-secondary)]" />
+                </Link>
               )}
               {currentConversation?.isOnline && (
                 <span className="absolute right-0 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[var(--color-card-bg-secondary)] shadow-sm"></span>
               )}
             </div>
             <div className="ml-3">
-              <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
-                {currentConversation?.fullname ||
-                  currentConversation?.username ||
-                  "User"}
-              </h3>
+              <Link
+                to={`/profile/${currentConversation._id}`}
+                className="hover:underline"
+              >
+                <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
+                  {currentConversation?.fullname ||
+                    currentConversation?.username ||
+                    "User"}
+                </h3>
+              </Link>
               <p className="text-xs text-[var(--color-text-tertiary)]">
                 {currentConversation?.isOnline ? "Active now" : "Offline"}
               </p>

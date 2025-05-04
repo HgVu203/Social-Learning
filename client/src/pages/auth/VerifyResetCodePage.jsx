@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthButton from "../../components/auth/AuthButton";
-import { FaEnvelope } from "react-icons/fa";
+import { FaEnvelope, FaArrowLeft } from "react-icons/fa";
 
 const VerifyResetCodePage = () => {
   const [codeDigits, setCodeDigits] = useState(["", "", "", "", "", ""]);
@@ -16,7 +15,7 @@ const VerifyResetCodePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const inputRefs = useRef([]);
-  const { verifyResetCode } = useAuth();
+  const { verifyResetCode, clearError } = useAuth();
 
   useEffect(() => {
     // Initialize refs array
@@ -137,6 +136,20 @@ const VerifyResetCodePage = () => {
     }
   };
 
+  const handleChangeEmail = () => {
+    // Xóa lỗi trong AuthContext trước khi điều hướng
+    clearError();
+
+    // Xóa lỗi trong component state
+    setError("");
+
+    // Đặt một timeout ngắn để đảm bảo state được cập nhật trước khi chuyển hướng
+    setTimeout(() => {
+      // Điều hướng về trang forgot-password với replace để thay thế history
+      navigate("/forgot-password", { replace: true });
+    }, 10);
+  };
+
   const isCodeComplete = codeDigits.every((digit) => digit !== "");
 
   return (
@@ -145,8 +158,16 @@ const VerifyResetCodePage = () => {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="max-w-md w-full"
+        className="max-w-md w-full relative"
       >
+        <button
+          type="button"
+          onClick={handleChangeEmail}
+          className="absolute top-4 left-4 text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors p-2 z-10 cursor-pointer"
+        >
+          <FaArrowLeft className="h-5 w-5" />
+        </button>
+
         <AuthForm
           title="Verify Code"
           subtitle="Enter the verification code to reset your password"
@@ -224,28 +245,28 @@ const VerifyResetCodePage = () => {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 mt-6">
             <AuthButton
               type="submit"
               disabled={isSubmitting || !isCodeComplete}
               isLoading={isSubmitting}
               variant="primary"
               fullWidth
+              className="py-3 text-base font-medium cursor-pointer"
             >
               Verify & Continue
             </AuthButton>
-          </div>
 
-          <div className="text-center mt-6">
-            <p className="text-[var(--color-text-secondary)]">
-              Didn't receive a code?{" "}
-              <Link
-                to="/forgot-password"
-                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
-              >
-                Request again
-              </Link>
-            </p>
+            <AuthButton
+              type="button"
+              onClick={handleChangeEmail}
+              variant="secondary"
+              size="sm"
+              fullWidth
+              className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors font-medium"
+            >
+              Change Email
+            </AuthButton>
           </div>
         </AuthForm>
       </motion.div>

@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
+import { FaArrowLeft } from "react-icons/fa";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthButton from "../../components/auth/AuthButton";
-import { FaEnvelope } from "react-icons/fa";
 
 const VerifyEmailPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const {
     verifyEmail,
-    error,
+    error: contextError,
     loading,
     clearError,
     setCredentials,
@@ -20,9 +20,38 @@ const VerifyEmailPage = () => {
   const [verificationData, setVerificationData] = useState(null);
   const [codeDigits, setCodeDigits] = useState(["", "", "", "", "", ""]);
   const [resending, setResending] = useState(false);
+  const [userInitiatedExit, setUserInitiatedExit] = useState(false);
+  const [error, setError] = useState("");
   const inputRefs = useRef([]);
 
+  // Sync errors from context to local state
   useEffect(() => {
+    if (contextError) {
+      setError(contextError);
+    }
+  }, [contextError]);
+
+  useEffect(() => {
+    // Check URL parameters for special flags
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromVerificationParam = urlParams.get("fromVerification");
+
+    // If coming from verification (via URL parameter), don't proceed with verification
+    if (fromVerificationParam === "true") {
+      console.log(
+        "Detected fromVerification=true in URL, preventing verification flow"
+      );
+      setUserInitiatedExit(true);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    // If user explicitly chose to exit verification flow, don't proceed
+    if (userInitiatedExit) {
+      return;
+    }
+
     // Initialize refs array
     inputRefs.current = inputRefs.current.slice(0, 6);
 
@@ -32,6 +61,11 @@ const VerifyEmailPage = () => {
     // Get verification data from location state or localStorage
     const stateData = location.state;
     const storedData = localStorage.getItem("pendingVerification");
+
+    if (stateData && stateData.skipVerification) {
+      // Skip verification check if explicitly requested
+      return;
+    }
 
     if (stateData) {
       console.log("Using verification data from state:", stateData);
@@ -43,14 +77,19 @@ const VerifyEmailPage = () => {
         setVerificationData(parsedData);
       } catch (error) {
         console.error("Invalid verification data in localStorage", error);
-        navigate("/login");
+        setUserInitiatedExit(true);
+        navigate("/signup", {
+          state: { skipVerification: true },
+          replace: true,
+        });
       }
     } else {
       // No verification data found, redirect to login
-      console.warn("No verification data found, redirecting to login");
-      navigate("/login");
+      console.warn("No verification data found, redirecting to signup");
+      setUserInitiatedExit(true);
+      navigate("/signup", { state: { skipVerification: true }, replace: true });
     }
-  }, [location, navigate, clearError]);
+  }, [location, navigate, clearError, userInitiatedExit]);
 
   // Add a second useEffect to ensure errors are cleared
   useEffect(() => {
@@ -58,7 +97,7 @@ const VerifyEmailPage = () => {
     document.title = "Email Verification"; // Update page title to reflect current purpose
 
     // Clear any error state in the context
-    if (error) {
+    if (contextError) {
       clearError();
     }
 
@@ -95,7 +134,7 @@ const VerifyEmailPage = () => {
 
     // Clean up the timeout
     return () => clearTimeout(timerId);
-  }, [error, clearError]);
+  }, [contextError, clearError]);
 
   // Add a direct DOM manipulation to hide the login failed message after component render
   useEffect(() => {
@@ -213,6 +252,9 @@ const VerifyEmailPage = () => {
     if (!verificationData || !verificationCode || verificationCode.length !== 6)
       return;
 
+    // Clear any existing errors
+    setError("");
+
     try {
       console.log("Sending verification with data:", {
         email: verificationData.email,
@@ -246,13 +288,21 @@ const VerifyEmailPage = () => {
         // Navigate to login with success state
         navigate("/login", { state: { verified: true } });
       }
-    } catch (error) {
-      console.error("Verification failed:", error);
+    } catch (err) {
+      console.error("Verification failed:", err);
+      // Set the error message locally
+      setError(
+        err.response?.data?.message ||
+          "Verification code is invalid. Please try again."
+      );
     }
   };
 
   const handleResendCode = async () => {
     if (!verificationData?.email) return;
+
+    // Clear any existing errors
+    setError("");
 
     try {
       setResending(true);
@@ -260,9 +310,55 @@ const VerifyEmailPage = () => {
       setCodeDigits(["", "", "", "", "", ""]); // Reset input fields
     } catch (error) {
       console.error("Failed to resend code:", error);
+      setError(
+        error.response?.data?.message ||
+          "Failed to resend verification code. Please try again."
+      );
     } finally {
       setResending(false);
     }
+  };
+
+  const handleChangeEmail = () => {
+    // Set flag that user chose to exit verification flow
+    setUserInitiatedExit(true);
+
+    // Clear any errors
+    clearError();
+    setError("");
+
+    // Hủy bỏ state dữ liệu xác minh trong Auth Context
+    // Chúng ta sẽ phải giải quyết việc thiếu hàm này
+    // bằng cách thêm vào AuthContext hoặc giải quyết theo cách khác
+    try {
+      // Lần lượt thực hiện từng bước và kiểm tra nếu có lỗi
+
+      // 1. Xóa dữ liệu từ localStorage
+      console.log("Clearing pendingVerification from localStorage");
+      localStorage.removeItem("pendingVerification");
+
+      // 2. Xóa dữ liệu từ sessionStorage
+      console.log("Clearing verification data from sessionStorage");
+      sessionStorage.removeItem("pendingVerification");
+      sessionStorage.removeItem("emailVerification");
+      sessionStorage.removeItem("verificationState");
+
+      // 3. Xóa các dữ liệu khác có thể liên quan
+      console.log("Clearing other related data");
+      localStorage.removeItem("signup_data");
+      sessionStorage.removeItem("signup_data");
+
+      // 4. Xóa dữ liệu trực tiếp từ Auth Context bằng cách reload trang
+      console.log("All verification data cleared");
+    } catch (error) {
+      console.error("Error clearing verification data:", error);
+    }
+
+    // Đặt một timeout ngắn để đảm bảo state được cập nhật trước khi chuyển hướng
+    setTimeout(() => {
+      // Điều hướng với replace để ngăn người dùng quay lại trang này bằng nút Back
+      window.location.replace("/signup?fromVerification=true");
+    }, 10);
   };
 
   const isCodeComplete = codeDigits.every((digit) => digit !== "");
@@ -273,8 +369,16 @@ const VerifyEmailPage = () => {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="max-w-md w-full"
+        className="max-w-md w-full relative"
       >
+        <button
+          type="button"
+          onClick={handleChangeEmail}
+          className="absolute top-4 left-4 text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors p-2 z-10 cursor-pointer"
+        >
+          <FaArrowLeft className="h-5 w-5" />
+        </button>
+
         <AuthForm
           title="Verify Your Email"
           subtitle="One last step to complete your registration"
@@ -305,21 +409,28 @@ const VerifyEmailPage = () => {
             </div>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 flex items-start p-4 rounded-lg border border-[var(--color-primary)] bg-[var(--color-primary)] bg-opacity-20"
-          >
-            <FaEnvelope className="h-5 w-5 mr-3 mt-0.5 text-[var(--color-primary)]" />
-            <p className="text-[var(--color-text-primary)]">
-              We've sent a verification code to{" "}
-              <strong className="font-semibold">
-                {verificationData?.email}
-              </strong>
-              .<br />
-              Please check your inbox and enter the code below.
-            </p>
-          </motion.div>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700 mb-4"
+            >
+              <div className="flex">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>{error}</span>
+              </div>
+            </motion.div>
+          )}
 
           <div>
             <label
@@ -358,38 +469,42 @@ const VerifyEmailPage = () => {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 mt-6">
             <AuthButton
               type="submit"
               disabled={loading || !isCodeComplete}
               isLoading={loading}
               variant="primary"
               fullWidth
+              className="py-3 text-base font-medium cursor-pointer"
             >
               Verify Email
             </AuthButton>
 
-            <AuthButton
-              type="button"
-              onClick={handleResendCode}
-              disabled={loading || resending}
-              isLoading={resending}
-              variant="outline"
-              fullWidth
-            >
-              Resend Code
-            </AuthButton>
-          </div>
-
-          <div className="text-center mt-6">
-            <p className="text-[var(--color-text-secondary)]">
-              <Link
-                to="/login"
-                className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
+            <div className="flex gap-3">
+              <AuthButton
+                type="button"
+                onClick={handleResendCode}
+                disabled={loading || resending}
+                isLoading={resending}
+                variant="outline"
+                fullWidth
+                className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors"
               >
-                Return to login
-              </Link>
-            </p>
+                Resend Code
+              </AuthButton>
+
+              <AuthButton
+                type="button"
+                onClick={handleChangeEmail}
+                variant="secondary"
+                size="sm"
+                fullWidth
+                className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors font-medium"
+              >
+                Change Email
+              </AuthButton>
+            </div>
           </div>
         </AuthForm>
       </motion.div>

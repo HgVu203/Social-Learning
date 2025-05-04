@@ -154,7 +154,7 @@ export const AuthProvider = ({ children }) => {
 
       return result;
     } catch (error) {
-      setError(error.response?.data?.message || "Verification failed");
+      setError(error.response?.data?.message || "Invalid verification code. Please try again.");
       throw error;
     } finally {
       setLoading(false);
