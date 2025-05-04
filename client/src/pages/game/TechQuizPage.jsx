@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { generateQuizQuestions } from "../../services/gptService.js";
 import { motion, AnimatePresence } from "framer-motion";
-import { useTheme } from "../../contexts/ThemeContext";
 import { userService } from "../../services/userService";
 import {
-  getAnimationVariants,
   getAchievementBadge,
+  getGameIcon,
+  getDifficultyInfo,
+  getAnimationVariants,
 } from "../../utils/gameUtils";
 import Confetti from "react-confetti";
 import useSound from "use-sound";
 
 const TechQuizPage = () => {
-  const { theme } = useTheme();
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -20,7 +20,7 @@ const TechQuizPage = () => {
   const [score, setScore] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [quizCompleted, setQuizCompleted] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [category, setCategory] = useState("programming");
   const [showExplanation, setShowExplanation] = useState(false);
   const [pointsAdded, setPointsAdded] = useState(false);
@@ -32,6 +32,8 @@ const TechQuizPage = () => {
   const [highestStreak, setHighestStreak] = useState(0);
   const [questionHistory, setQuestionHistory] = useState([]);
   const [showHint, setShowHint] = useState(false);
+  const [gameActive, setGameActive] = useState(false);
+  const [difficulty, setDifficulty] = useState("medium");
 
   // Sounds
   const [playCorrect] = useSound("/assets/sounds/correct.mp3", { volume: 0.5 });
@@ -70,16 +72,22 @@ const TechQuizPage = () => {
     },
   ];
 
-  // Animation variants
-  const popInVariants = getAnimationVariants("popIn");
+  const difficulties = [
+    { id: "easy", name: "Easy" },
+    { id: "medium", name: "Medium" },
+    { id: "hard", name: "Hard" },
+  ];
 
-  useEffect(() => {
-    loadQuestions();
-  }, [category, quizMode]);
+  // Get quiz icon
+  const quizIcon = getGameIcon("quiz");
+
+  // Animation variants
+  const containerVariants = getAnimationVariants("container");
+  const itemVariants = getAnimationVariants("item");
 
   useEffect(() => {
     let timer;
-    if (quizMode === "time" && timeLeft > 0 && !quizCompleted && !isLoading) {
+    if (quizMode === "time" && timeLeft > 0 && !quizCompleted && gameActive) {
       timer = window.setTimeout(() => {
         setTimeLeft(timeLeft - 1);
         if (timeLeft <= 10) {
@@ -90,17 +98,19 @@ const TechQuizPage = () => {
       finishQuiz();
     }
     return () => window.clearTimeout(timer);
-  }, [timeLeft, quizCompleted, isLoading, quizMode]);
+  }, [timeLeft, quizCompleted, gameActive, quizMode]);
 
   const loadQuestions = async () => {
     setIsLoading(true);
     try {
       const count = quizMode === "time" ? 30 : 10;
-      const difficulty = quizMode === "challenge" ? "hard" : "medium";
+
+      // If challenge mode is selected, automatically set difficulty to hard
+      const difficultyValue = quizMode === "challenge" ? "hard" : difficulty;
 
       let categoryValue = category;
       if (category === "random") {
-        // Chọn ngẫu nhiên một danh mục
+        // Choose a random category
         const randomCategories = categories.filter((c) => c.id !== "random");
         categoryValue =
           randomCategories[Math.floor(Math.random() * randomCategories.length)]
@@ -110,7 +120,7 @@ const TechQuizPage = () => {
       const newQuestions = await generateQuizQuestions(
         count,
         categoryValue,
-        difficulty
+        difficultyValue
       );
       setQuestions(newQuestions);
       setCurrentQuestionIndex(0);
@@ -128,11 +138,19 @@ const TechQuizPage = () => {
       setShowHint(false);
       setBadgeEarned(null);
       setShowConfetti(false);
+      setGameActive(true);
+
+      return true;
     } catch (error) {
       console.error("Error loading questions:", error);
+      return false;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const startGame = async () => {
+    await loadQuestions();
   };
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -265,7 +283,13 @@ const TechQuizPage = () => {
     setShowConfetti(false);
   };
 
-  const changeCategory = async (newCategory) => {
+  const changeDifficulty = (newDifficulty) => {
+    if (difficulty !== newDifficulty) {
+      setDifficulty(newDifficulty);
+    }
+  };
+
+  const changeCategory = (newCategory) => {
     if (category !== newCategory) {
       setCategory(newCategory);
     }
@@ -274,6 +298,10 @@ const TechQuizPage = () => {
   const changeQuizMode = (mode) => {
     if (quizMode !== mode) {
       setQuizMode(mode);
+      // If challenge mode is selected, automatically set difficulty to hard
+      if (mode === "challenge") {
+        setDifficulty("hard");
+      }
     }
   };
 
@@ -290,16 +318,166 @@ const TechQuizPage = () => {
     );
   }
 
-  if (!currentQuestion && !quizCompleted) {
+  if (!gameActive && !quizCompleted) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center max-w-md mx-auto"
+        >
+          <h1 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600">
+            Tech Quiz
+          </h1>
+          <p className="mb-6 text-[var(--color-text-secondary)]">
+            Test your knowledge with questions on various technology topics!
+          </p>
+
+          <motion.div
+            className="mb-6 bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-md border border-[var(--color-border)]"
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div className="mb-4" variants={itemVariants}>
+              <label
+                htmlFor="quizMode"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-2 text-center"
+              >
+                Select quiz mode:
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {quizModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => changeQuizMode(mode.id)}
+                    className={`p-3 cursor-pointer rounded-lg border transition-all ${
+                      quizMode === mode.id
+                        ? "bg-purple-100 dark:bg-purple-900 border-purple-500"
+                        : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
+                    }`}
+                  >
+                    <div className="flex items-center mb-1">
+                      <span className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 text-white flex items-center justify-center mr-2">
+                        {mode.icon}
+                      </span>
+                      <div>
+                        <div className="font-medium text-left">{mode.name}</div>
+                        <div className="text-xs text-[var(--color-text-secondary)] text-left">
+                          {mode.description}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            {quizMode !== "challenge" && (
+              <motion.div className="mb-4" variants={itemVariants}>
+                <label
+                  htmlFor="difficulty"
+                  className="block text-sm font-medium text-[var(--color-text-primary)] mb-2 text-center"
+                >
+                  Select difficulty:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {difficulties.map((diff) => {
+                    const info = getDifficultyInfo(diff.id);
+                    return (
+                      <button
+                        key={diff.id}
+                        onClick={() => changeDifficulty(diff.id)}
+                        className={`p-3 cursor-pointer rounded-lg border transition-all ${
+                          difficulty === diff.id
+                            ? diff.id === "easy"
+                              ? "bg-green-100 dark:bg-green-900/30 border-green-500"
+                              : diff.id === "medium"
+                              ? "bg-orange-100 dark:bg-orange-900/30 border-orange-500"
+                              : "bg-red-100 dark:bg-red-900/30 border-red-500"
+                            : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        <div className="flex flex-col items-center justify-center">
+                          <span className="mb-1">{info.icon}</span>
+                          <span className="text-center">{diff.name}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            <motion.div className="mb-4" variants={itemVariants}>
+              <label
+                htmlFor="category"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-2 text-center"
+              >
+                Choose topic:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => changeCategory(cat.id)}
+                    className={`p-2 cursor-pointer rounded-lg border transition-all ${
+                      category === cat.id
+                        ? "bg-purple-100 dark:bg-purple-900 border-purple-500"
+                        : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
+                    }`}
+                  >
+                    <div className="flex items-center">
+                      <span className="w-7 h-7 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 text-white flex items-center justify-center mr-2">
+                        {cat.icon}
+                      </span>
+                      <span className="text-sm">{cat.name}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            {quizMode === "challenge" && (
+              <motion.div
+                variants={itemVariants}
+                className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg"
+              >
+                <p className="text-yellow-800 dark:text-yellow-300 text-sm flex items-center">
+                  <span className="mr-2">⚠️</span>
+                  Challenge mode uses harder questions and automatically sets
+                  difficulty to Hard
+                </p>
+              </motion.div>
+            )}
+          </motion.div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={startGame}
+            className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-700 focus:outline-none transition-all shadow-lg font-bold text-lg w-full max-w-xs mx-auto"
+          >
+            Start Quiz
+          </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!currentQuestion && !quizCompleted && gameActive) {
     return (
       <div className="text-center py-8 text-[var(--color-text-primary)]">
         <p className="text-xl font-semibold">No questions found.</p>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={loadQuestions}
           className="mt-4 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-700 focus:outline-none transition-all shadow-md"
         >
           Reload
-        </button>
+        </motion.button>
       </div>
     );
   }
@@ -332,137 +510,106 @@ const TechQuizPage = () => {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
-          className="bg-[var(--color-bg-secondary)] shadow-lg rounded-lg p-8 text-center border border-[var(--color-border)]"
+          className="bg-[var(--color-bg-secondary)] shadow-lg rounded-xl p-8 text-center border border-[var(--color-border)]"
         >
-          <h1 className="text-3xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600">
-            Tech Quiz Results
-          </h1>
-
-          {badgeEarned && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-purple-50 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-lg p-3 max-w-md mx-auto mb-6 border border-purple-200 dark:border-purple-800/30"
-            >
-              <div className="text-lg font-bold mb-1">🏆 Badge Earned!</div>
-              <div className="font-medium">{badgeEarned.name}</div>
-              <div className="text-sm">{badgeEarned.description}</div>
-            </motion.div>
-          )}
-
-          <div className="mb-6">
-            <div className="w-48 h-48 mx-auto relative">
-              <svg viewBox="0 0 36 36" className="w-full h-full">
-                <path
-                  d="M18 2.0845
-                    a 15.9155 15.9155 0 0 1 0 31.831
-                    a 15.9155 15.9155 0 0 1 0 -31.831"
-                  fill="none"
-                  stroke="#eee"
-                  strokeWidth="3"
-                />
-                <path
-                  d="M18 2.0845
-                    a 15.9155 15.9155 0 0 1 0 31.831
-                    a 15.9155 15.9155 0 0 1 0 -31.831"
-                  fill="none"
-                  stroke="url(#gradient)"
-                  strokeWidth="3"
-                  strokeDasharray={`${percentage}, 100`}
-                />
-                <defs>
-                  <linearGradient id="gradient">
-                    <stop offset="0%" stopColor="#8B5CF6" />
-                    <stop offset="100%" stopColor="#EC4899" />
-                  </linearGradient>
-                </defs>
-                <text
-                  x="18"
-                  y="18.5"
-                  className="text-5xl font-bold"
-                  textAnchor="middle"
-                  fill={theme === "dark" ? "#fff" : "#333"}
-                >
-                  {percentage}%
-                </text>
-              </svg>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+          >
+            <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full mx-auto flex items-center justify-center text-white text-3xl mb-4">
+              {quizIcon}
             </div>
-            <p className="text-xl font-semibold mt-4 text-[var(--color-text-primary)]">
-              Score: {score} / {totalQuestions * 10}
-            </p>
-            <p className={`${color} mt-2 font-medium text-lg`}>{message}</p>
 
-            {highestStreak >= 3 && (
-              <p className="mt-2 text-orange-500 dark:text-orange-400">
-                🔥 Highest streak: {highestStreak}
-              </p>
-            )}
-          </div>
-
-          {/* Thống kê câu hỏi */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4 text-[var(--color-text-primary)]">
-              Answer Statistics
+            <h2 className="text-3xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-pink-600">
+              Quiz Completed!
             </h2>
-            <div className="flex justify-center space-x-6">
-              <div className="flex flex-col items-center">
-                <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                  {questionHistory.filter((q) => q.isCorrect).length}
+
+            <div className="max-w-md mx-auto">
+              <div className="mb-6 mt-4 flex flex-col items-center">
+                <div className="text-3xl font-extrabold mb-2">
+                  {score}/{totalQuestions * 10}
                 </div>
-                <div className="text-sm text-[var(--color-text-secondary)]">
-                  Correct
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-2">
+                  <div
+                    className="bg-gradient-to-r from-purple-500 to-pink-600 h-4 rounded-full"
+                    style={{ width: `${percentage}%` }}
+                  ></div>
                 </div>
+                <div className={`text-lg font-medium ${color}`}>{message}</div>
               </div>
-              <div className="flex flex-col items-center">
-                <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                  {questionHistory.filter((q) => !q.isCorrect).length}
+
+              {badgeEarned && (
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 260,
+                    damping: 20,
+                    delay: 1,
+                  }}
+                  className="mb-6 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl"
+                >
+                  <div className="flex items-center justify-center">
+                    <span className="text-3xl mr-3">
+                      {badgeEarned.icon || "🏆"}
+                    </span>
+                    <div className="text-left">
+                      <h3 className="font-bold text-yellow-800 dark:text-yellow-300">
+                        {badgeEarned.name} Badge Earned!
+                      </h3>
+                      <p className="text-yellow-700 dark:text-yellow-400 text-sm">
+                        {badgeEarned.description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {streak >= 3 && (
+                <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl">
+                  <p className="text-blue-800 dark:text-blue-300 font-medium">
+                    <span className="text-xl">🔥</span> You had a streak of{" "}
+                    <span className="font-bold">{highestStreak}</span> correct
+                    answers!
+                  </p>
                 </div>
-                <div className="text-sm text-[var(--color-text-secondary)]">
-                  Incorrect
-                </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <div className="text-3xl font-bold text-[var(--color-text-primary)]">
-                  {questionHistory.length}
-                </div>
-                <div className="text-sm text-[var(--color-text-secondary)]">
-                  Total
-                </div>
-              </div>
+              )}
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={restartQuiz}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-700 focus:outline-none transition-all shadow-md font-medium"
-            >
-              Play Again
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() =>
-                setCategory(
-                  categories[Math.floor(Math.random() * categories.length)].id
-                )
-              }
-              className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 focus:outline-none transition-all shadow-md font-medium"
-            >
-              Different Topic
-            </motion.button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-md mx-auto mt-6">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={restartQuiz}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg hover:from-purple-600 hover:to-pink-700 focus:outline-none transition-all shadow-md font-medium"
+              >
+                Play Again
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() =>
+                  setCategory(
+                    categories[Math.floor(Math.random() * categories.length)].id
+                  )
+                }
+                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 focus:outline-none transition-all shadow-md font-medium"
+              >
+                Different Topic
+              </motion.button>
 
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => (window.location.href = "/game/math-puzzle")}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-md font-medium md:col-span-2"
-            >
-              Try Math Puzzle
-            </motion.button>
-          </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => (window.location.href = "/game/math-puzzle")}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-md font-medium md:col-span-2"
+              >
+                Try Math Puzzle
+              </motion.button>
+            </div>
+          </motion.div>
         </motion.div>
 
         {/* History of questions */}
@@ -470,33 +617,52 @@ const TechQuizPage = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-8 bg-[var(--color-bg-secondary)] shadow-lg rounded-lg p-6 border border-[var(--color-border)]"
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="mt-8 bg-[var(--color-bg-secondary)] shadow-md rounded-xl p-6 border border-[var(--color-border)]"
           >
-            <h2 className="text-xl font-semibold mb-4 text-[var(--color-text-primary)]">
+            <h3 className="text-lg font-bold mb-4 text-[var(--color-text-primary)]">
               Question History
-            </h2>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
+            </h3>
+            <div className="space-y-4">
               {questionHistory.map((item, index) => (
                 <div
                   key={index}
                   className={`p-3 rounded-lg border ${
                     item.isCorrect
-                      ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800/30"
-                      : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/30"
+                      ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20"
+                      : "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20"
                   }`}
                 >
-                  <div className="font-medium text-sm">{item.question}</div>
-                  <div className="mt-2 text-xs">
-                    <span className="font-medium">Your answer:</span>{" "}
-                    {item.userAnswer}
-                  </div>
-                  {!item.isCorrect && (
-                    <div className="mt-1 text-xs">
-                      <span className="font-medium">Correct answer:</span>{" "}
-                      {item.correctAnswer}
+                  <div className="flex items-start">
+                    <div
+                      className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mr-3 ${
+                        item.isCorrect
+                          ? "bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300"
+                          : "bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-300"
+                      }`}
+                    >
+                      {item.isCorrect ? "✓" : "✗"}
                     </div>
-                  )}
+                    <div>
+                      <p className="font-medium text-[var(--color-text-primary)]">
+                        {item.question}
+                      </p>
+                      <p
+                        className={`mt-1 text-sm ${
+                          item.isCorrect
+                            ? "text-green-700 dark:text-green-300"
+                            : "text-red-700 dark:text-red-300"
+                        }`}
+                      >
+                        Your answer: {item.selectedAnswer}
+                      </p>
+                      {!item.isCorrect && (
+                        <p className="mt-1 text-sm text-green-700 dark:text-green-300">
+                          Correct answer: {item.correctAnswer}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -512,63 +678,100 @@ const TechQuizPage = () => {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex justify-between items-center mb-6 bg-[var(--color-bg-secondary)] p-4 rounded-lg shadow-md border border-[var(--color-border)]"
+        className="flex justify-between items-center mb-6 bg-[var(--color-bg-secondary)] p-4 rounded-xl shadow-md border border-[var(--color-border)]"
       >
         <div className="flex flex-col sm:flex-row sm:items-center">
-          <div className="font-medium text-[var(--color-text-primary)]">
+          <div className="font-medium text-[var(--color-text-primary)] flex items-center">
             {quizMode === "standard" && (
-              <span>
-                Question {currentQuestionIndex + 1}/{questions.length}
+              <span className="flex items-center">
+                <span className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white mr-2">
+                  {currentQuestionIndex + 1}
+                </span>
+                <span>of {questions.length}</span>
               </span>
             )}
             {quizMode === "time" && (
-              <span>Question {currentQuestionIndex + 1}</span>
+              <span className="flex items-center">
+                <span className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white mr-2">
+                  {currentQuestionIndex + 1}
+                </span>
+              </span>
             )}
             {quizMode === "challenge" && (
-              <span>
-                Challenge {currentQuestionIndex + 1}/{questions.length}
+              <span className="flex items-center">
+                <span className="w-8 h-8 bg-gradient-to-r from-red-500 to-orange-600 rounded-full flex items-center justify-center text-white mr-2">
+                  {currentQuestionIndex + 1}
+                </span>
+                <span>of {questions.length}</span>
               </span>
             )}
           </div>
-          <div className="text-sm text-[var(--color-text-secondary)] mt-1 sm:mt-0 sm:ml-4">
-            Topic: {categories.find((c) => c.id === category)?.name || category}
+          <div className="text-sm text-[var(--color-text-secondary)] mt-1 sm:mt-0 sm:ml-4 flex items-center">
+            <span className="mr-1">
+              {categories.find((c) => c.id === category)?.icon}
+            </span>
+            <span>
+              {categories.find((c) => c.id === category)?.name || category}
+            </span>
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-purple-500 to-pink-600 text-white">
+              {
+                getDifficultyInfo(
+                  quizMode === "challenge" ? "hard" : difficulty
+                ).label
+              }
+            </span>
           </div>
         </div>
 
         <div className="flex items-center space-x-3">
           {quizMode === "time" && (
             <div
-              className={`font-medium ${
+              className={`px-3 py-1 rounded-full font-medium flex items-center ${
                 timeLeft <= 10
-                  ? "text-red-500 animate-pulse"
-                  : "text-[var(--color-text-primary)]"
+                  ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300"
+                  : "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300"
               }`}
             >
-              ⏱️ {timeLeft}s
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              {timeLeft}s
             </div>
           )}
 
-          <div className="font-semibold text-[var(--color-text-primary)] flex items-center">
+          <div className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-full font-medium flex items-center">
             <svg
-              className="w-5 h-5 mr-1 text-purple-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
               xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 mr-1"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              ></path>
+                strokeWidth={2}
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             {score}
           </div>
 
           {streak >= 2 && (
-            <div className="px-2 py-1 bg-orange-500 text-white text-xs rounded-full animate-pulse">
-              {streak}🔥
+            <div className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 rounded-full font-medium flex items-center">
+              <span className="mr-1">🔥</span>
+              {streak}
             </div>
           )}
         </div>
@@ -582,71 +785,25 @@ const TechQuizPage = () => {
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -50 }}
-              className="bg-[var(--color-bg-secondary)] p-6 rounded-lg shadow-md border border-[var(--color-border)]"
+              className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-md border border-[var(--color-border)]"
             >
               <div className="mb-6">
                 <div className="flex justify-between items-start mb-4">
                   <div className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-full text-sm font-medium">
-                    #{currentQuestionIndex + 1}
+                    {quizIcon} Quiz Question
                   </div>
 
                   {quizMode === "challenge" && (
-                    <div className="px-3 py-1 bg-red-500 text-white rounded-full text-sm font-medium">
-                      🔥 Challenge
+                    <div className="px-3 py-1 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-full text-sm font-medium flex items-center">
+                      <span className="mr-1">🔥</span>
+                      Challenge
                     </div>
                   )}
                 </div>
 
-                <h2 className="text-xl font-semibold mb-4 text-[var(--color-text-primary)]">
+                <h2 className="text-xl font-semibold mb-6 text-[var(--color-text-primary)]">
                   {currentQuestion.question}
                 </h2>
-
-                {!showHint && !isAnswered && (
-                  <button
-                    onClick={toggleHint}
-                    className="text-purple-600 hover:text-purple-800 text-sm flex items-center mb-4"
-                  >
-                    <svg
-                      className="w-4 h-4 mr-1"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      ></path>
-                    </svg>
-                    Need hint?
-                  </button>
-                )}
-
-                {showHint && !isAnswered && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-3 mb-4 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg text-sm"
-                  >
-                    <div className="font-medium mb-1">💡 Hint:</div>
-                    <p>
-                      Think about{" "}
-                      {category === "programming"
-                        ? "basic programming principles"
-                        : category === "database"
-                        ? "database concepts"
-                        : category === "networking"
-                        ? "network protocols"
-                        : category === "web"
-                        ? "modern web technologies"
-                        : category === "ai"
-                        ? "AI algorithms and machine learning"
-                        : "security-related concepts"}
-                      .
-                    </p>
-                  </motion.div>
-                )}
 
                 <div className="space-y-3">
                   {currentQuestion.options.map((option, index) => (
@@ -655,7 +812,7 @@ const TechQuizPage = () => {
                       whileHover={!isAnswered ? { scale: 1.02 } : {}}
                       whileTap={!isAnswered ? { scale: 0.98 } : {}}
                       onClick={() => handleAnswerSelect(option)}
-                      className={`w-full p-4 text-left rounded-lg border transition-all ${
+                      className={`w-full p-4 text-left rounded-xl border transition-all ${
                         isAnswered && option === currentQuestion.correctAnswer
                           ? "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300"
                           : isAnswered &&
@@ -669,199 +826,186 @@ const TechQuizPage = () => {
                       disabled={isAnswered}
                     >
                       <div className="flex items-center">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 font-medium ${
-                            isAnswered &&
-                            option === currentQuestion.correctAnswer
-                              ? "bg-green-500 text-white"
-                              : isAnswered && option === selectedAnswer
-                              ? "bg-red-500 text-white"
-                              : "bg-[var(--color-bg-primary)] border border-[var(--color-border)]"
-                          }`}
-                        >
+                        <div className="w-8 h-8 flex-shrink-0 rounded-full mr-3 flex items-center justify-center text-white font-medium bg-gradient-to-r from-purple-500 to-pink-600">
                           {String.fromCharCode(65 + index)}
                         </div>
                         <span>{option}</span>
-
-                        {isAnswered &&
-                          option === currentQuestion.correctAnswer && (
-                            <svg
-                              className="w-5 h-5 ml-auto text-green-500"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M5 13l4 4L19 7"
-                              ></path>
-                            </svg>
-                          )}
-
-                        {isAnswered &&
-                          option === selectedAnswer &&
-                          option !== currentQuestion.correctAnswer && (
-                            <svg
-                              className="w-5 h-5 ml-auto text-red-500"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M6 18L18 6M6 6l12 12"
-                              ></path>
-                            </svg>
-                          )}
                       </div>
                     </motion.button>
                   ))}
                 </div>
-              </div>
 
-              {isAnswered && (
-                <AnimatePresence>
-                  <motion.div
-                    variants={popInVariants}
-                    initial="hidden"
-                    animate="show"
-                    exit="exit"
-                    className={`p-4 rounded-lg mt-4 ${
-                      isCorrect
-                        ? "bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800/30"
-                        : "bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800/30"
-                    }`}
-                  >
-                    <div className="font-medium">
-                      {isCorrect ? (
-                        <span>
-                          ✓ Correct
-                          {streak > 1 ? ` (${streak} in a row!)` : ""}
-                        </span>
-                      ) : (
-                        <span>
-                          ✗ Wrong! Correct answer:{" "}
-                          {currentQuestion.correctAnswer}
-                        </span>
-                      )}
-                    </div>
-
-                    {(showExplanation || !isCorrect) && (
-                      <div className="mt-2 text-sm">
-                        <div className="font-medium">Explanation:</div>
-                        <p>{currentQuestion.explanation}</p>
-                      </div>
-                    )}
-
-                    {isCorrect && !showExplanation && (
-                      <button
-                        onClick={() => setShowExplanation(true)}
-                        className="mt-2 text-sm underline"
-                      >
-                        View explanation
-                      </button>
-                    )}
-
-                    {quizMode !== "time" && (
-                      <div className="mt-4 text-center">
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={handleNextQuestion}
-                          className={`px-4 py-2 ${
-                            isCorrect
-                              ? "bg-green-600 hover:bg-green-700"
-                              : "bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-border)]"
-                          } rounded-lg focus:outline-none transition-colors`}
+                {isAnswered && (
+                  <AnimatePresence>
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      className={`mt-6 p-4 rounded-xl ${
+                        isCorrect
+                          ? "bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800"
+                          : "bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800"
+                      }`}
+                    >
+                      <div className="flex items-start">
+                        <div
+                          className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white mr-3 ${
+                            isCorrect ? "bg-green-500" : "bg-red-500"
+                          }`}
                         >
-                          {currentQuestionIndex < questions.length - 1
-                            ? "Next Question"
-                            : "See Results"}
-                        </motion.button>
+                          {isCorrect ? "✓" : "✗"}
+                        </div>
+                        <div>
+                          <p
+                            className={`font-medium ${
+                              isCorrect
+                                ? "text-green-800 dark:text-green-300"
+                                : "text-red-800 dark:text-red-300"
+                            }`}
+                          >
+                            {isCorrect
+                              ? "Correct!"
+                              : `Incorrect. The correct answer is: ${currentQuestion.correctAnswer}`}
+                          </p>
+                          {showExplanation && currentQuestion.explanation && (
+                            <div className="mt-2">
+                              <p className="text-[var(--color-text-secondary)] font-medium text-sm">
+                                Explanation:
+                              </p>
+                              <p className="text-[var(--color-text-secondary)] text-sm mt-1">
+                                {currentQuestion.explanation}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              )}
+
+                      {currentQuestion.explanation && !showExplanation && (
+                        <button
+                          onClick={() => setShowExplanation(true)}
+                          className="mt-3 text-sm underline text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                        >
+                          Show explanation
+                        </button>
+                      )}
+
+                      {quizMode !== "time" && (
+                        <div className="mt-4 text-center">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleNextQuestion}
+                            className={`px-6 py-3 rounded-lg focus:outline-none transition-all font-medium text-white bg-gradient-to-r ${
+                              isCorrect
+                                ? "from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                                : "from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700"
+                            }`}
+                          >
+                            {currentQuestionIndex < questions.length - 1
+                              ? "Next Question"
+                              : "See Results"}
+                          </motion.button>
+                        </div>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </div>
             </motion.div>
           </AnimatePresence>
         </div>
 
         <div className="md:col-span-1">
-          <div className="bg-[var(--color-bg-secondary)] p-4 rounded-lg shadow-md border border-[var(--color-border)] mb-4">
+          <div className="bg-[var(--color-bg-secondary)] p-4 rounded-xl shadow-md border border-[var(--color-border)] mb-4">
             <h3 className="font-medium mb-3 text-[var(--color-text-primary)]">
-              Quiz Mode
+              Quiz Stats
             </h3>
 
-            <div className="space-y-2">
-              {quizModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  onClick={() =>
-                    quizCompleted ? changeQuizMode(mode.id) : null
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  Difficulty:
+                </span>
+                <span className="font-medium text-[var(--color-text-primary)]">
+                  {
+                    getDifficultyInfo(
+                      quizMode === "challenge" ? "hard" : difficulty
+                    ).icon
+                  }{" "}
+                  {
+                    getDifficultyInfo(
+                      quizMode === "challenge" ? "hard" : difficulty
+                    ).label
                   }
-                  className={`w-full p-2 text-left rounded-lg border ${
-                    quizMode === mode.id
-                      ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300"
-                      : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                  } text-sm ${
-                    quizCompleted ? "" : "opacity-70 cursor-not-allowed"
-                  }`}
-                  disabled={!quizCompleted}
-                >
-                  <div className="flex items-center">
-                    <span className="mr-2">{mode.icon}</span>
-                    <span>{mode.name}</span>
-                  </div>
-                </button>
-              ))}
+                </span>
+              </div>
+
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  Mode:
+                </span>
+                <span className="font-medium text-[var(--color-text-primary)]">
+                  {quizModes.find((m) => m.id === quizMode)?.icon}{" "}
+                  {quizModes.find((m) => m.id === quizMode)?.name}
+                </span>
+              </div>
+
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  Score:
+                </span>
+                <span className="font-medium text-[var(--color-text-primary)]">
+                  {score}/{totalQuestions * 10}
+                </span>
+              </div>
+
+              {streak > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Current Streak:
+                  </span>
+                  <span className="font-medium text-[var(--color-text-primary)]">
+                    🔥 {streak}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <h3 className="font-medium mb-3 mt-6 text-[var(--color-text-primary)]">
-              Topic
-            </h3>
-
-            <div className="space-y-2">
-              {categories.map((cat) => (
+            {currentQuestion?.hint && (
+              <div className="mt-6">
                 <button
-                  key={cat.id}
-                  onClick={() =>
-                    quizCompleted ? changeCategory(cat.id) : null
-                  }
-                  className={`w-full p-2 text-left rounded-lg border ${
-                    category === cat.id
-                      ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300"
-                      : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                  } text-sm ${
-                    quizCompleted ? "" : "opacity-70 cursor-not-allowed"
-                  }`}
-                  disabled={!quizCompleted}
+                  onClick={toggleHint}
+                  className="w-full p-3 flex items-center justify-center rounded-lg border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 transition-colors"
                 >
-                  <div className="flex items-center">
-                    <span className="mr-2">{cat.icon}</span>
-                    <span>{cat.name}</span>
-                  </div>
+                  <span className="mr-2">💡</span>
+                  {showHint ? "Hide Hint" : "Show Hint"}
                 </button>
-              ))}
-            </div>
-          </div>
 
-          <div className="text-center">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() =>
-                confirm("Are you sure you want to quit the current quiz?") &&
-                finishQuiz()
-              }
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 focus:outline-none transition-colors"
-            >
-              End Quiz
-            </motion.button>
+                {showHint && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-2 p-3 text-sm bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-yellow-800 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800"
+                  >
+                    {currentQuestion.hint}
+                  </motion.div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6">
+              <button
+                onClick={() => {
+                  if (confirm("Are you sure you want to end this quiz?")) {
+                    finishQuiz();
+                  }
+                }}
+                className="w-full p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm"
+              >
+                End Quiz
+              </button>
+            </div>
           </div>
         </div>
       </div>

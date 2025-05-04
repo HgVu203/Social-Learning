@@ -37,7 +37,7 @@ const CodeChallengePage = () => {
   const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
   const [userCode, setUserCode] = useState("");
   const [result, setResult] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
   const [level, setLevel] = useState("easy");
@@ -59,6 +59,7 @@ const CodeChallengePage = () => {
     available: false,
     message: "Checking API status...",
   });
+  const [gameActive, setGameActive] = useState(false);
 
   // Sounds
   const [playCorrect] = useSound("/assets/sounds/correct.mp3", { volume: 0.5 });
@@ -80,6 +81,11 @@ const CodeChallengePage = () => {
     { id: "medium", name: "Medium" },
     { id: "hard", name: "Hard" },
   ];
+
+  // Animation variants
+  const containerVariants = getAnimationVariants("container");
+  const itemVariants = getAnimationVariants("item");
+  const popInVariants = getAnimationVariants("popIn");
 
   // Editor options based on language
   // Create and memoize theme
@@ -172,22 +178,13 @@ const CodeChallengePage = () => {
   }, []);
 
   useEffect(() => {
-    loadChallenges();
-
-    // Return cleanup function to prevent memory leaks
-    return () => {
-      // Clean up any resources if needed
-    };
-  }, [level, language]);
-
-  useEffect(() => {
-    if (currentChallengeIndex >= challenges.length) return;
+    if (currentChallengeIndex >= challenges.length || !gameActive) return;
 
     const currentLang = challenges[currentChallengeIndex]?.language;
     if (currentLang && currentLang !== language) {
       setLanguage(currentLang);
     }
-  }, [currentChallengeIndex, challenges]);
+  }, [currentChallengeIndex, challenges, gameActive]);
 
   const loadChallenges = async () => {
     setIsLoading(true);
@@ -215,11 +212,20 @@ const CodeChallengePage = () => {
       setTestResults([]);
       setAiAssistant({ active: false, message: "" });
       setBadgeEarned(null);
+      setGameActive(true);
+
+      return true;
     } catch (error) {
       console.error("Error loading challenges:", error);
+      return false;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const startGame = async () => {
+    playClick();
+    await loadChallenges();
   };
 
   const currentChallenge = challenges[currentChallengeIndex];
@@ -557,6 +563,8 @@ const CodeChallengePage = () => {
     playClick();
     setLanguage(newLanguage);
 
+    if (!gameActive) return;
+
     // Clear previous state
     setResult(null);
     setTestResults([]);
@@ -580,7 +588,6 @@ const CodeChallengePage = () => {
   };
 
   // Only keeping the variables that are used
-  const popInVariants = getAnimationVariants("popIn");
   const difficultyInfo = getDifficultyInfo(level);
 
   // Function to get AI help - directly from the sample challenges
@@ -627,6 +634,136 @@ const CodeChallengePage = () => {
       <div className="flex justify-center items-center h-screen text-[var(--color-text-primary)]">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
         <p className="ml-4 text-lg font-semibold">Loading challenges...</p>
+      </div>
+    );
+  }
+
+  // Game initialization screen
+  if (!gameActive) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center max-w-md mx-auto"
+        >
+          <h1 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">
+            Coding Challenge
+          </h1>
+          <p className="mb-6 text-[var(--color-text-secondary)]">
+            Solve coding problems to improve your programming skills
+          </p>
+
+          <motion.div
+            className="mb-6 bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-md border border-[var(--color-border)]"
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div className="mb-4" variants={itemVariants}>
+              <label
+                htmlFor="language"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-2 text-center"
+              >
+                Select programming language:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {languages.map((lang) => (
+                  <button
+                    key={lang.id}
+                    onClick={() => handleLanguageChange(lang.id)}
+                    className={`p-3 cursor-pointer rounded-lg border transition-all ${
+                      language === lang.id
+                        ? "bg-blue-100 dark:bg-blue-900/30 border-blue-500"
+                        : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-center mb-1">
+                      <span className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex items-center justify-center mr-2 font-medium">
+                        {lang.icon}
+                      </span>
+                      <span>{lang.name}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div className="mb-4" variants={itemVariants}>
+              <label
+                htmlFor="difficulty"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-2 text-center"
+              >
+                Select difficulty:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {difficulties.map((diff) => {
+                  const info = getDifficultyInfo(diff.id);
+                  return (
+                    <button
+                      key={diff.id}
+                      onClick={() => handleLevelChange(diff.id)}
+                      className={`p-3 cursor-pointer rounded-lg border transition-all ${
+                        level === diff.id
+                          ? diff.id === "easy"
+                            ? "bg-green-100 dark:bg-green-900/30 border-green-500"
+                            : diff.id === "medium"
+                            ? "bg-orange-100 dark:bg-orange-900/30 border-orange-500"
+                            : "bg-red-100 dark:bg-red-900/30 border-red-500"
+                          : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
+                      }`}
+                    >
+                      <div className="flex flex-col items-center justify-center">
+                        <span className="mb-1">{info.icon}</span>
+                        <span className="text-center">{diff.name}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+
+            <motion.div className="mb-4" variants={itemVariants}>
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-blue-800 dark:text-blue-300 font-medium">
+                  What to expect:
+                </p>
+                <ul className="mt-2 text-sm text-blue-700 dark:text-blue-400 space-y-1 list-disc list-inside">
+                  <li>
+                    Challenges are tailored to your selected language and
+                    difficulty
+                  </li>
+                  <li>Code editor with syntax highlighting</li>
+                  <li>Automated test cases to verify your solution</li>
+                  <li>Earn points and badges for successful completions</li>
+                </ul>
+              </div>
+            </motion.div>
+
+            {!apiStatus.available && (
+              <motion.div
+                className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg"
+                variants={itemVariants}
+              >
+                <p className="text-yellow-800 dark:text-yellow-300 text-sm flex items-center">
+                  <span className="mr-2">⚠️</span>
+                  {apiStatus.message ||
+                    "API is not available. Some features may be limited."}
+                </p>
+              </motion.div>
+            )}
+          </motion.div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={startGame}
+            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 focus:outline-none transition-all shadow-lg font-bold text-lg w-full max-w-xs mx-auto"
+          >
+            Start Coding
+          </motion.button>
+        </motion.div>
       </div>
     );
   }
@@ -848,26 +985,6 @@ const CodeChallengePage = () => {
               ></path>
             </svg>
             {score}
-          </div>
-        </div>
-
-        <div className="relative">
-          <div className="flex items-center gap-2 relative">
-            <div className="group">
-              {difficulties.map((diff, index) => (
-                <button
-                  key={diff.id}
-                  onClick={() => handleLevelChange(diff.id)}
-                  className={`px-4 py-2 rounded-lg cursor-pointer ${
-                    level === diff.id
-                      ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium"
-                      : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] border border-[var(--color-border)]"
-                  } text-sm transition-all ${index !== 0 ? "ml-2" : ""}`}
-                >
-                  {diff.name}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>

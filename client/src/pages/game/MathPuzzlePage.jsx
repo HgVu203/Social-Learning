@@ -299,7 +299,7 @@ const MathPuzzlePage = () => {
           </p>
 
           <motion.div
-            className="mb-6 bg-[var(--color-bg-secondary)] p-6 rounded-lg shadow-md border border-[var(--color-border)]"
+            className="mb-6 bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-md border border-[var(--color-border)]"
             variants={containerVariants}
             initial="hidden"
             animate="show"
@@ -314,10 +314,10 @@ const MathPuzzlePage = () => {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setGameMode("time")}
-                  className={`p-3 cursor-pointer rounded-lg border border-[var(--color-border)] transition-all ${
+                  className={`p-3 cursor-pointer rounded-xl border transition-all ${
                     gameMode === "time"
-                      ? "bg-green-100 dark:bg-green-900 border-green-500"
-                      : "bg-[var(--color-bg-tertiary)]"
+                      ? "bg-green-100 dark:bg-green-900/30 border-green-500"
+                      : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
                   }`}
                 >
                   <div className="flex items-center justify-center mb-1">
@@ -330,13 +330,14 @@ const MathPuzzlePage = () => {
                 </button>
                 <button
                   onClick={() => setGameMode("practice")}
-                  className={`p-3 cursor-pointer rounded-lg border border-[var(--color-border)] transition-all ${
+                  className={`p-3 cursor-pointer rounded-xl border transition-all ${
                     gameMode === "practice"
-                      ? "bg-blue-100 dark:bg-blue-900 border-blue-500"
-                      : "bg-[var(--color-bg-tertiary)]"
+                      ? "bg-blue-100 dark:bg-blue-900/30 border-blue-500"
+                      : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
                   }`}
                 >
                   <div className="flex items-center justify-center mb-1">
+                    <span className="mr-2">📚</span>
                     <span>Practice Mode</span>
                   </div>
                   <p className="text-xs text-[var(--color-text-secondary)] text-center">
@@ -358,10 +359,10 @@ const MathPuzzlePage = () => {
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`p-2 cursor-pointer rounded-lg border border-[var(--color-border)] transition-all ${
+                    className={`p-2 cursor-pointer rounded-xl border transition-all ${
                       selectedCategory === cat.id
-                        ? "bg-green-100 dark:bg-green-900 border-green-500"
-                        : "bg-[var(--color-bg-tertiary)]"
+                        ? "bg-green-100 dark:bg-green-900/30 border-green-500"
+                        : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)]"
                     }`}
                   >
                     <div className="flex items-center justify-center">
@@ -388,7 +389,11 @@ const MathPuzzlePage = () => {
                       onClick={() => setLevel(difficulty)}
                       className={`p-3 cursor-pointer rounded-lg border border-[var(--color-border)] transition-all ${
                         level === difficulty
-                          ? `bg-${info.color} bg-opacity-20 border-${info.color}`
+                          ? difficulty === "easy"
+                            ? "bg-green-100 dark:bg-green-900/30 border-green-500"
+                            : difficulty === "medium"
+                            ? "bg-orange-100 dark:bg-orange-900/30 border-orange-500"
+                            : "bg-red-100 dark:bg-red-900/30 border-red-500"
                           : "bg-[var(--color-bg-tertiary)]"
                       }`}
                       disabled={challengeMode && difficulty !== "hard"}
@@ -397,7 +402,11 @@ const MathPuzzlePage = () => {
                         <span>{info.label}</span>
                       </div>
                       <p className="text-xs text-[var(--color-text-secondary)] text-center">
-                        {info.description}
+                        {difficulty === "easy"
+                          ? "Simple calculations"
+                          : difficulty === "medium"
+                          ? "Moderate complexity"
+                          : "Complex equations"}
                       </p>
                     </button>
                   );
@@ -430,7 +439,7 @@ const MathPuzzlePage = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={startGame}
-            className="px-8 py-4 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-lg font-bold text-lg w-full max-w-xs mx-auto"
+            className="px-8 py-4 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-lg font-bold text-lg w-full max-w-xs mx-auto"
           >
             Start Game
           </motion.button>
@@ -441,7 +450,7 @@ const MathPuzzlePage = () => {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex justify-between items-center mb-6 bg-[var(--color-bg-secondary)] p-4 rounded-lg shadow-md border border-[var(--color-border)]"
+            className="flex justify-between items-center mb-6 bg-[var(--color-bg-secondary)] p-4 rounded-xl shadow-md border border-[var(--color-border)]"
           >
             <div className="text-lg font-semibold flex items-center">
               <svg
@@ -468,13 +477,29 @@ const MathPuzzlePage = () => {
 
             {gameMode === "time" && (
               <div
-                className={`text-lg font-semibold ${
+                className={`flex items-center ${
                   timeLeft <= 10
                     ? "text-red-500 animate-pulse"
                     : "text-[var(--color-text-primary)]"
                 }`}
               >
-                ⏱️ {formatTime(timeLeft)}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 mr-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-lg font-semibold">
+                  {formatTime(timeLeft)}
+                </span>
               </div>
             )}
 
@@ -492,23 +517,23 @@ const MathPuzzlePage = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -50 }}
               transition={{ duration: 0.3 }}
-              className="bg-[var(--color-bg-secondary)] p-6 rounded-lg shadow-md mb-6 border border-[var(--color-border)]"
+              className="bg-[var(--color-bg-secondary)] p-6 rounded-xl shadow-md mb-6 border border-[var(--color-border)]"
             >
               <div className="mb-4">
                 <div className="flex justify-between">
                   <div>
                     <span
-                      className={`px-2 py-1 rounded text-sm text-white bg-gradient-to-r ${difficultyInfo.gradient}`}
+                      className={`px-2 py-1 rounded-full text-sm text-white bg-gradient-to-r ${difficultyInfo.gradient}`}
                     >
                       {difficultyInfo.icon} {difficultyInfo.label}
                     </span>
                   </div>
                   <div>
-                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-sm">
+                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded-full text-sm">
                       {selectedCategory}
                     </span>
                     {stats.correct + stats.wrong > 0 && (
-                      <span className="ml-2 px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded text-sm">
+                      <span className="ml-2 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 rounded-full text-sm">
                         {Math.round(
                           (stats.correct / (stats.correct + stats.wrong)) * 100
                         )}
@@ -534,9 +559,9 @@ const MathPuzzlePage = () => {
                         setUserAnswer(option);
                         setTimeout(() => checkAnswer(), 200);
                       }}
-                      className={`w-full p-3 text-left rounded-lg border transition-all ${
+                      className={`w-full p-3 text-left rounded-xl border transition-all ${
                         userAnswer === option
-                          ? "border-green-500 bg-green-50 dark:bg-green-900"
+                          ? "border-green-500 bg-green-50 dark:bg-green-900/30"
                           : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
                       } hover:border-green-500`}
                       disabled={feedback !== null}
@@ -559,7 +584,7 @@ const MathPuzzlePage = () => {
                     onChange={handleAnswerChange}
                     onKeyDown={handleKeyDown}
                     placeholder="Enter your answer..."
-                    className="flex-1 p-3 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+                    className="flex-1 p-3 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
                     disabled={feedback !== null}
                     autoFocus
                   />
@@ -567,7 +592,7 @@ const MathPuzzlePage = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={checkAnswer}
-                    className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-md font-medium disabled:opacity-50"
+                    className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl hover:from-green-600 hover:to-teal-700 focus:outline-none transition-all shadow-md font-medium disabled:opacity-50"
                     disabled={userAnswer.trim() === "" || feedback !== null}
                   >
                     Check
@@ -582,10 +607,10 @@ const MathPuzzlePage = () => {
                     initial="hidden"
                     animate="show"
                     exit="exit"
-                    className={`p-4 rounded-lg ${
+                    className={`p-4 rounded-xl ${
                       feedback.isCorrect
-                        ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200"
-                        : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
+                        ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
+                        : "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200"
                     }`}
                   >
                     <p className="font-medium">{feedback.message}</p>
@@ -612,7 +637,7 @@ const MathPuzzlePage = () => {
                               setShowExplanation(false);
                               startTimeRef.current = Date.now();
                             }}
-                            className="mt-3 px-4 py-1 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded hover:bg-[var(--color-border)] transition-colors text-sm"
+                            className="mt-3 px-4 py-1 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-xl hover:bg-[var(--color-border)] transition-colors text-sm"
                           >
                             Continue
                           </button>
@@ -631,7 +656,7 @@ const MathPuzzlePage = () => {
                               setUserAnswer("");
                               setFeedback(null);
                             }}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none transition-colors"
+                            className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 focus:outline-none transition-colors"
                           >
                             Next Question
                           </button>
@@ -651,23 +676,23 @@ const MathPuzzlePage = () => {
           >
             <button
               onClick={() => endGame()}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 focus:outline-none transition-colors"
+              className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 focus:outline-none transition-colors"
             >
               End Game
             </button>
 
             {/* Game statistics display */}
             {gameMode === "practice" && stats.correct + stats.wrong > 0 && (
-              <div className="mt-6 p-4 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] inline-block">
+              <div className="mt-6 p-4 bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] inline-block">
                 <h3 className="text-lg font-semibold mb-2">Statistics:</h3>
                 <div className="flex space-x-4 text-sm">
-                  <div className="px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                  <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-xl">
                     ✓ Correct: {stats.correct}
                   </div>
-                  <div className="px-2 py-1 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded">
+                  <div className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-xl">
                     ✗ Wrong: {stats.wrong}
                   </div>
-                  <div className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                  <div className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded-xl">
                     ⏱️ Average: {stats.averageResponseTime.toFixed(1)}s
                   </div>
                 </div>
