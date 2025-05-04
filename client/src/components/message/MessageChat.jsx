@@ -15,13 +15,7 @@ import {
   BsCheck,
   BsEmojiSmile,
 } from "react-icons/bs";
-import {
-  FiImage,
-  FiSend,
-  FiChevronDown,
-  FiUserPlus,
-  FiRefreshCw,
-} from "react-icons/fi";
+import { FiImage, FiSend, FiUserPlus, FiRefreshCw } from "react-icons/fi";
 import { HiOutlineTrash } from "react-icons/hi";
 import Avatar from "./../common/Avatar";
 import { useAuth } from "../../contexts/AuthContext";
@@ -34,8 +28,8 @@ import ImagePicker from "../common/ImagePicker";
 import { uploadImage } from "../../services/uploadService";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { Link } from "react-router-dom";
-import { reconnectAndRefresh } from "../../services/socket";
-import { SkeletonMessage } from "../skeleton";
+import { useSocket } from "../../contexts/SocketContext";
+import axiosService from "../../services/axiosService";
 
 // Animation variants outside component
 const messageVariants = {
@@ -116,10 +110,36 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
   // Context
   const { user } = useAuth();
-  const { currentConversation } = useMessageContext();
+  const { currentConversation, setCurrentConversation } = useMessageContext();
+  const { connect } = useSocket();
 
   // Derived values
   const conversationId = currentConversation?._id;
+
+  // Add message marking functionality
+  const markAsRead = useCallback(async (conversationId) => {
+    if (!conversationId) return;
+    try {
+      await axiosService.patch(`/message/read-all`, {
+        partnerId: conversationId,
+      });
+      return true;
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+      return false;
+    }
+  }, []);
+
+  const handleMarkAsRead = useCallback(async () => {
+    if (!currentConversation?._id) return;
+
+    const success = await markAsRead(currentConversation._id);
+    if (success) {
+      setNewMessageCount(0);
+      setIsShowScrollButton(false);
+      countedMessageIds.current.clear();
+    }
+  }, [currentConversation?._id, markAsRead]);
 
   // Function to increment message count only for new, uncounted messages
   const incrementMessageCount = useCallback(
@@ -154,33 +174,65 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     if (currentConversation) {
       setIsLoadingConversation(false);
 
-      if (!currentConversation._id || !currentConversation.username) {
+      if (!currentConversation._id) {
         console.error("Invalid conversation data:", currentConversation);
         setErrorState("Invalid conversation data. Please try again.");
-      } else {
-        // Reset error state if conversation data is valid
-        setErrorState(null);
+        return;
+      }
+
+      // Reset error state if conversation data is valid
+      setErrorState(null);
+
+      // Ensure conversation is properly initialized
+      if (!hasMarkedRead) {
+        handleMarkAsRead();
+        setHasMarkedRead(true);
       }
     } else {
-      // Reset loading state when no conversation is selected
       setIsLoadingConversation(false);
     }
-  }, [currentConversation]);
+  }, [currentConversation, hasMarkedRead]);
 
-  // Kiểm tra lỗi
+  // Improved error handling
   useEffect(() => {
     const handleError = (error) => {
       console.error("Global error caught:", error);
-      setErrorState(error.message);
+      setErrorState(error.message || "An error occurred. Please try again.");
+
+      // Auto-retry for certain errors
+      if (
+        error.message?.includes("connection") ||
+        error.message?.includes("network")
+      ) {
+        setTimeout(() => {
+          connect();
+          if (conversationId) {
+            window.dispatchEvent(
+              new CustomEvent("force_message_refresh", {
+                detail: { conversationId },
+              })
+            );
+          }
+        }, 3000);
+      }
     };
 
-    // Xử lý lỗi kết nối Socket
+    // Handle socket connection issues
     const handleSocketError = () => {
       console.log("Socket connection lost, attempting to reconnect...");
-      // Thử kết nối lại socket sau 3 giây
+      setErrorState("Connection lost. Reconnecting...");
+
       if (conversationId) {
         setTimeout(() => {
-          reconnectAndRefresh(conversationId);
+          connect();
+          if (conversationId) {
+            window.dispatchEvent(
+              new CustomEvent("force_message_refresh", {
+                detail: { conversationId },
+              })
+            );
+          }
+          setErrorState(null);
         }, 3000);
       }
     };
@@ -192,7 +244,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       window.removeEventListener("error", handleError);
       window.removeEventListener("socket_disconnect", handleSocketError);
     };
-  }, [conversationId]);
+  }, [conversationId, connect]);
 
   // Queries - chỉ query khi có conversation ID hợp lệ và không có lỗi
   const {
@@ -409,7 +461,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     };
   }, []);
 
-  // Reset state when conversation changes
+  // Update useEffect for conversation change
   useEffect(() => {
     // Skip if no conversation or same conversation
     if (!conversationId) return;
@@ -418,30 +470,35 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     // Update the last conversation ID ref
     lastConversationIdRef.current = conversationId;
 
-    // Reset states
-    setPage(1);
-    setNewMessageCount(0);
-    setIsFirstLoad(true);
-    setHasMarkedRead(false);
-    setOptimisticMessages([]);
-    processedMessageIds.current.clear();
-    countedMessageIds.current.clear(); // Reset counted message IDs
-    setErrorState(null); // Clear any error state on conversation change
+    // Add delay before loading new conversation
+    const transitionTimeout = setTimeout(() => {
+      // Reset states
+      setPage(1);
+      setNewMessageCount(0);
+      setIsFirstLoad(true);
+      setHasMarkedRead(false);
+      setOptimisticMessages([]);
+      processedMessageIds.current.clear();
+      countedMessageIds.current.clear();
+      setErrorState(null);
 
-    // Reset scroll position
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = 0;
-    }
+      // Reset scroll position
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = 0;
+      }
 
-    // Force a clean refetch of messages for the new conversation
-    setTimeout(() => {
+      // Force a clean refetch of messages for the new conversation
       if (conversationId) {
         refetch();
       }
-    }, 200);
 
-    // Mark messages as read once with debounce
-    debouncedMarkAsRead(conversationId);
+      // Mark messages as read once with debounce
+      debouncedMarkAsRead(conversationId);
+    }, 300); // Reduced to 300ms for quicker response
+
+    return () => {
+      clearTimeout(transitionTimeout);
+    };
   }, [conversationId, debouncedMarkAsRead, refetch]);
 
   // Scroll to bottom function with proper memoization
@@ -1025,13 +1082,18 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     [optimisticMessages, sendMessage, conversationId]
   );
 
-  // Render message content with smaller padding
+  // Render message content with condition for sending status
   const renderMessageContent = useCallback((message) => {
     if (!message) return null;
 
     if (message.type === "text") {
+      // Tăng padding bên phải nếu đang ở trạng thái sending để tránh đè lên
+      const rightPadding =
+        message.status === "sending" ? "pr-[80px]" : "pr-[45px]";
       return (
-        <div className="break-words text-sm leading-relaxed relative pr-[45px]">
+        <div
+          className={`break-words text-sm leading-relaxed relative ${rightPadding}`}
+        >
           {message.message}
         </div>
       );
@@ -1093,28 +1155,74 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     }
   }, []);
 
-  // Memoize the message list for better performance
-  const messageListContent = useMemo(() => {
+  // Function for rendering message list content with improved duplicate prevention
+  const getMessageListContent = useCallback(() => {
     if (!messages.length || !user) {
       return !loading ? <EmptyMessageState /> : null;
     }
 
-    // Render message groups
-    return messages.reduce((groups, message, index) => {
-      if (!message || !message.createdAt || !message.senderId) return groups;
+    // Create a map to track processed messages by ID
+    const processedMessages = new Map();
+
+    // First pass: identify duplicates and keep only the most recent version
+    messages.forEach((message) => {
+      if (!message || !message._id) return;
+
+      // If this message ID already exists, only keep the newer version
+      if (processedMessages.has(message._id)) {
+        const existing = processedMessages.get(message._id);
+        if (
+          new Date(message.updatedAt || message.createdAt) >
+          new Date(existing.updatedAt || existing.createdAt)
+        ) {
+          processedMessages.set(message._id, message);
+        }
+      } else {
+        processedMessages.set(message._id, message);
+      }
+    });
+
+    // Convert map back to array and sort by creation time
+    const uniqueMessages = Array.from(processedMessages.values()).sort(
+      (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+    );
+
+    // Use a set to track dates that have already been displayed
+    const shownDates = new Set();
+    const groups = [];
+
+    // Generate message components
+    uniqueMessages.forEach((message, index) => {
+      if (!message || !message.createdAt || !message.senderId) return;
 
       try {
         const messageDate = new Date(message.createdAt);
         const messageDay = messageDate.toDateString();
 
-        const prevMessage =
-          index < messages.length - 1 ? messages[index + 1] : null;
-        const prevMessageDay =
-          prevMessage && prevMessage.createdAt
-            ? new Date(prevMessage.createdAt).toDateString()
-            : null;
+        // Previous and next messages for grouping
+        const prevMessage = index > 0 ? uniqueMessages[index - 1] : null;
+        const nextMessage =
+          index < uniqueMessages.length - 1 ? uniqueMessages[index + 1] : null;
 
-        // Cải thiện logic kiểm tra người gửi là chính mình
+        // Check if this is the first message of a day
+        const isFirstMessageOfDay = !shownDates.has(messageDay);
+        if (isFirstMessageOfDay) {
+          shownDates.add(messageDay);
+
+          // Add date separator
+          groups.push(
+            <div
+              key={`date-${message._id}`}
+              className="flex justify-center w-full my-2"
+            >
+              <div className="text-xs text-[var(--color-text-tertiary)] px-3 py-1 rounded-full bg-[var(--color-card-bg)] bg-opacity-40">
+                {format(messageDate, "MMMM d, yyyy")}
+              </div>
+            </div>
+          );
+        }
+
+        // Determine if message is from current user
         let isCurrentUser = false;
         try {
           if (typeof message.senderId === "object") {
@@ -1122,64 +1230,36 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           } else {
             isCurrentUser = message.senderId === user._id;
           }
-          // Debug log để kiểm tra
-          console.log("Message ownership check:", {
-            messageSenderId:
-              typeof message.senderId === "object"
-                ? message.senderId._id
-                : message.senderId,
-            currentUserId: user._id,
-            isCurrentUser,
-          });
         } catch (err) {
           console.error("Error determining message sender:", err);
           isCurrentUser = false;
         }
 
-        // Check if next message is from same sender (for grouping)
-        const nextMessage = index > 0 ? messages[index - 1] : null;
-        const isNextSameSender =
-          nextMessage && nextMessage.senderId && message.senderId
-            ? typeof nextMessage.senderId === "object" &&
-              typeof message.senderId === "object"
-              ? nextMessage.senderId._id === message.senderId._id
-              : nextMessage.senderId === message.senderId
-            : false;
+        // Check if messages are from the same sender for grouping
+        const getSenderId = (msg) => {
+          if (!msg || !msg.senderId) return null;
+          return typeof msg.senderId === "object"
+            ? msg.senderId._id
+            : msg.senderId;
+        };
 
-        // Check if previous message is from same sender (for grouping)
-        const isPrevSameSender =
-          prevMessage && prevMessage.senderId && message.senderId
-            ? typeof prevMessage.senderId === "object" &&
-              typeof message.senderId === "object"
-              ? prevMessage.senderId._id === message.senderId._id
-              : prevMessage.senderId === message.senderId
-            : false;
+        const currentSenderId = getSenderId(message);
+        const prevSenderId = getSenderId(prevMessage);
+        const nextSenderId = getSenderId(nextMessage);
 
-        // Time difference between messages
-        const timeDiff =
-          prevMessage && prevMessage.createdAt
-            ? new Date(message.createdAt) - new Date(prevMessage.createdAt)
-            : 0;
+        const isPrevSameSender = prevSenderId === currentSenderId;
+        const isNextSameSender = nextSenderId === currentSenderId;
 
-        // Show date divider if day changes or it's the first message
-        if (messageDay !== prevMessageDay || !prevMessage) {
+        // Check time gap between messages
+        const timeDiff = prevMessage
+          ? new Date(message.createdAt) - new Date(prevMessage.createdAt)
+          : 0;
+
+        // Add time separator for big gaps
+        if (timeDiff > 15 * 60 * 1000) {
           groups.push(
             <div
-              key={`date-${message._id || index}`}
-              className="flex justify-center my-4"
-            >
-              <div className="px-4 py-1.5 rounded-full bg-[var(--color-card-bg-secondary)] text-xs text-[var(--color-text-secondary)] shadow-sm backdrop-blur-sm bg-opacity-80 border border-[var(--color-border-light)] border-opacity-30">
-                {format(messageDate, "MMMM d, yyyy")}
-              </div>
-            </div>
-          );
-        }
-
-        // Add time divider if messages are more than 10 minutes apart and not from same sender
-        if (timeDiff > 10 * 60 * 1000 && !isPrevSameSender) {
-          groups.push(
-            <div
-              key={`time-${message._id || index}`}
+              key={`time-${message._id}`}
               className="flex justify-center my-3"
             >
               <div className="text-xs text-[var(--color-text-tertiary)] px-3 py-0.5 rounded-full bg-[var(--color-card-bg)] bg-opacity-60">
@@ -1189,117 +1269,137 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           );
         }
 
-        // Message bubble component
+        // Add the message bubble
         groups.push(
           <motion.div
-            key={message._id || `msg-${index}`}
+            key={message._id}
             variants={messageVariants}
             initial="hidden"
             animate="visible"
-            className={`flex ${
-              isCurrentUser ? "justify-end" : "justify-start"
-            } ${isNextSameSender ? "mt-1" : "mt-2.5"}`}
+            className={`flex flex-col ${
+              isCurrentUser ? "items-end" : "items-start"
+            }`}
           >
             <div
-              className={`flex flex-row items-start ${
-                !isCurrentUser && isNextSameSender ? "pl-10" : ""
-              }`}
+              className={`flex ${
+                isCurrentUser ? "justify-end" : "justify-start"
+              } 
+              ${isNextSameSender ? "mt-1" : "mt-2"} w-full`}
             >
-              {/* Luôn hiển thị avatar cho người khác nếu không phải message liền kề cùng người gửi */}
-              {!isCurrentUser && !isNextSameSender && (
-                <div className="flex-shrink-0 mr-2">
-                  {typeof message.senderId === "object" &&
-                  message.senderId.avatar ? (
-                    <Avatar
-                      src={message.senderId.avatar}
-                      alt={message.senderId.username || "User"}
-                      size="sm"
-                    />
-                  ) : (
-                    <BsPersonCircle className="w-8 h-8 text-[var(--color-text-secondary)]" />
-                  )}
-                </div>
-              )}
-
-              {/* Message bubble with space for avatar alignment */}
-              <div
-                className={`${
-                  !isCurrentUser && isNextSameSender ? "ml-10" : ""
-                } max-w-full`}
-              >
-                <div
-                  className={`relative group px-3 py-2 rounded-2xl break-words ${
-                    message.message && message.message.length <= 3
-                      ? "min-w-[40px]"
-                      : message.message && message.message.length <= 10
-                      ? "min-w-[50px]"
-                      : "min-w-[60px]"
-                  } shadow-sm hover:shadow-md transition-shadow ${
-                    isCurrentUser
-                      ? "bg-[var(--color-primary)] text-white"
-                      : "bg-[var(--color-card-bg-secondary)] text-[var(--color-text-primary)]"
-                  } ${
-                    isNextSameSender && isCurrentUser
-                      ? "rounded-tr-md"
-                      : isNextSameSender && !isCurrentUser
-                      ? "rounded-tl-md"
-                      : ""
-                  } ${
-                    isPrevSameSender && isCurrentUser
-                      ? "rounded-br-md"
-                      : isPrevSameSender && !isCurrentUser
-                      ? "rounded-bl-md"
-                      : ""
-                  }`}
-                  style={{
-                    boxShadow: isCurrentUser
-                      ? "0 1px 2px rgba(0,0,0,0.1)"
-                      : "0 1px 2px rgba(0,0,0,0.15)",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {renderMessageContent(message)}
-
-                  {/* Message status indicators for current user's messages - inline with text */}
-                  {isCurrentUser && (
-                    <div className="absolute bottom-2 right-2.5 flex items-center text-[8px]">
-                      <span className="text-white/85 mr-0.5">
-                        {formatMessageTime(message.createdAt)}
-                      </span>
-                      <span>{renderMessageStatus(message)}</span>
-                    </div>
-                  )}
-
-                  {/* Show time for messages from other users - inline with text */}
-                  {!isCurrentUser && (
-                    <div className="absolute bottom-2 right-2.5 text-[8px] text-[var(--color-text-secondary)]">
-                      {formatMessageTime(message.createdAt)}
-                    </div>
-                  )}
-                </div>
-
-                {/* Custom retry button for failed messages */}
-                {message.status === "failed" && isCurrentUser && (
-                  <div className="text-right mt-1">
-                    <button
-                      onClick={() => handleRetryMessage(message._id)}
-                      className="text-xs text-red-400 hover:text-red-600 bg-gray-800/40 px-2 py-0.5 rounded-full"
-                    >
-                      Retry
-                    </button>
+              <div className={`flex flex-row items-start max-w-[85%]`}>
+                {/* Avatar for other user's messages */}
+                {!isCurrentUser && (
+                  <div className="flex-shrink-0 mr-2">
+                    {typeof message.senderId === "object" &&
+                    message.senderId.avatar ? (
+                      <Avatar
+                        src={message.senderId.avatar}
+                        alt={message.senderId.username || "User"}
+                        size="sm"
+                        priority={true}
+                      />
+                    ) : (
+                      <BsPersonCircle className="w-8 h-8 text-[var(--color-text-secondary)]" />
+                    )}
                   </div>
                 )}
+
+                {/* Message content */}
+                <div className="max-w-full">
+                  <div
+                    className={`relative group px-3 py-2 rounded-2xl break-words 
+                      ${
+                        message.message && message.message.length <= 3
+                          ? "min-w-[40px]"
+                          : message.message && message.message.length <= 10
+                          ? "min-w-[50px]"
+                          : "min-w-[60px]"
+                      } 
+                      shadow-sm hover:shadow-md transition-shadow 
+                      ${
+                        isCurrentUser
+                          ? "bg-[var(--color-primary)] text-white"
+                          : "bg-[var(--color-card-bg-secondary)] text-[var(--color-text-primary)]"
+                      } 
+                      ${
+                        isNextSameSender && isCurrentUser
+                          ? "rounded-tr-md"
+                          : isNextSameSender && !isCurrentUser
+                          ? "rounded-tl-md"
+                          : ""
+                      } 
+                      ${
+                        isPrevSameSender && isCurrentUser
+                          ? "rounded-br-md"
+                          : isPrevSameSender && !isCurrentUser
+                          ? "rounded-bl-md"
+                          : ""
+                      }`}
+                    style={{
+                      boxShadow: isCurrentUser
+                        ? "0 1px 2px rgba(0,0,0,0.1)"
+                        : "0 1px 2px rgba(0,0,0,0.15)",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {renderMessageContent(message)}
+
+                    {/* Status for current user's messages */}
+                    {isCurrentUser && (
+                      <div className="absolute bottom-2 right-2.5 flex items-center text-[8px] gap-1">
+                        {message.status === "sending" ? (
+                          <div className="flex flex-col items-end">
+                            <div className="flex items-center text-white/70">
+                              <span className="animate-pulse mr-1 text-[6px]">
+                                ●
+                              </span>
+                              <span className="text-[8px]">Sending</span>
+                            </div>
+                            <span className="text-white/70 text-[7px] mt-0.5">
+                              {formatMessageTime(message.createdAt)}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <span>{renderMessageStatus(message)}</span>
+                            <span className="text-white/85">
+                              {formatMessageTime(message.createdAt)}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Time for other's messages */}
+                    {!isCurrentUser && (
+                      <div className="absolute bottom-2 right-2.5 text-[8px] text-[var(--color-text-secondary)]">
+                        {formatMessageTime(message.createdAt)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Retry button for failed messages */}
+                  {message.status === "failed" && isCurrentUser && (
+                    <div className="text-right mt-1">
+                      <button
+                        onClick={() => handleRetryMessage(message._id)}
+                        className="text-xs text-red-400 hover:text-red-600 bg-gray-800/40 px-2 py-0.5 rounded-full"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </motion.div>
         );
-
-        return groups;
       } catch (err) {
-        console.error("Error rendering message:", err);
-        return groups;
+        console.error("Error rendering message:", err, message);
       }
-    }, []);
+    });
+
+    return groups;
   }, [
     messages,
     user,
@@ -1309,6 +1409,12 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     renderMessageStatus,
     handleRetryMessage,
   ]);
+
+  // Use the new function in place of the old messageListContent
+  const messageListContent = useMemo(
+    () => getMessageListContent(),
+    [getMessageListContent]
+  );
 
   // Listen for forced message refresh event
   useEffect(() => {
@@ -1337,145 +1443,140 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     };
   }, [currentConversation, refetch]);
 
-  // The renderMessageArea function that handles all messaging states
-  const renderMessageArea = () => {
-    // Show loading state
-    if (loading && page === 1) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full p-8">
-          <SkeletonMessage />
-        </div>
-      );
-    }
+  // Listen for user online status updates
+  useEffect(() => {
+    const handleUserStatusUpdate = (event) => {
+      const { userId, isOnline } = event.detail;
 
-    // Kiểm tra và xử lý trường hợp không có tin nhắn từ server
-    const hasServerMessages =
-      messagesData?.messages && messagesData.messages.length > 0;
-    const hasOptimisticMessages =
-      optimisticMessages && optimisticMessages.length > 0;
-    const noMessagesAtAll =
-      !hasServerMessages && !hasOptimisticMessages && !loading;
+      // Check if this update is for the current conversation
+      if (currentConversation && currentConversation._id === userId) {
+        console.log(
+          `User status update: ${userId} is now ${
+            isOnline ? "online" : "offline"
+          }`
+        );
 
-    console.log("Message display status:", {
-      hasServerMessages,
-      hasOptimisticMessages,
-      messagesCount: messages?.length || 0,
-      loadingState: loading,
-    });
+        // Update the current conversation with the new status
+        setCurrentConversation((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            isOnline,
+          };
+        });
+      }
+    };
+
+    // Add event listener
+    window.addEventListener("user_status_updated", handleUserStatusUpdate);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("user_status_updated", handleUserStatusUpdate);
+    };
+  }, [currentConversation, setCurrentConversation]);
+
+  // Add error UI rendering
+  const renderError = () => {
+    if (!errorState) return null;
 
     return (
-      <>
-        {/* Load more messages indicator */}
-        {loading && page > 1 && (
-          <div className="flex justify-center my-2">
-            <SkeletonMessage />
-          </div>
-        )}
-
-        {/* Load more button */}
-        {!loading && hasMore && (
-          <div className="flex justify-center my-2">
-            <button
-              onClick={() => {
-                if (!loadingMore) {
-                  setLoadingMore(true);
-                  setPrevScrollHeight(
-                    chatContainerRef.current?.scrollHeight || 0
-                  );
-                  setPage((prevPage) => prevPage + 1);
-                }
-              }}
-              className="text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] px-4 py-2 rounded-full"
-              disabled={loadingMore}
-            >
-              Load earlier messages
-            </button>
-          </div>
-        )}
-
-        {/* Empty state when no messages */}
-        {noMessagesAtAll && (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <p className="text-[var(--color-text-secondary)] mb-2">
-              No messages yet
-            </p>
-            <p className="text-sm text-[var(--color-text-tertiary)]">
-              Say hello to start the conversation
-            </p>
-            <button
-              onClick={() => refetch()}
-              className="mt-4 text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] px-4 py-2 rounded-full border border-[var(--color-primary)]"
-            >
-              Refresh messages
-            </button>
-          </div>
-        )}
-
-        {/* Message list */}
-        {(hasServerMessages || hasOptimisticMessages) && (
-          <div className="space-y-1">{messageListContent}</div>
-        )}
-
-        {/* A div for scrolling to the bottom of the chat */}
-        <div ref={messagesEndRef}></div>
-
-        {/* New message notification when not at bottom */}
-        {newMessageCount > 0 && !isAtBottom && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-[var(--color-primary)] text-white px-4 py-2 rounded-full shadow-lg cursor-pointer z-10"
-            onClick={() => {
-              scrollToBottom();
-              // Reset counter immediately on click
-              setNewMessageCount(0);
-            }}
-          >
-            <div className="flex items-center">
-              <span className="mr-2">
-                {/* Show exact count or 'New messages' */}
-                {newMessageCount === 1
-                  ? "1 new message"
-                  : newMessageCount > 3
-                  ? "New messages"
-                  : `${newMessageCount} new messages`}
-              </span>
-              <FiChevronDown />
-            </div>
-          </motion.div>
-        )}
-      </>
+      <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-md my-2">
+        <p>{errorState}</p>
+        <button
+          onClick={() => {
+            setErrorState(null);
+            connect();
+            if (conversationId) {
+              window.dispatchEvent(
+                new CustomEvent("force_message_refresh", {
+                  detail: { conversationId },
+                })
+              );
+            }
+          }}
+          className="ml-2 text-sm underline hover:text-red-700"
+        >
+          Retry
+        </button>
+      </div>
     );
   };
 
-  // Empty state when no conversation is selected
-  if (!currentConversation) {
-    return <NoConversationSelected />;
-  }
+  // The renderMessageArea function that handles all messaging states
+  const renderMessageArea = () => {
+    if (!currentConversation) {
+      return <NoConversationSelected />;
+    }
+
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentConversation._id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="h-full"
+        >
+          {renderError()}
+
+          {/* Loading indicator only for loading more messages */}
+          {loading && page > 1 && (
+            <div className="flex justify-center my-2">
+              <LoadingSpinner size="sm" />
+            </div>
+          )}
+
+          {/* Empty state when no messages */}
+          {!messages.length && !loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col items-center justify-center h-64 text-center"
+            >
+              <p className="text-[var(--color-text-secondary)] mb-2">
+                No messages yet
+              </p>
+              <p className="text-sm text-[var(--color-text-tertiary)]">
+                Say hello to start the conversation
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="mt-4 text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] px-4 py-2 rounded-full border border-[var(--color-primary)] flex items-center space-x-2"
+              >
+                <FiRefreshCw className="mr-1" />
+                <span>Refresh messages</span>
+              </button>
+            </motion.div>
+          )}
+
+          {/* Message list */}
+          {messages.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-1"
+            >
+              {messageListContent}
+              <div className="h-2" />
+            </motion.div>
+          )}
+
+          {/* Scroll anchor */}
+          <div ref={messagesEndRef} />
+        </motion.div>
+      </AnimatePresence>
+    );
+  };
 
   // Show loading state when changing conversation
   if (isLoadingConversation) {
     return (
-      <div className="flex h-full justify-center items-center bg-[var(--color-card-bg)]">
-        <SkeletonMessage />
-      </div>
-    );
-  }
-
-  // Show error state if error occurred
-  if (errorState) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-4 bg-[var(--color-card-bg)]">
-        <div className="p-4 mb-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
-          <h3 className="text-lg font-medium mb-2">Chat Display Error</h3>
-          <p>{errorState}</p>
-        </div>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md"
-        >
-          Reload
-        </button>
+      <div className="flex h-full">
+        <LoadingSpinner size="md" />
       </div>
     );
   }
@@ -1529,7 +1630,14 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
             <button
               onClick={() => {
                 if (currentConversation && currentConversation._id) {
-                  reconnectAndRefresh(currentConversation._id);
+                  connect();
+                  if (currentConversation._id) {
+                    window.dispatchEvent(
+                      new CustomEvent("force_message_refresh", {
+                        detail: { conversationId: currentConversation._id },
+                      })
+                    );
+                  }
                 }
               }}
               className="p-2 mr-1 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] rounded-full hover:bg-[var(--color-card-bg-hover)] transition-colors"
@@ -1568,7 +1676,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         {/* Messages */}
         <div
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-3 pb-6 bg-[var(--color-card-bg)] no-scrollbar"
+          className="flex-1 overflow-y-auto px-4 py-3 pb-8 bg-[var(--color-card-bg)] no-scrollbar"
           onScroll={handleScroll}
           style={{
             isolation: "isolate",

@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import axiosService from "../../services/axiosService";
+import { toast } from "react-toastify";
 
 export const POST_QUERY_KEYS = {
   all: ["posts"],
@@ -20,25 +21,87 @@ export const usePostQueries = {
       queryKey: POST_QUERY_KEYS.list({ filter }),
       queryFn: async ({ pageParam = 1 }) => {
         try {
-          const response = await axiosService.get(
-            `/posts?filter=${filter}&page=${pageParam}&limit=${limit}`
-          );
-        
-          // Ensure each post has isLiked property
-          // if (response.data && response.data.data) {
-          //   // Log information about isLiked status for each post
-          //   response.data.data.forEach((post) => {
-          //     console.log(`Post ${post._id} isLiked:`, post.isLiked);
-          //   });
-          // }
+          // Use different endpoint for recommended posts
+          let endpoint = `/posts?filter=${filter}&page=${pageParam}&limit=${limit}`;
+          if (filter === "recommended") {
+            endpoint = `/posts/recommended?limit=${limit}`;
+            console.log("Fetching recommendations from endpoint:", endpoint);
+          }
+
+          const response = await axiosService.get(endpoint);
+          console.log(`Response from ${endpoint}:`, response.data);
+
+          // If it's recommended posts, adjust the response format to match regular posts
+          if (filter === "recommended") {
+            const recommendedPosts = response.data.data || [];
+            console.log(
+              `Received ${recommendedPosts.length} recommended posts`
+            );
+
+            // If no recommendations, show message and fallback to popular posts
+            if (recommendedPosts.length === 0) {
+              console.log(
+                "No recommendations available, falling back to popular posts"
+              );
+              toast.info(
+                "We don't have enough data to make personal recommendations yet. Showing popular posts instead.",
+                {
+                  position: "top-center",
+                }
+              );
+
+              // Fetch popular posts as fallback
+              const popularResponse = await axiosService.get(
+                `/posts?filter=popular&page=1&limit=${limit}`
+              );
+              return popularResponse.data;
+            }
+
+            // Return formatted recommendations
+            return {
+              data: recommendedPosts,
+              pagination: {
+                total: response.data.meta?.count || 0,
+                page: pageParam,
+                totalPages: 1, // Recommendation doesn't use pagination the same way
+              },
+            };
+          }
 
           return response.data;
         } catch (error) {
           console.error("Error fetching posts:", error);
+          if (filter === "recommended") {
+            // Kiểm tra lỗi 401 Unauthorized
+            if (error.response?.status === 401) {
+              console.log("Authentication required for recommendations");
+              toast.error("Please log in to see personalized content", {
+                position: "top-center",
+              });
+            } else {
+              toast.error(
+                "Could not load personalized content. Showing latest posts instead.",
+                {
+                  position: "top-center",
+                }
+              );
+            }
+
+            // On error, fallback to latest posts
+            const fallbackResponse = await axiosService.get(
+              `/posts?filter=latest&page=1&limit=${limit}`
+            );
+            return fallbackResponse.data;
+          }
           throw error;
         }
       },
       getNextPageParam: (lastPage) => {
+        // Don't paginate recommended posts - they're returned all at once
+        if (filter === "recommended") {
+          return undefined;
+        }
+
         if (lastPage.pagination) {
           const { page, totalPages } = lastPage.pagination;
           return page < totalPages ? page + 1 : undefined;
@@ -70,7 +133,7 @@ export const usePostQueries = {
   },
 
   // Fetch comments for a post
-  usePostComments: (postId) => {
+  usePostComments: (postId, queryOptions = {}) => {
     return useQuery({
       queryKey: POST_QUERY_KEYS.comment(postId),
       queryFn: async () => {
@@ -134,6 +197,8 @@ export const usePostQueries = {
       enabled: !!postId,
       refetchOnWindowFocus: true,
       staleTime: 30000, // 30 seconds
+      refetchInterval: queryOptions.refetchInterval || null, // Add refetchInterval option for polling
+      ...queryOptions, // Merge other options
     });
   },
 
@@ -150,10 +215,21 @@ export const usePostQueries = {
           return response.data;
         } catch (error) {
           console.error("Error searching posts:", error);
-          throw error;
+
+          // Trả về một đối tượng lỗi có cấu trúc phù hợp
+          return {
+            success: false,
+            data: [],
+            error:
+              error.response?.data?.error ||
+              error.message ||
+              "Lỗi tìm kiếm. Vui lòng thử lại sau.",
+          };
         }
       },
       enabled: !!query && query.trim().length >= 2,
+      retry: 1,
+      refetchOnWindowFocus: false,
     });
   },
 
@@ -192,8 +268,8 @@ export const usePostQueries = {
 export const usePosts = (filter, limit) =>
   usePostQueries.usePosts(filter, limit);
 export const usePost = (postId) => usePostQueries.usePost(postId);
-export const usePostComments = (postId) =>
-  usePostQueries.usePostComments(postId);
+export const usePostComments = (postId, queryOptions) =>
+  usePostQueries.usePostComments(postId, queryOptions);
 export const useSearchPosts = (query) => usePostQueries.useSearchPosts(query);
 export const useGroupPosts = (groupId, limit) =>
   usePostQueries.useGroupPosts(groupId, limit);

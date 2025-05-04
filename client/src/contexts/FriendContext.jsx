@@ -130,7 +130,16 @@ export const FriendProvider = ({ children }) => {
 
   // Derived state
   const friends = friendsData?.data || [];
-  const friendRequests = friendRequestsData?.data || [];
+  const rawFriendRequests = friendRequestsData?.data || [];
+
+  // Lọc các friend requests để loại bỏ những người đã là bạn bè
+  const friendRequests = rawFriendRequests.filter((request) => {
+    // Kiểm tra xem người gửi request có trong danh sách bạn bè không
+    const isFriend = friends.some(
+      (friend) => friend._id === request.userId._id
+    );
+    return !isFriend;
+  });
 
   const value = {
     // State

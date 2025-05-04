@@ -1,12 +1,14 @@
 // src/components/common/Avatar.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import defaultAvatar from "../../assets/images/default-avatar.svg";
+import { prefetchImages } from "../../utils/prefetch";
 
 const Avatar = ({
   src,
   alt = "Avatar",
   size = "md",
   className = "",
+  priority = false,
   ...props
 }) => {
   const [error, setError] = useState(false);
@@ -20,6 +22,14 @@ const Avatar = ({
     xl: "w-24 h-24",
     "2xl": "w-32 h-32",
   };
+
+  // Prefetch avatar image khi component mount
+  useEffect(() => {
+    if (src && (priority || size === "xl" || size === "2xl")) {
+      // Nếu là avatar có priority cao hoặc kích thước lớn thì prefetch ngay
+      prefetchImages(src, { highPriority: true });
+    }
+  }, [src, priority, size]);
 
   const handleError = () => {
     setError(true);
@@ -40,6 +50,7 @@ const Avatar = ({
         } transition-opacity duration-200`}
         onError={handleError}
         onLoad={handleLoad}
+        fetchPriority={priority ? "high" : "auto"}
         {...props}
       />
       {isLoading && (

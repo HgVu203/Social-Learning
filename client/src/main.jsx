@@ -13,6 +13,8 @@ import { UserProvider } from "./contexts/UserContext.jsx";
 import { GroupProvider } from "./contexts/GroupContext.jsx";
 import { FriendProvider } from "./contexts/FriendContext.jsx";
 import { ThemeProvider } from "./contexts/ThemeContext.jsx";
+import { SocketProvider } from "./contexts/SocketContext.jsx";
+import { EditorState } from "@codemirror/state";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -23,6 +25,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Đảm bảo các module CodeMirror được tải đúng với phiên bản phù hợp
+window.__CODEMIRROR_STATE__ = EditorState;
 
 // Clean up any "Login failed" messages on verification page
 const cleanupLoginErrorMessages = () => {
@@ -81,17 +86,19 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <BrowserRouter>
         <ThemeProvider>
           <AuthProvider>
-            <UserProvider>
-              <PostProvider>
-                <GroupProvider>
-                  <FriendProvider>
-                    <MessageProvider>
-                      <App />
-                    </MessageProvider>
-                  </FriendProvider>
-                </GroupProvider>
-              </PostProvider>
-            </UserProvider>
+            <SocketProvider>
+              <UserProvider>
+                <PostProvider>
+                  <GroupProvider>
+                    <FriendProvider>
+                      <MessageProvider>
+                        <App />
+                      </MessageProvider>
+                    </FriendProvider>
+                  </GroupProvider>
+                </PostProvider>
+              </UserProvider>
+            </SocketProvider>
           </AuthProvider>
         </ThemeProvider>
       </BrowserRouter>

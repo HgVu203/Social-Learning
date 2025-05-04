@@ -88,4 +88,13 @@ export const userService = {
     const response = await axiosInstance.post(`/users/${userId}/follow`);
     return response.data;
   },
+
+  updatePoints: async (data) => {
+    try {
+      const response = await axiosInstance.post("/users/update-points", data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
 };

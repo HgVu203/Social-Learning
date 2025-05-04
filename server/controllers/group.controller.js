@@ -192,12 +192,6 @@ export const GroupController = {
         ];
       }
 
-      console.log("Group query:", JSON.stringify(queryObj, null, 2));
-      console.log(
-        "User:",
-        req.user ? `${req.user._id} (${req.user.role})` : "Not authenticated"
-      );
-
       // Determine sort order
       let sortOption = { createdAt: -1 }; // Default sort by newest
       if (sort === "memberCount") {
@@ -206,7 +200,13 @@ export const GroupController = {
           { $match: queryObj },
           {
             $addFields: {
-              membersCount: { $size: "$members" },
+              membersCount: {
+                $cond: {
+                  if: { $isArray: "$members" },
+                  then: { $size: "$members" },
+                  else: 0,
+                },
+              },
             },
           },
           { $sort: { membersCount: -1 } },
@@ -225,15 +225,19 @@ export const GroupController = {
 
         // Add isMember flag
         const groupsWithMembershipInfo = groups.map((group) => {
+          // Đảm bảo members tồn tại và là mảng
+          const members = Array.isArray(group.members) ? group.members : [];
           const isMember =
             req.user?._id &&
-            group.members.some(
+            members.some(
               (member) =>
-                member.user?._id?.toString() === req.user._id.toString()
+                member?.user?._id?.toString() === req.user._id.toString()
             );
           return {
             ...group,
             isMember,
+            // Đảm bảo membersCount là số nếu không có từ aggregation
+            membersCount: group.membersCount || members.length || 0,
           };
         });
 
@@ -247,7 +251,61 @@ export const GroupController = {
           },
         });
       } else if (sort === "popular") {
-        sortOption = { "members.length": -1 };
+        // Thay vì sử dụng members.length, dùng aggregate để sắp xếp theo số lượng thành viên
+        const groups = await Group.aggregate([
+          { $match: queryObj },
+          {
+            $addFields: {
+              membersCount: {
+                $cond: {
+                  if: { $isArray: "$members" },
+                  then: { $size: "$members" },
+                  else: 0,
+                },
+              },
+            },
+          },
+          { $sort: { membersCount: -1 } },
+          { $skip: (parseInt(page) - 1) * parseInt(limit) },
+          { $limit: parseInt(limit) },
+        ]);
+
+        // Get total count for pagination
+        const total = await Group.countDocuments(queryObj);
+
+        // Populate user data
+        await Group.populate(groups, [
+          { path: "createdBy", select: "username email avatar" },
+          { path: "members.user", select: "username email avatar" },
+        ]);
+
+        // Add isMember flag
+        const groupsWithMembershipInfo = groups.map((group) => {
+          // Đảm bảo members tồn tại và là mảng
+          const members = Array.isArray(group.members) ? group.members : [];
+          const isMember =
+            req.user?._id &&
+            members.some(
+              (member) =>
+                member?.user?._id?.toString() === req.user._id.toString()
+            );
+          return {
+            ...group,
+            isMember,
+            // Đảm bảo membersCount là số nếu không có từ aggregation
+            membersCount: group.membersCount || members.length || 0,
+          };
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: groupsWithMembershipInfo,
+          pagination: {
+            total,
+            page: parseInt(page),
+            totalPages: Math.ceil(total / parseInt(limit)),
+          },
+        });
       }
 
       // Standard query approach without aggregation
@@ -262,15 +320,18 @@ export const GroupController = {
 
       // Add isMember flag for the current user
       const groupsWithMembershipInfo = groups.map((group) => {
+        // Đảm bảo members tồn tại và là mảng
+        const members = Array.isArray(group.members) ? group.members : [];
         const isMember =
           req.user?._id &&
-          group.members.some(
-            (member) => member.user?._id?.toString() === req.user._id.toString()
+          members.some(
+            (member) =>
+              member?.user?._id?.toString() === req.user._id.toString()
           );
         return {
           ...group.toObject(),
           isMember,
-          membersCount: group.members.length,
+          membersCount: members.length || 0,
         };
       });
 
@@ -322,18 +383,21 @@ export const GroupController = {
           .json({ success: false, error: "Group not found" });
       }
 
+      // Đảm bảo members là mảng
+      const members = Array.isArray(group.members) ? group.members : [];
+
       // Check if current user is a member
       const isMember =
         req.user?._id &&
-        group.members.some(
-          (member) => member.user?._id?.toString() === req.user._id.toString()
+        members.some(
+          (member) => member?.user?._id?.toString() === req.user._id.toString()
         );
 
       // Get user's role in the group if they are a member
       let userRole = null;
       if (isMember) {
-        const memberRecord = group.members.find(
-          (member) => member.user?._id?.toString() === req.user._id.toString()
+        const memberRecord = members.find(
+          (member) => member?.user?._id?.toString() === req.user._id.toString()
         );
         userRole = memberRecord?.role;
       }
@@ -343,7 +407,7 @@ export const GroupController = {
         ...group.toObject(),
         isMember,
         userRole,
-        membersCount: group.members.length,
+        membersCount: members.length || 0,
       };
 
       return res.status(200).json({ success: true, data: groupWithMemberInfo });
@@ -537,10 +601,15 @@ export const GroupController = {
           .json({ success: false, error: "Group not found" });
       }
 
+      // Đảm bảo members tồn tại
+      if (!Array.isArray(group.members)) {
+        group.members = [];
+      }
+
       // Check if user is already a member
       if (
         group.members.some(
-          (member) => member.user.toString() === userId.toString()
+          (member) => member?.user?.toString() === userId.toString()
         )
       ) {
         return res
@@ -549,7 +618,7 @@ export const GroupController = {
       }
 
       // Check if group is private and needs approval
-      if (group.isPrivate && group.settings.memberApproval) {
+      if (group.isPrivate && group.settings?.memberApproval) {
         // Add to member request list (would need to be implemented)
         return res.status(200).json({
           success: true,
@@ -598,9 +667,16 @@ export const GroupController = {
           .json({ success: false, error: "Group not found" });
       }
 
+      // Đảm bảo members tồn tại
+      if (!Array.isArray(group.members)) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Not a member of this group" });
+      }
+
       // Check if user is even a member
       const memberIndex = group.members.findIndex(
-        (member) => member.user.toString() === userId.toString()
+        (member) => member?.user?.toString() === userId.toString()
       );
 
       if (memberIndex === -1) {
@@ -614,7 +690,9 @@ export const GroupController = {
 
       // Count members and admins
       const memberCount = group.members.length;
-      const adminCount = group.members.filter((m) => m.role === "admin").length;
+      const adminCount = group.members.filter(
+        (m) => m?.role === "admin"
+      ).length;
 
       // If user is the only member, delete the group
       if (memberCount === 1) {
@@ -687,9 +765,17 @@ export const GroupController = {
           .json({ success: false, error: "Group not found" });
       }
 
+      // Đảm bảo members tồn tại
+      if (!Array.isArray(group.members)) {
+        return res.status(403).json({
+          success: false,
+          error: "Group has no members",
+        });
+      }
+
       // Check if requester is admin
       const requesterMembership = group.members.find(
-        (m) => m.user.toString() === userId.toString()
+        (m) => m?.user?.toString() === userId.toString()
       );
 
       if (!requesterMembership || requesterMembership.role !== "admin") {
@@ -701,7 +787,7 @@ export const GroupController = {
 
       // Update member role
       const memberIndex = group.members.findIndex(
-        (m) => m.user.toString() === memberId.toString()
+        (m) => m?.user?.toString() === memberId.toString()
       );
 
       if (memberIndex === -1) {
@@ -714,7 +800,7 @@ export const GroupController = {
       if (
         role !== "admin" &&
         group.members[memberIndex].role === "admin" &&
-        group.members.filter((m) => m.role === "admin").length === 1
+        group.members.filter((m) => m?.role === "admin").length === 1
       ) {
         return res.status(400).json({
           success: false,
@@ -767,9 +853,17 @@ export const GroupController = {
           .json({ success: false, error: "Group not found" });
       }
 
+      // Đảm bảo members tồn tại
+      if (!Array.isArray(group.members)) {
+        return res.status(403).json({
+          success: false,
+          error: "Group has no members",
+        });
+      }
+
       // Check if requester is admin or operator
       const requesterMembership = group.members.find(
-        (m) => m.user.toString() === userId.toString()
+        (m) => m?.user?.toString() === userId.toString()
       );
 
       if (
@@ -785,7 +879,7 @@ export const GroupController = {
 
       // Check the member being removed
       const memberToRemove = group.members.find(
-        (m) => m.user.toString() === memberId.toString()
+        (m) => m?.user?.toString() === memberId.toString()
       );
 
       if (!memberToRemove) {
@@ -808,7 +902,7 @@ export const GroupController = {
       // Prevent removing the last admin
       if (
         memberToRemove.role === "admin" &&
-        group.members.filter((m) => m.role === "admin").length === 1
+        group.members.filter((m) => m?.role === "admin").length === 1
       ) {
         return res.status(400).json({
           success: false,
@@ -818,7 +912,7 @@ export const GroupController = {
 
       // Remove the member
       group.members = group.members.filter(
-        (member) => member.user.toString() !== memberId.toString()
+        (member) => member?.user?.toString() !== memberId.toString()
       );
 
       await group.save();

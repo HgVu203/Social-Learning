@@ -218,6 +218,25 @@ export const FriendshipController = {
       const projection = { userId: 1, createdAt: 1 };
       const populateOptions = "username email avatar fullname";
 
+      // Lấy danh sách bạn bè hiện tại để lọc ra khỏi requests
+      const friendships = await Friendship.find(
+        {
+          $or: [{ userId }, { friendId: userId }],
+          status: "accepted",
+        },
+        { userId: 1, friendId: 1 }
+      ).lean();
+
+      // Tạo một Set các ID của bạn bè để dễ dàng kiểm tra
+      const friendIds = new Set();
+      for (const friendship of friendships) {
+        if (friendship.userId.toString() === userId.toString()) {
+          friendIds.add(friendship.friendId.toString());
+        } else {
+          friendIds.add(friendship.userId.toString());
+        }
+      }
+
       // Sử dụng Promise.all để chạy song song
       const [requests, total] = await Promise.all([
         Friendship.find(
@@ -240,16 +259,24 @@ export const FriendshipController = {
         }).lean(),
       ]);
 
+      // Lọc bỏ những request từ người đã là bạn bè
+      const filteredRequests = requests.filter(
+        (request) => !friendIds.has(request.userId._id.toString())
+      );
+
       // Cache header
       res.set("Cache-Control", "private, max-age=10");
 
       return res.status(200).json({
         success: true,
-        data: requests,
+        data: filteredRequests,
         pagination: {
-          total,
+          total: total - (requests.length - filteredRequests.length), // Điều chỉnh tổng số lượng bản ghi
           page: parseInt(page),
-          totalPages: Math.ceil(total / parseInt(limit)),
+          totalPages: Math.ceil(
+            (total - (requests.length - filteredRequests.length)) /
+              parseInt(limit)
+          ),
         },
         timestamp: new Date().toISOString(),
       });

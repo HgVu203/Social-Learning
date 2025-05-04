@@ -1,50 +1,244 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import useGroupQueries from "../../hooks/queries/useGroupQueries";
-import { SkeletonGroup } from "../../components/skeleton";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  FiSearch,
+  FiPlus,
+  FiUsers,
+  FiTrendingUp,
+  FiX,
+  FiGrid,
+  FiList,
+} from "react-icons/fi";
+import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
+import GroupItem from "../../components/group/GroupCard";
+import { useDebounce } from "../../hooks/useDebounce";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const GroupsListPage = () => {
+  const [activeTab, setActiveTab] = useState("myGroups");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [gridView, setGridView] = useState(true);
+  const searchInputRef = useRef(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  // Use debounce for search
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const showSearchResults = debouncedSearchQuery.trim().length > 0;
 
   const {
-    data: myGroupsData,
+    data: popularGroupsData = { data: [] },
+    isLoading: popularGroupsLoading,
+    error: popularGroupsError,
+  } = useGroupQueries.usePopularGroups();
+
+  // Extract the actual array of groups
+  const popularGroups = popularGroupsData.data || [];
+
+  const {
+    data: myGroupsData = { data: [] },
     isLoading: myGroupsLoading,
     error: myGroupsError,
   } = useGroupQueries.useMyGroups();
 
-  const { data: myGroups = [] } = myGroupsData || {};
+  // Extract the actual array of groups
+  const myGroups = myGroupsData.data || [];
 
-  // Filter groups based on search query
-  const filteredGroups = myGroups.filter(
-    (group) =>
-      group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (group.description &&
-        group.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const {
+    data: searchedGroupsData = { data: [] },
+    isLoading: searchedGroupsLoading,
+    error: searchedGroupsError,
+  } = useGroupQueries.useSearchGroups(debouncedSearchQuery, {
+    enabled: debouncedSearchQuery.trim().length > 0,
+  });
 
-  // Animation variants
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
+  // Extract the actual array of groups
+  const searchedGroups = searchedGroupsData.data || [];
+
+  // Focus search input when focused state changes
+  useEffect(() => {
+    if (isSearchFocused && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchFocused]);
+
+  // Sort searched groups to show joined groups first
+  const sortedSearchResults = useMemo(() => {
+    if (!searchedGroups.length) return [];
+
+    // Prepare a map of my groups for faster lookups
+    const myGroupIds = new Set(myGroups.map((g) => g._id));
+
+    // Return sorted array with joined groups first
+    return [...searchedGroups].sort((a, b) => {
+      const aIsMember = myGroupIds.has(a._id) ? 1 : 0;
+      const bIsMember = myGroupIds.has(b._id) ? 1 : 0;
+      return bIsMember - aIsMember;
+    });
+  }, [searchedGroups, myGroups]);
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setIsSearchFocused(false);
+    if (isMobile) {
+      setActiveTab("myGroups");
+    }
   };
 
-  const item = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0 },
+  const renderGroups = () => {
+    if (showSearchResults) {
+      return renderSearchResults();
+    }
+
+    if (activeTab === "popular") {
+      return renderPopularGroups();
+    }
+
+    return renderMyGroups();
   };
 
-  const renderGroupList = () => {
+  const renderPopularGroups = () => {
+    if (popularGroupsLoading) {
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 p-2">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] shadow-md overflow-hidden animate-pulse h-[280px] md:h-[320px]"
+            >
+              <div className="h-36 md:h-48 bg-[var(--color-bg-tertiary)] w-full"></div>
+              <div className="p-4">
+                <div className="h-5 bg-[var(--color-bg-tertiary)] rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-[var(--color-bg-tertiary)] rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-[var(--color-bg-tertiary)] rounded w-2/3 mb-6"></div>
+                <div className="flex gap-2">
+                  <div className="h-8 bg-[var(--color-bg-tertiary)] rounded-lg flex-1"></div>
+                  <div className="h-8 bg-[var(--color-bg-tertiary)] rounded-lg flex-1"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (popularGroupsError) {
+      return (
+        <div className="card p-8 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            Failed to load popular groups. Please try again later.
+          </p>
+        </div>
+      );
+    }
+
+    if (popularGroups.length === 0) {
+      return (
+        <div className="card p-8 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            No popular groups available at the moment
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="flex justify-end mb-4">
+          <div className="inline-flex bg-[var(--color-bg-secondary)] rounded-lg p-1 border border-[var(--color-border)] shadow-md">
+            <button
+              onClick={() => setGridView(true)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                gridView
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+              aria-label="Grid view"
+            >
+              <FiGrid size={18} />
+            </button>
+            <button
+              onClick={() => setGridView(false)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                !gridView
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+              aria-label="List view"
+            >
+              <FiList size={18} />
+            </button>
+          </div>
+        </div>
+
+        {gridView ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 p-2">
+            {popularGroups.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: index * 0.05,
+                  duration: 0.5,
+                  type: "spring",
+                  stiffness: 100,
+                }}
+                whileHover={{ scale: 1.02 }}
+                className="rounded-xl overflow-hidden h-full"
+              >
+                <GroupItem
+                  group={group}
+                  index={index}
+                  showJoinedBadge={myGroups.some((g) => g._id === group._id)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col space-y-4 md:space-y-5">
+            {popularGroups.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="card hover:shadow-lg transition-shadow rounded-xl overflow-hidden"
+              >
+                <GroupItem
+                  group={group}
+                  variant="list"
+                  showJoinedBadge={myGroups.some((g) => g._id === group._id)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const renderMyGroups = () => {
     if (myGroupsLoading) {
       return (
-        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, index) => (
-            <SkeletonGroup key={index} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 p-2">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-[#1E2024] rounded-xl border border-gray-800 shadow-md overflow-hidden animate-pulse h-[320px]"
+            >
+              <div className="h-48 bg-gray-800/80 w-full"></div>
+              <div className="p-4">
+                <div className="h-5 bg-gray-800 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-800/60 rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-gray-800/40 rounded w-2/3 mb-6"></div>
+                <div className="flex gap-2">
+                  <div className="h-8 bg-gray-800/80 rounded-lg flex-1"></div>
+                  <div className="h-8 bg-gray-800/80 rounded-lg flex-1"></div>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       );
@@ -52,212 +246,402 @@ const GroupsListPage = () => {
 
     if (myGroupsError) {
       return (
-        <div className="bg-red-900/20 text-red-500 p-4 rounded-lg">
-          {myGroupsError.message || "Failed to load groups"}
+        <div className="card p-8 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            Failed to load your groups. Please try again later.
+          </p>
         </div>
       );
     }
 
-    if (filteredGroups.length === 0) {
+    if (myGroups.length === 0) {
       return (
-        <div className="card py-10 px-4 text-center">
-          <h3 className="text-xl font-semibold mb-3 text-[var(--color-text-primary)]">
-            No groups found
-          </h3>
-          <p className="text-[var(--color-text-secondary)] mb-6">
-            {searchQuery
-              ? "No groups match your search query."
-              : "You haven't joined any groups yet."}
-          </p>
-          <Link to="/groups/create" className="btn btn-primary">
-            Create a Group
-          </Link>
+        <div className="card p-8 text-center">
+          <div className="max-w-md mx-auto">
+            <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">
+              You haven't joined any groups yet
+            </h3>
+            <p className="text-[var(--color-text-secondary)] mb-6">
+              Explore popular groups and join communities that interest you
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => setActiveTab("popular")}
+                className="btn btn-primary"
+              >
+                Explore Popular Groups
+              </button>
+              <Link
+                to="/groups/create"
+                className="btn btn-secondary inline-flex items-center"
+              >
+                <FiPlus className="mr-2" size={18} />
+                Create Group
+              </Link>
+            </div>
+          </div>
         </div>
       );
     }
 
     return (
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-      >
-        {filteredGroups.map((group) => (
-          <motion.div
-            key={group._id}
-            variants={item}
-            className="card overflow-hidden hover-scale"
-          >
-            {/* Group Cover Image or Placeholder */}
-            <div className="h-36 relative bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-light)]">
-              {group.coverImage && (
-                <img
-                  src={group.coverImage}
-                  alt={group.name}
-                  className="w-full h-full object-cover"
+      <>
+        <div className="flex justify-end mb-4">
+          <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
+            <button
+              onClick={() => setGridView(true)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                gridView
+                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <FiGrid size={18} />
+            </button>
+            <button
+              onClick={() => setGridView(false)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                !gridView
+                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <FiList size={18} />
+            </button>
+          </div>
+        </div>
+
+        {gridView ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 p-2">
+            {myGroups.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: index * 0.05,
+                  duration: 0.5,
+                  type: "spring",
+                  stiffness: 100,
+                }}
+                whileHover={{ scale: 1.02 }}
+                className="rounded-xl overflow-hidden h-full"
+              >
+                <GroupItem group={group} index={index} showJoinedBadge={true} />
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col space-y-5">
+            {myGroups.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="card hover-scale overflow-hidden"
+              >
+                <GroupItem
+                  group={group}
+                  index={index}
+                  showJoinedBadge={true}
+                  isCompact={true}
                 />
-              )}
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
 
-              {/* Semi-transparent overlay for better readability */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-
-              {/* Privacy Badge */}
-              <div className="absolute top-3 right-3">
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    group.isPrivate
-                      ? "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                      : "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
-                  }`}
-                >
-                  {group.isPrivate ? "Private" : "Public"}
-                </span>
+  const renderSearchResults = () => {
+    if (searchedGroupsLoading) {
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 p-2">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-[#1E2024] rounded-xl border border-gray-800 shadow-md overflow-hidden animate-pulse h-[320px]"
+            >
+              <div className="h-48 bg-gray-800/80 w-full"></div>
+              <div className="p-4">
+                <div className="h-5 bg-gray-800 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-800/60 rounded w-1/2 mb-2"></div>
+                <div className="h-3 bg-gray-800/40 rounded w-2/3 mb-6"></div>
+                <div className="flex gap-2">
+                  <div className="h-8 bg-gray-800/80 rounded-lg flex-1"></div>
+                  <div className="h-8 bg-gray-800/80 rounded-lg flex-1"></div>
+                </div>
               </div>
             </div>
+          ))}
+        </div>
+      );
+    }
 
-            {/* Group Info */}
-            <div className="p-4">
-              <Link to={`/groups/${group._id}`}>
-                <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)] hover:text-[var(--color-primary)] transition-colors">
-                  {group.name}
-                </h3>
-              </Link>
-              <p className="text-[var(--color-text-secondary)] mb-3 line-clamp-2">
-                {group.description || "No description available"}
-              </p>
+    if (searchedGroupsError) {
+      return (
+        <div className="card p-8 text-center">
+          <p className="text-[var(--color-text-secondary)]">
+            Failed to search for groups. Please try again later.
+          </p>
+        </div>
+      );
+    }
 
-              {/* Group Stats */}
-              <div className="flex items-center justify-between text-sm text-[var(--color-text-tertiary)]">
-                <div className="flex items-center">
-                  <svg
-                    className="w-4 h-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                    />
-                  </svg>
-                  {group.membersCount || 0} members
-                </div>
+    if (sortedSearchResults.length === 0) {
+      return (
+        <div className="card p-8 text-center">
+          <div className="max-w-md mx-auto">
+            <img
+              src="/assets/illustrations/search-empty.svg"
+              alt="No results"
+              className="w-48 h-48 mx-auto mb-4 opacity-80"
+            />
+            <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">
+              No groups found for "{debouncedSearchQuery}"
+            </h3>
+            <p className="text-[var(--color-text-secondary)] mb-6">
+              Try different keywords or check out popular groups
+            </p>
+            <button
+              onClick={handleClearSearch}
+              className="btn btn-secondary mr-3"
+            >
+              Clear Search
+            </button>
+            <button
+              onClick={() => {
+                handleClearSearch();
+                setActiveTab("popular");
+              }}
+              className="btn btn-primary"
+            >
+              Explore Popular Groups
+            </button>
+          </div>
+        </div>
+      );
+    }
 
-                <div className="flex items-center">
-                  <svg
-                    className="w-4 h-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                  {group.postsCount || 0} posts
-                </div>
-              </div>
+    return (
+      <>
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-[var(--color-text-secondary)]">
+            Found {sortedSearchResults.length} group
+            {sortedSearchResults.length !== 1 ? "s" : ""}
+          </p>
 
-              {/* Action Buttons */}
-              <div className="mt-4 flex justify-end gap-2">
-                <Link
-                  to={`/groups/${group._id}`}
-                  className="btn btn-primary btn-sm"
-                >
-                  View Group
-                </Link>
+          <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
+            <button
+              onClick={() => setGridView(true)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                gridView
+                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <FiGrid size={18} />
+            </button>
+            <button
+              onClick={() => setGridView(false)}
+              className={`p-2.5 rounded-md transition-all duration-200 ${
+                !gridView
+                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <FiList size={18} />
+            </button>
+          </div>
+        </div>
+
+        {gridView ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 p-2">
+            {sortedSearchResults.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: index * 0.05,
+                  duration: 0.5,
+                  type: "spring",
+                  stiffness: 100,
+                }}
+                whileHover={{ scale: 1.02 }}
+                className="rounded-xl overflow-hidden h-full"
+              >
+                <GroupItem
+                  group={group}
+                  index={index}
+                  showJoinedBadge={myGroups.some((g) => g._id === group._id)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col space-y-5">
+            {sortedSearchResults.map((group, index) => (
+              <motion.div
+                key={group._id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="card hover-scale overflow-hidden"
+              >
+                <GroupItem
+                  group={group}
+                  index={index}
+                  showJoinedBadge={myGroups.some((g) => g._id === group._id)}
+                  isCompact={true}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Render tabs with better mobile support
+  const renderTabs = () => {
+    const tabs = [
+      {
+        id: "myGroups",
+        label: "My Groups",
+        icon: <FiUsers className="w-5 h-5" />,
+      },
+      {
+        id: "popular",
+        label: "Popular",
+        icon: <FiTrendingUp className="w-5 h-5" />,
+      },
+    ];
+
+    return (
+      <div className="mb-6">
+        <div className="flex overflow-x-auto no-scrollbar bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)]">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setSearchQuery("");
+                setIsSearchFocused(false);
+              }}
+              className={`flex items-center py-3 px-5 font-medium whitespace-nowrap flex-1 justify-center transition-colors ${
+                activeTab === tab.id && !showSearchResults
+                  ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              <span className="flex items-center">
+                <span className="mr-2">{tab.icon}</span>
+                <span>{tab.label}</span>
+                {tab.id === "myGroups" && myGroups.length > 0 && (
+                  <span className="ml-2 bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full text-xs">
+                    {myGroups.length}
+                  </span>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Render responsive search bar
+  const renderSearchBar = () => {
+    return (
+      <AnimatePresence mode="wait">
+        {!isSearchFocused && !showSearchResults ? (
+          <motion.button
+            key="search-button"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSearchFocused(true)}
+            className="flex items-center gap-2 w-full p-3 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-text-tertiary)] border border-[var(--color-border)]"
+          >
+            <FiSearch className="text-[var(--color-text-tertiary)]" />
+            <span className="text-sm">Search groups...</span>
+          </motion.button>
+        ) : (
+          <motion.div
+            key="search-input"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="relative w-full"
+          >
+            <div className="flex items-center w-full bg-[var(--color-bg-secondary)] rounded-full border border-[var(--color-border)] overflow-hidden">
+              <button
+                onClick={handleClearSearch}
+                className="p-3 text-[var(--color-text-secondary)]"
+              >
+                <FiX className="w-5 h-5" />
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search groups..."
+                autoFocus
+                className="flex-1 bg-transparent border-none py-3 px-2 focus:outline-none text-[var(--color-text-primary)]"
+              />
+              <div className="p-3 text-[var(--color-text-secondary)]">
+                <FiSearch className="w-5 h-5" />
               </div>
             </div>
           </motion.div>
-        ))}
-      </motion.div>
+        )}
+      </AnimatePresence>
     );
   };
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-            My Groups
-          </h1>
-          <p className="text-[var(--color-text-secondary)]">
-            Manage your group memberships
-          </p>
-        </div>
+    <div className="max-w-6xl mx-auto px-3 md:px-4 pt-4 pb-20 sm:pb-10">
+      <div className="flex flex-col-reverse md:flex-row md:items-center justify-between mb-6 gap-4">
+        <motion.h1
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)]"
+        >
+          Groups
+        </motion.h1>
 
-        <Link to="/groups/create" className="btn btn-primary">
-          <svg
-            className="w-5 h-5 mr-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            />
-          </svg>
-          Create Group
+        <Link
+          to="/groups/create"
+          className="inline-flex items-center justify-center px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors shadow-sm w-full md:w-auto"
+        >
+          <FiPlus className="mr-2" />
+          <span>Create Group</span>
         </Link>
-      </motion.div>
+      </div>
 
-      {/* Search Input */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center"
-      >
-        <div className="flex-1">
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg
-                className="w-5 h-5 text-[var(--color-text-tertiary)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-            <input
-              type="text"
-              placeholder="Search your groups..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full py-2 pl-10 pr-4 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
-            />
-          </div>
-        </div>
-      </motion.div>
+      {/* Search Bar with improved mobile UX */}
+      <div className="mb-6">{renderSearchBar()}</div>
 
-      {/* Group List */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        {renderGroupList()}
-      </motion.div>
+      {/* Tabs with better mobile support */}
+      {!showSearchResults && renderTabs()}
+
+      {/* Main Content */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab + (showSearchResults ? "-search" : "")}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {renderGroups()}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };

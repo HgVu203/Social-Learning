@@ -49,13 +49,17 @@ const FriendsPage = () => {
   // Đồng bộ state cục bộ với dữ liệu từ server khi có thay đổi
   useEffect(() => {
     if (pendingRequests?.length > 0) {
-      setLocalPendingRequests(pendingRequests);
+      // Loại bỏ các bản sao trùng lặp trước khi cập nhật state
+      const uniqueRequests = removeDuplicates(pendingRequests, "_id");
+      setLocalPendingRequests(uniqueRequests);
     }
   }, [pendingRequests]);
 
   useEffect(() => {
     if (friends?.length > 0) {
-      setLocalFriends(friends);
+      // Loại bỏ các bản sao trùng lặp trước khi cập nhật state
+      const uniqueFriends = removeDuplicates(friends, "_id");
+      setLocalFriends(uniqueFriends);
     }
   }, [friends]);
 
@@ -112,6 +116,22 @@ const FriendsPage = () => {
     localFriends.length,
     localPendingRequests.length,
   ]);
+
+  // Add useEffect to filter pending requests when they change
+  useEffect(() => {
+    if (Array.isArray(pendingRequests)) {
+      // Lọc bỏ các request từ những người đã là bạn bè
+      const filteredRequests = pendingRequests.filter((request) => {
+        // Kiểm tra xem người gửi request có trong danh sách bạn bè không
+        return !localFriends.some(
+          (friend) => friend._id === request.userId._id
+        );
+      });
+      // Loại bỏ trùng lặp
+      const uniqueFilteredRequests = removeDuplicates(filteredRequests, "_id");
+      setLocalPendingRequests(uniqueFilteredRequests);
+    }
+  }, [pendingRequests, localFriends]);
 
   // Get search results
   const { data: searchResults, isLoading: searchLoading } = useSearchUsers(
@@ -361,7 +381,16 @@ const FriendsPage = () => {
   };
 
   const renderFriendRequests = () => {
-    if (localPendingRequests.length === 0) {
+    // Lọc lại một lần nữa để đảm bảo
+    const filteredRequests = localPendingRequests.filter((request) => {
+      // Chỉ hiển thị những request từ người chưa phải bạn bè
+      return !localFriends.some((friend) => friend._id === request.userId._id);
+    });
+
+    // Loại bỏ trùng lặp
+    const uniqueFilteredRequests = removeDuplicates(filteredRequests, "_id");
+
+    if (uniqueFilteredRequests.length === 0) {
       return (
         <div className="card p-6 text-center">
           <p className="text-[var(--color-text-secondary)]">
@@ -373,9 +402,9 @@ const FriendsPage = () => {
 
     return (
       <div className="space-y-3">
-        {localPendingRequests.map((request) => (
+        {uniqueFilteredRequests.map((request, index) => (
           <motion.div
-            key={request._id}
+            key={`friend-request-${request._id}-${index}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -444,12 +473,15 @@ const FriendsPage = () => {
         friend.username.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    // Loại bỏ trùng lặp trước khi render
+    const uniqueFilteredFriends = removeDuplicates(filteredFriends, "_id");
+
     return (
       <>
         <div className="space-y-3">
-          {filteredFriends.map((friend) => (
+          {uniqueFilteredFriends.map((friend, index) => (
             <motion.div
-              key={friend._id}
+              key={`friend-${friend._id}-${index}`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -514,7 +546,7 @@ const FriendsPage = () => {
 
         {searchResults?.data && searchResults.data.length > 0 ? (
           <div className="p-4 space-y-3">
-            {searchResults.data.map((user) => {
+            {searchResults.data.map((user, index) => {
               // Kiểm tra xem user này có đang được xử lý không
               const isProcessing = processingIds.includes(user._id);
 
@@ -531,7 +563,7 @@ const FriendsPage = () => {
 
               return (
                 <div
-                  key={user._id}
+                  key={`search-result-${user._id}-${index}`}
                   className="bg-[var(--color-bg-secondary)] rounded-xl p-3 flex items-center justify-between shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors"
                 >
                   <div className="flex items-center space-x-3 flex-1 min-w-0">
@@ -581,7 +613,7 @@ const FriendsPage = () => {
       .fill(0)
       .map((_, index) => (
         <div
-          key={`skeleton-${index}`}
+          key={`skeleton-friend-${index}`}
           className="card p-3 flex items-center justify-between animate-pulse mb-3"
         >
           <div className="flex items-center space-x-3 flex-1">
@@ -654,6 +686,14 @@ const FriendsPage = () => {
     }
   };
 
+  // Thêm hàm utility để loại bỏ phần tử trùng lặp trong mảng
+  const removeDuplicates = (array, key) => {
+    return array.filter(
+      (item, index, self) =>
+        index === self.findIndex((t) => t[key] === item[key])
+    );
+  };
+
   return (
     <div className="p-4 max-w-7xl mx-auto">
       {/* Header */}
@@ -724,9 +764,9 @@ const FriendsPage = () => {
         >
           <FiUsers className="mr-2" />
           <span>All Friends</span>
-          {friends.length > 0 && (
+          {localFriends.length > 0 && (
             <span className="ml-2 bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full text-xs">
-              {friends.length}
+              {removeDuplicates(localFriends, "_id").length}
             </span>
           )}
         </button>
@@ -743,9 +783,9 @@ const FriendsPage = () => {
         >
           <FiBell className="mr-2" />
           <span>Friend Requests</span>
-          {pendingRequests.length > 0 && (
+          {localPendingRequests.length > 0 && (
             <span className="ml-2 bg-[var(--color-primary)] text-white px-2 py-0.5 rounded-full text-xs">
-              {pendingRequests.length}
+              {removeDuplicates(localPendingRequests, "_id").length}
             </span>
           )}
         </button>

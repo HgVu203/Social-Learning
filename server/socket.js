@@ -7,10 +7,30 @@ let io = null;
 // Track online users with Map of userId -> socketId
 const onlineUsers = new Map();
 
+// Last ping times for each user
+const lastPingTimes = new Map();
+
 // Helper function to publish online status to friends
 const publishOnlineStatus = async (userId, isOnline) => {
   try {
     console.log(`User ${userId} is now ${isOnline ? "online" : "offline"}`);
+
+    // Broadcast the status change to all connected clients
+    if (io) {
+      // Broadcast to everyone
+      io.emit("user_status_change", {
+        userId: userId,
+        isOnline: isOnline,
+      });
+
+      console.log(
+        `Broadcasted online status: ${userId} is ${
+          isOnline ? "online" : "offline"
+        }`
+      );
+    } else {
+      console.warn("Socket.io not initialized, cannot emit user status change");
+    }
   } catch (error) {
     console.error("Error publishing online status:", error);
   }
@@ -25,13 +45,38 @@ export const initSocketServer = (server) => {
     cors: {
       origin: "*",
       methods: ["GET", "POST"],
+      credentials: true,
     },
-    pingTimeout: 60000, // 60 seconds
-    pingInterval: 25000, // 25 seconds
+    pingTimeout: 60000, // Tăng lên 60 giây
+    pingInterval: 25000, // Tăng lên 25 giây
+    transports: ["websocket", "polling"],
+    maxHttpBufferSize: 1e8,
+    allowUpgrades: true,
+    perMessageDeflate: {
+      threshold: 32768,
+    },
+    connectTimeout: 45000, // 45 giây timeout khi kết nối
   });
 
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id}`);
+
+    // Handle client pings to monitor connection health
+    socket.on("client_ping", (data, callback) => {
+      // Update last ping time
+      if (socket.userId) {
+        lastPingTimes.set(socket.userId, Date.now());
+      }
+
+      // Send response to the client
+      if (typeof callback === "function") {
+        callback({ time: Date.now(), received: true });
+      } else {
+        socket.emit("server_pong", {
+          timestamp: data?.timestamp || Date.now(),
+        });
+      }
+    });
 
     // Store user ID for reference
     socket.on("authenticate", (token) => {
@@ -45,23 +90,37 @@ export const initSocketServer = (server) => {
         // Add to the online users list
         onlineUsers.set(socket.userId, socket.id);
 
+        // Set initial ping time
+        lastPingTimes.set(socket.userId, Date.now());
+
+        // Emit authentication success
+        socket.emit("authentication_success", { userId: socket.userId });
+
         // Emit online status change to friends
         publishOnlineStatus(socket.userId, true);
       } catch (error) {
         console.error("Socket authentication failed:", error);
-        socket.emit("auth_error", { message: "Authentication failed" });
+        socket.emit("authentication_failed", {
+          message: "Authentication failed",
+        });
       }
     });
 
     // Handle ping-pong to keep connection alive
     socket.on("ping", () => {
       socket.emit("pong");
+
+      // Update last ping time
+      if (socket.userId) {
+        lastPingTimes.set(socket.userId, Date.now());
+      }
     });
 
     // Join chat room
     socket.on("join_chat", (partnerId) => {
       if (!socket.userId) {
         console.warn("Unauthenticated socket trying to join chat room");
+        socket.emit("auth_error", { message: "Authentication required" });
         return;
       }
 
@@ -69,8 +128,13 @@ export const initSocketServer = (server) => {
         const participants = [socket.userId, partnerId].sort();
         const roomName = `chat:${participants.join("-")}`;
         socket.join(roomName);
+        console.log(`User ${socket.userId} joined chat room ${roomName}`);
+
+        // Send acknowledgment
+        socket.emit("chat_joined", { roomName, partnerId });
       } catch (error) {
         console.error("Error joining chat room:", error);
+        socket.emit("error", { message: "Failed to join chat room" });
       }
     });
 
@@ -82,6 +146,7 @@ export const initSocketServer = (server) => {
         const participants = [socket.userId, partnerId].sort();
         const roomName = `chat:${participants.join("-")}`;
         socket.leave(roomName);
+        console.log(`User ${socket.userId} left chat room ${roomName}`);
       } catch (error) {
         console.error("Error leaving chat room:", error);
       }
@@ -91,9 +156,11 @@ export const initSocketServer = (server) => {
     socket.on("join_post", (postId) => {
       if (!socket.userId) {
         console.warn("Unauthenticated socket trying to join post room");
+        socket.emit("auth_error", { message: "Authentication required" });
         return;
       }
       socket.join(`post:${postId}`);
+      console.log(`User ${socket.userId} joined post room for post ${postId}`);
     });
 
     socket.on("leave_post", (postId) => {
@@ -101,19 +168,78 @@ export const initSocketServer = (server) => {
       socket.leave(`post:${postId}`);
     });
 
+    // Handle explicit client disconnect
+    socket.on("client_disconnect", () => {
+      console.log(`Client initiated disconnect: ${socket.id}`);
+      if (socket.userId) {
+        // Remove from online users
+        onlineUsers.delete(socket.userId);
+        lastPingTimes.delete(socket.userId);
+
+        // Publish offline status to friends
+        publishOnlineStatus(socket.userId, false);
+      }
+    });
+
     // Handle disconnection
-    socket.on("disconnect", () => {
-      console.log(`Socket disconnected: ${socket.id}`);
+    socket.on("disconnect", (reason) => {
+      console.log(`Socket disconnected: ${socket.id}, reason: ${reason}`);
 
       if (socket.userId) {
         // Remove from online users
         onlineUsers.delete(socket.userId);
+        lastPingTimes.delete(socket.userId);
 
         // Publish offline status to friends
         publishOnlineStatus(socket.userId, false);
       }
     });
   });
+
+  // Periodic cleanup của stale connections giảm xuống 5 phút (thay vì 30s)
+  setInterval(() => {
+    const now = Date.now();
+    const staleTimeout = 300000; // 5 phút không có ping
+
+    lastPingTimes.forEach((lastPing, userId) => {
+      if (now - lastPing > staleTimeout) {
+        console.log(`Removing stale connection for user ${userId}`);
+
+        // Get socket ID
+        const socketId = onlineUsers.get(userId);
+        if (socketId) {
+          // Get socket instance
+          const socket = io.sockets.sockets.get(socketId);
+          if (socket) {
+            // Disconnect the socket
+            socket.disconnect(true);
+          }
+        }
+
+        // Clean up
+        onlineUsers.delete(userId);
+        lastPingTimes.delete(userId);
+
+        // Publish offline status
+        publishOnlineStatus(userId, false);
+      }
+    });
+  }, 300000); // Mỗi 5 phút (300000ms)
+
+  // Bắt đầu cơ chế kiểm tra kết nối - Probe connections mỗi 2 phút
+  setInterval(() => {
+    // Kiểm tra tất cả socket đang kết nối
+    io.sockets.sockets.forEach((socket) => {
+      if (socket.userId) {
+        // Cập nhật thời gian ping gần nhất
+        lastPingTimes.set(socket.userId, Date.now());
+
+        // Gửi ping trực tiếp đến client
+        socket.emit("server_probe", { timestamp: Date.now() });
+      }
+    });
+  }, 120000); // Mỗi 2 phút
+
   return io;
 };
 
@@ -136,7 +262,6 @@ export const emitCommentEvent = (eventType, postId, data) => {
     console.warn("Socket.io not initialized, cannot emit comment event");
     return;
   }
-
 
   // Emit to the specific post room
   io.to(`post:${postId}`).emit(eventType, data);

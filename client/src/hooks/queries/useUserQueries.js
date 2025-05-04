@@ -60,7 +60,10 @@ export const useSearchUsers = (query, options = {}) => {
         return {
           success: false,
           data: [],
-          error: error.response?.data?.error || error.message,
+          error:
+            error.response?.data?.error ||
+            error.message ||
+            "Error searching users. Please try again later.",
           pagination: {
             total: 0,
             page: page,
@@ -71,6 +74,8 @@ export const useSearchUsers = (query, options = {}) => {
     },
     enabled: enabled && !!query && query.trim().length >= 2,
     staleTime: 1000 * 60,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 };
 

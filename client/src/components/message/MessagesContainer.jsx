@@ -6,12 +6,9 @@ import MessageChat from "./MessageChat";
 import { useMessageContext } from "../../contexts/MessageContext";
 import { useFriends } from "../../hooks/queries/useFriendQueries";
 import { useFriend } from "../../contexts/FriendContext";
-import {
-  connectSocket,
-  disconnectSocket,
-  reconnectAndRefresh,
-} from "../../services/socket";
+import { connectSocket, disconnectSocket } from "../../services/socket";
 import { FiRefreshCw } from "react-icons/fi";
+import { useSocket } from "../../contexts/SocketContext";
 
 const MessagesContainer = ({ userId }) => {
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
@@ -21,6 +18,8 @@ const MessagesContainer = ({ userId }) => {
   const { data: friendsData } = useFriends();
   const { friends: contextFriends } = useFriend();
   const [previousUserId, setPreviousUserId] = useState(null);
+  const { isConnected, forceReconnect } = useSocket();
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   // Combine friend sources to ensure we have data
   const allFriends = useMemo(() => {
@@ -37,19 +36,39 @@ const MessagesContainer = ({ userId }) => {
     return dataFromQuery.length > 0 ? dataFromQuery : dataFromContext;
   }, [friendsData, contextFriends]);
 
-  // Ensure socket connection is active when component mounts
+  // Cải thiện kết nối socket khi component khởi tạo
   useEffect(() => {
     // Ensure socket is connected when viewing messages
     connectSocket();
 
+    // Thiết lập interval để kiểm tra kết nối và thử lại nếu bị mất
+    const checkInterval = setInterval(() => {
+      if (!isConnected && currentConversation?._id) {
+        console.log("Connection lost, attempting to reconnect...");
+        // Thử kết nối lại socket
+        forceReconnect();
+
+        // Kích hoạt refresh tin nhắn (sẽ dùng API nếu socket không hoạt động)
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("force_message_refresh", {
+              detail: { conversationId: currentConversation._id },
+            })
+          );
+        }, 500);
+      }
+    }, 30000); // Kiểm tra mỗi 30 giây
+
     // When leaving the messages page, disconnect the socket with navigation flag
     return () => {
+      clearInterval(checkInterval);
+
       // Only disconnect if navigating away from messages page
       if (location.pathname.indexOf("/messages") !== 0) {
         disconnectSocket(true);
       }
     };
-  }, [location.pathname]);
+  }, [location.pathname, isConnected, currentConversation, forceReconnect]);
 
   // Memoize the select conversation function to avoid recreation on every render
   const selectConversation = useCallback(
@@ -59,6 +78,8 @@ const MessagesContainer = ({ userId }) => {
       try {
         // Nếu đang ở conversation hiện tại, không cần thay đổi gì
         if (currentConversation && currentConversation._id === friend._id) {
+          // Đảm bảo giao diện người dùng di động được cập nhật
+          setIsMobileListVisible(false);
           return;
         }
 
@@ -78,6 +99,17 @@ const MessagesContainer = ({ userId }) => {
 
         // On mobile, show the chat when a conversation is selected
         setIsMobileListVisible(false);
+
+        // Trigger a refresh of messages after a short delay
+        setTimeout(() => {
+          if (friend._id) {
+            window.dispatchEvent(
+              new CustomEvent("force_message_refresh", {
+                detail: { conversationId: friend._id },
+              })
+            );
+          }
+        }, 100);
       } catch (error) {
         console.error("Error selecting conversation:", error);
         // Hiển thị thông báo lỗi hoặc xử lý theo cách phù hợp
@@ -86,30 +118,50 @@ const MessagesContainer = ({ userId }) => {
     [setCurrentConversation, currentConversation]
   );
 
-  // Effect to handle conversation changes - ensure socket reconnection
+  // Cải thiện xử lý khi thay đổi người chat
+  const handleRefreshConversation = useCallback(() => {
+    if (!currentConversation?._id) return;
+
+    setIsManualRefreshing(true);
+
+    // Prevent simultaneous refreshes by using a timeout
+    if (window.refreshTimeout) {
+      clearTimeout(window.refreshTimeout);
+    }
+
+    // Kích hoạt refresh tin nhắn
+    window.dispatchEvent(
+      new CustomEvent("force_message_refresh", {
+        detail: { conversationId: currentConversation._id },
+      })
+    );
+
+    // Đặt lại trạng thái sau 2 giây
+    window.refreshTimeout = setTimeout(() => {
+      setIsManualRefreshing(false);
+    }, 2000);
+  }, [currentConversation]);
+
+  // Effect to handle conversation changes
   useEffect(() => {
     if (
       previousUserId &&
       currentConversation &&
       previousUserId !== currentConversation._id
     ) {
-      // When changing conversation partners, reconnect the socket
-      // This ensures a clean state for the new conversation
-      console.log("Switching conversation, refreshing socket connection");
+      // When changing conversation partners
+      console.log("Switching conversation, refreshing messages");
 
-      // Temporarily disconnect and reconnect the socket
-      const reconnectSocket = async () => {
-        // Temporary disconnect with navigation flag
-        disconnectSocket(true);
-
-        // Small delay to allow socket to disconnect properly
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Reconnect with a fresh connection
-        connectSocket();
-      };
-
-      reconnectSocket();
+      // Just trigger a refresh for messages rather than reconnect socket
+      if (currentConversation._id) {
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("force_message_refresh", {
+              detail: { conversationId: currentConversation._id },
+            })
+          );
+        }, 200);
+      }
     }
   }, [previousUserId, currentConversation]);
 
@@ -163,6 +215,17 @@ const MessagesContainer = ({ userId }) => {
   // For smaller screens, toggle between contacts list and chat
   const toggleMobileView = () => {
     setIsMobileListVisible(!isMobileListVisible);
+
+    // If switching to chat view, force a refresh
+    if (isMobileListVisible && currentConversation && currentConversation._id) {
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("force_message_refresh", {
+            detail: { conversationId: currentConversation._id },
+          })
+        );
+      }, 100);
+    }
   };
 
   return (
@@ -172,6 +235,22 @@ const MessagesContainer = ({ userId }) => {
       transition={{ duration: 0.4 }}
       className="h-full card shadow-md overflow-hidden border border-[var(--color-border)] bg-[var(--color-card-bg)] rounded-lg"
     >
+      {/* Thêm thông báo khi socket bị mất kết nối */}
+      {!isConnected && (
+        <div className="w-full bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200 py-1 px-4 text-sm flex justify-between items-center">
+          <span>Connection lost. Messages will still load via API.</span>
+          <button
+            onClick={() => {
+              forceReconnect();
+              handleRefreshConversation();
+            }}
+            className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-medium ml-4 py-0.5 px-2 text-xs rounded bg-amber-100 dark:bg-amber-900 hover:bg-amber-200 dark:hover:bg-amber-800"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 h-full">
         {/* Mobile toggle button - only visible on small screens */}
         <div className="md:hidden flex items-center justify-between p-3 border-b border-[var(--color-border)]">
@@ -190,11 +269,12 @@ const MessagesContainer = ({ userId }) => {
           </h2>
           {!isMobileListVisible && currentConversation && (
             <button
-              onClick={() => {
-                reconnectAndRefresh(currentConversation._id);
-              }}
-              className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] rounded-full transition-colors"
+              onClick={handleRefreshConversation}
+              className={`p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] rounded-full transition-colors ${
+                isManualRefreshing ? "animate-spin" : ""
+              }`}
               title="Refresh chat"
+              disabled={isManualRefreshing}
             >
               <FiRefreshCw size={18} />
             </button>

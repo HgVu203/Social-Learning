@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import http from "http";
 import { initSocketServer } from "./socket.js";
+import RecommendationService from "./services/recommendation.service.js";
 import authRouter from "./routers/auth.router.js";
 import postRouter from "./routers/post.router.js";
 import friendshipRouter from "./routers/friendship.router.js";
@@ -16,12 +17,12 @@ import messageRouter from "./routers/message.router.js";
 import userRouter from "./routers/user.router.js";
 import groupRouter from "./routers/group.router.js";
 import uploadRouter from "./routers/upload.router.js";
+import Post from "./models/post.model.js";
 
 import "./config/passport.js";
 
 dotenv.config();
 
-// Nhận đường dẫn thư mục hiện tại
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -121,8 +122,33 @@ if (io) {
 // MongoDB connection
 mongoose
   .connect(process.env.MONGODB_URL)
-  .then(() => {
+  .then(async () => {
     console.log("Connected to MongoDB");
+
+    // Initialize recommendation service
+    try {
+      await RecommendationService.initialize();
+      console.log("Recommendation service initialized successfully");
+
+      // Check for existing posts
+      const postsCount = await Post.countDocuments();
+      console.log(`Total posts: ${postsCount}`);
+
+      if (postsCount > 0) {
+        console.log("Starting vector indexing for existing posts...");
+        // Index 100 most recent posts if not already indexed
+        const recentPosts = await Post.find({ deleted: false })
+          .sort({ createdAt: -1 })
+          .limit(100);
+
+        for (const post of recentPosts) {
+          await RecommendationService.indexPost(post);
+        }
+        console.log("Completed indexing for existing posts");
+      }
+    } catch (error) {
+      console.error("Error initializing recommendation service:", error);
+    }
 
     // Start HTTP server instead of Express app directly
     server.listen(PORT, "0.0.0.0", () => {

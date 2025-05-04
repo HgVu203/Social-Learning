@@ -142,46 +142,64 @@ const Toast = {
    * @param {object} options - Tùy chọn bổ sung (optional)
    */
   confirm: (message, onConfirm, onCancel, options = {}) => {
+    const {
+      confirmText = "Confirm",
+      confirmColor = "blue",
+      cancelText = "Cancel",
+      icon,
+      ...restOptions
+    } = options;
+
     return toast.info(
       ({ closeToast }) => (
-        <div className="py-1">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="rounded-full bg-blue-500/20 p-2 mt-0.5">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 text-blue-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <p className="flex-1 text-[15px] pt-0.5">{message}</p>
+        <div className="py-4 px-5">
+          <div className="flex items-center mb-4">
+            {icon === "logout" ? (
+              <div className="rounded-full bg-blue-500/20 p-2 mr-3 flex-shrink-0">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 text-blue-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                  />
+                </svg>
+              </div>
+            ) : null}
+            <p className="flex-1 text-[15px] font-medium">{message}</p>
           </div>
-          <div className="flex justify-end space-x-2 mt-2">
+
+          {/* Buttons */}
+          <div className="flex justify-end space-x-3 mt-3">
             <button
-              className="px-4 py-1.5 bg-gray-700/70 text-gray-100 rounded-lg text-sm font-medium hover:bg-gray-600 transition duration-150 ease-in-out"
+              className="px-5 py-2 bg-gray-700/80 text-gray-100 rounded-lg text-sm font-medium hover:bg-gray-600 transition-all"
               onClick={() => {
                 closeToast();
                 if (onCancel) onCancel();
               }}
             >
-              Cancel
+              {cancelText}
             </button>
             <button
-              className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition duration-150 ease-in-out"
+              className={`px-5 py-2 ${
+                confirmColor === "purple"
+                  ? "bg-purple-600 hover:bg-purple-700"
+                  : confirmColor === "red"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-blue-600 hover:bg-blue-700"
+              } text-white rounded-lg text-sm font-medium transition-all`}
               onClick={() => {
                 closeToast();
                 if (onConfirm) onConfirm();
               }}
             >
-              Confirm
+              {confirmText}
             </button>
           </div>
         </div>
@@ -192,9 +210,10 @@ const Toast = {
         closeOnClick: false,
         draggable: false,
         closeButton: true,
+        icon: false,
         className:
-          "confirm-toast !bg-[#2a2d38] !border !border-[#3d4157] !rounded-xl !shadow-lg",
-        ...options,
+          "confirm-toast !bg-[#2a2d38] !border !border-[#3d4157] !rounded-xl !shadow-lg !max-w-md",
+        ...restOptions,
       }
     );
   },
@@ -207,11 +226,17 @@ const Toast = {
    * @param {object} options - Tùy chọn bổ sung (optional)
    */
   confirmDelete: (message, onConfirm, onCancel, options = {}) => {
+    const {
+      confirmText = "Delete",
+      cancelText = "Cancel",
+      ...restOptions
+    } = options;
+
     return toast.error(
       ({ closeToast }) => (
-        <div className="py-1">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="rounded-full bg-red-500/20 p-2 mt-0.5 animate-pulse">
+        <div className="py-4 px-5">
+          <div className="flex items-center mb-4">
+            <div className="rounded-full bg-red-500/20 p-2 mr-3 flex-shrink-0">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-5 w-5 text-red-400"
@@ -227,26 +252,26 @@ const Toast = {
                 />
               </svg>
             </div>
-            <p className="flex-1 text-[15px] pt-0.5">{message}</p>
+            <p className="flex-1 text-[15px] font-medium">{message}</p>
           </div>
-          <div className="flex justify-end space-x-2 mt-2">
+          <div className="flex justify-end space-x-3 mt-3">
             <button
-              className="px-4 py-1.5 bg-gray-700/70 text-gray-100 rounded-lg text-sm font-medium hover:bg-gray-600 transition duration-150 ease-in-out"
+              className="px-5 py-2 bg-gray-700/80 text-gray-100 rounded-lg text-sm font-medium hover:bg-gray-600 transition-all"
               onClick={() => {
                 closeToast();
                 if (onCancel) onCancel();
               }}
             >
-              Cancel
+              {cancelText}
             </button>
             <button
-              className="px-4 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition duration-150 ease-in-out"
+              className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-all"
               onClick={() => {
                 closeToast();
                 if (onConfirm) onConfirm();
               }}
             >
-              Delete
+              {confirmText}
             </button>
           </div>
         </div>
@@ -257,8 +282,9 @@ const Toast = {
         closeOnClick: false,
         draggable: false,
         closeButton: true,
+        icon: false,
         className:
-          "delete-toast !bg-[#2a2d38] !border !border-[#3d4157] !rounded-xl !shadow-lg",
+          "delete-toast !bg-[#2a2d38] !border !border-[#3d4157] !rounded-xl !shadow-lg !max-w-md",
         ...options,
       }
     );

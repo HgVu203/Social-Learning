@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Avatar from "../common/Avatar";
+import LazyImage from "../common/LazyImage";
 import { formatDistanceToNow } from "date-fns";
 import PostComments from "./PostComment";
 import { showSuccessToast, showConfirmToast } from "../../utils/toast";
@@ -303,19 +304,21 @@ const PostCard = ({ post }) => {
           {localPost.images && localPost.images.length > 0 ? (
             <div className="mt-4 grid grid-cols-1 gap-2">
               {localPost.images.map((image, index) => (
-                <img
+                <LazyImage
                   key={index}
                   src={image}
                   alt={`Post content ${index + 1}`}
-                  className="rounded-xl max-h-96 w-full object-cover hover:shadow-lg transition-shadow"
+                  className="rounded-xl max-h-96 h-64 hover:shadow-lg transition-shadow"
+                  eager={index === 0}
                 />
               ))}
             </div>
           ) : localPost.image ? (
-            <img
+            <LazyImage
               src={localPost.image}
               alt="Post content"
-              className="mt-4 rounded-xl max-h-96 w-full object-cover hover:shadow-lg transition-shadow"
+              className="mt-4 rounded-xl max-h-96 h-64 hover:shadow-lg transition-shadow"
+              eager={true}
             />
           ) : null}
           {localPost.tags && localPost.tags.length > 0 && (

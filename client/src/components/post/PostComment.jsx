@@ -5,7 +5,6 @@ import Avatar from "../common/Avatar";
 import { formatDistanceToNow } from "date-fns";
 import { showDeleteConfirmToast } from "../../utils/toast";
 import { useAuth } from "../../contexts/AuthContext";
-import socketService from "../../socket";
 import { usePostComments } from "../../hooks/queries/usePostQueries";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -1242,19 +1241,22 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
 const PostComments = ({ postId }) => {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState(null);
+  const [error, setError] = useState("");
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const limit = 10;
-  const [displayLimit, setDisplayLimit] = useState(3);
+  const [displayLimit, setDisplayLimit] = useState(5);
   const [showingAll, setShowingAll] = useState(false);
 
-  // Use React Query for fetching comments
+  // Updated to use refetchInterval for polling instead of sockets
   const {
     data: commentsData,
     isError: isCommentsError,
     error: commentsError,
-  } = usePostComments(postId);
+    refetch,
+  } = usePostComments(postId, {
+    refetchInterval: 7000, // Poll for new comments every 7 seconds
+  });
 
   // Set comments from the query data
   useEffect(() => {
@@ -1270,400 +1272,58 @@ const PostComments = ({ postId }) => {
   useEffect(() => {
     if (isCommentsError && commentsError) {
       console.error("Error fetching comments:", commentsError);
-      setErrorMessage(commentsError.message || "Failed to fetch comments");
+      setError(commentsError.message || "Failed to fetch comments");
       setLoading(false);
     }
   }, [isCommentsError, commentsError]);
 
-  // Subscribe to socket events for real-time updates
-  useEffect(() => {
-    const unsubscribe = socketService.subscribeToComments(postId, {
-      onCommentAdded: (newComment) => {
-        handleCommentAdded(newComment);
-      },
-      onCommentDeleted: (commentId) => {
-        handleCommentDeleted(commentId);
-      },
-      onCommentUpdated: (updatedComment) => {
-        handleCommentUpdated(updatedComment);
-      },
-      onCommentLiked: (likedComment, extraData = {}) => {
-        handleCommentLiked(likedComment, extraData);
-      },
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [postId]);
-
-  // Handle when a comment is liked
-  const handleCommentLiked = (likedComment, extraData = {}) => {
-    // Skip processing if likedComment is invalid
-    if (!likedComment || !likedComment._id) {
-      console.warn("[Socket] Received invalid comment like data");
-      return;
-    }
-
-    // Extract additional data from socket event
-    const isNestedComment = extraData.isNestedComment || false;
-    const parentId = extraData.parentId || null;
-
-    console.log(
-      "[Socket] Received like update for comment:",
-      likedComment._id,
-      "isLiked:",
-      likedComment.isLiked,
-      "isNestedComment:",
-      isNestedComment,
-      "parentId:",
-      parentId
-    );
-
-    // Check if the user is currently interacting with this comment
-    const isUserInteracting = document.querySelector(
-      `[data-comment-id="${likedComment._id}"] .like-button.active-interaction`
-    );
-
-    if (isUserInteracting) {
-      console.log(
-        "[Socket] Ignoring update - user is actively interacting with comment:",
-        likedComment._id
-      );
-      return; // Skip socket updates during user interaction
-    }
-
-    // Define a function that safely updates comments without causing infinite loops
-    const safeUpdateComments = (prevComments) => {
-      // Create a new copy of comments to avoid state mutation
-      const updatedComments = JSON.parse(JSON.stringify(prevComments));
-
-      // Flag to track if we found and updated the comment
-      let found = false;
-
-      // Helper function to update comments recursively
-      const updateCommentRecursively = (comments) => {
-        if (!Array.isArray(comments)) return comments;
-
-        return comments.map((comment) => {
-          // If this is the comment being liked
-          if (comment._id === likedComment._id) {
-            found = true;
-            return {
-              ...comment,
-              isLiked: likedComment.isLiked,
-              likesCount: likedComment.likesCount || 0,
-              // Preserve other properties
-              replies: comment.replies || [],
-            };
-          }
-
-          // If this comment is the parent of a nested comment being liked
-          if (isNestedComment && parentId && comment._id === parentId) {
-            // Recursively update replies
-            return {
-              ...comment,
-              replies: updateCommentRecursively(comment.replies || []),
-            };
-          }
-
-          // Otherwise, check if any nested replies need updating
-          if (comment.replies && comment.replies.length > 0) {
-            return {
-              ...comment,
-              replies: updateCommentRecursively(comment.replies),
-            };
-          }
-
-          // No changes needed
-          return comment;
-        });
-      };
-
-      const result = updateCommentRecursively(updatedComments);
-
-      if (!found) {
-        console.log(
-          `[Socket] Comment ${likedComment._id} not found in state, can't update`
-        );
-      }
-
-      return result;
-    };
-
-    // Update the comments state
-    setComments(safeUpdateComments);
-
-    // Force UI update for specific comment element
-    setTimeout(() => {
-      const commentElement = document.querySelector(
-        `[data-comment-id="${likedComment._id}"]`
-      );
-
-      if (commentElement) {
-        // Find and update UI elements directly
-        const heartIcon = commentElement.querySelector(".heart-icon");
-        const likeText = commentElement.querySelector(".like-button span");
-
-        if (heartIcon) {
-          if (likedComment.isLiked) {
-            heartIcon.classList.add("liked");
-            heartIcon.setAttribute("fill", "currentColor");
-            heartIcon.setAttribute("stroke-width", "0");
-          } else {
-            heartIcon.classList.remove("liked");
-            heartIcon.setAttribute("fill", "none");
-            heartIcon.setAttribute("stroke-width", "2");
-          }
-        }
-
-        if (likeText) {
-          if (likedComment.isLiked) {
-            likeText.classList.add("text-red-500", "font-medium");
-            likeText.classList.remove("text-[var(--color-text-tertiary)]");
-          } else {
-            likeText.classList.remove("text-red-500", "font-medium");
-            likeText.classList.add("text-[var(--color-text-tertiary)]");
-          }
-        }
-
-        // Update like count display or create it if needed
-        const likeCountElement =
-          commentElement.querySelector(".heart-count span");
-        if (likeCountElement && likedComment.likesCount !== undefined) {
-          likeCountElement.textContent = likedComment.likesCount;
-
-          // Show/hide the count container based on count value
-          const countContainer =
-            likeCountElement.closest(".heart-count")?.parentNode;
-          if (countContainer) {
-            countContainer.style.display =
-              likedComment.likesCount > 0 ? "flex" : "none";
-          }
-        } else if (likedComment.likesCount > 0) {
-          // If like count element doesn't exist but likes > 0, create one
-          const existingLikesContainer = commentElement.querySelector(
-            ".flex.items-center.text-xs.text-\\[\\#b0b3b8\\].mt-1.pl-2"
-          );
-          if (!existingLikesContainer) {
-            const likesContainer = document.createElement("div");
-            likesContainer.className =
-              "flex items-center text-xs text-[var(--color-text-tertiary)] mt-1 pl-2";
-            likesContainer.innerHTML = `
-              <span class="inline-flex items-center bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full heart-count">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3 text-red-500 mr-1">
-                  <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
-                </svg>
-                <span>${likedComment.likesCount}</span>
-              </span>
-            `;
-
-            // Find the correct place to insert the likes count (after the buttons)
-            const buttonContainer = commentElement.querySelector(
-              ".flex.items-center.gap-4"
-            );
-            if (buttonContainer) {
-              buttonContainer.parentNode.insertBefore(
-                likesContainer,
-                buttonContainer.nextSibling
-              );
-            }
-          }
-        }
-      }
-    }, 50);
-  };
-
-  const handleCommentAdded = (
-    newComment,
-    tempIdToRemove = null,
-    replyToUsername = null,
-    replyToUserId = null
-  ) => {
+  // Helper function to add comments
+  const handleCommentAdded = (newComment, tempIdToRemove = null) => {
     if (tempIdToRemove) {
-      // Handle error case - remove the temporary comment
-      setComments((prev) =>
-        prev.filter((comment) => comment._id !== tempIdToRemove)
+      setComments((prevComments) =>
+        prevComments.filter((comment) => comment._id !== tempIdToRemove)
       );
       return;
     }
 
-    // Store username-to-userId mapping if available
-    if (replyToUsername && replyToUserId) {
-      // Store the full name
-      userMentionMap.set(replyToUsername, replyToUserId);
+    if (!newComment) return;
 
-      // Also store individual parts of the name for more flexible matching
-      if (replyToUsername.includes(" ")) {
-        const nameParts = replyToUsername.split(" ");
-        nameParts.forEach((part) => {
-          if (part.trim().length > 0) {
-            userMentionMap.set(part.trim(), replyToUserId);
-          }
-        });
-      }
-    }
-
-    // Make sure the tag is properly added at the beginning with a space after
-    if (
-      replyToUsername &&
-      !newComment.content.includes(`@${replyToUsername} `)
-    ) {
-      // Check if content already starts with @
-      if (newComment.content.trim().startsWith("@")) {
-        // Content already has a tag, don't modify
-      } else {
-        // Add tag properly with space
-        newComment = {
-          ...newComment,
-          content: `@${replyToUsername} ${newComment.content}`,
-        };
-      }
-    }
-
-    // Also map the newly added comment's user
-    if (newComment.userId) {
-      const username = newComment.userId.fullname || newComment.userId.username;
-      const userId = newComment.userId._id;
-      if (username && userId) {
-        // Store the full name
-        userMentionMap.set(username, userId);
-
-        // Also store individual name parts
-        if (username.includes(" ")) {
-          const nameParts = username.split(" ");
-          nameParts.forEach((part) => {
-            if (part.trim().length > 0) {
-              userMentionMap.set(part.trim(), userId);
-            }
-          });
-        }
-      }
-    }
-
-    // Kiểm tra xem có comment tạm thời tương ứng với nội dung này không
-    // để thay thế nó bằng comment thật từ server
-    const findAndReplaceTempComment = (comments) => {
-      for (let i = 0; i < comments.length; i++) {
-        const comment = comments[i];
-
-        // Nếu là comment tạm thời có cùng nội dung, thay thế nó
-        if (
-          comment._id.startsWith("temp-") &&
-          comment.content === newComment.content &&
-          comment.parentId === newComment.parentId
-        ) {
-          console.log(
-            "Replacing temporary comment with server comment:",
-            comment._id,
-            "->",
-            newComment._id
-          );
-
-          // Thay thế comment tạm thời bằng comment từ server
-          comments[i] = {
-            ...newComment,
-            replies: comment.replies || [], // Giữ lại replies nếu có
-          };
-          return true;
-        }
-
-        // Kiểm tra trong replies
-        if (comment.replies && comment.replies.length > 0) {
-          const found = findAndReplaceTempComment(comment.replies);
-          if (found) return true;
-        }
-      }
-
-      return false;
-    };
-
-    if (!newComment.parentId) {
-      // Top-level comment - add to the beginning of the list
-      setComments((prev) => {
-        // Clone mảng hiện tại để thao tác
-        const newComments = [...prev];
-
-        // Thử thay thế comment tạm thời nếu có
-        const replaced = findAndReplaceTempComment(newComments);
-
-        // Nếu đã thay thế hoặc comment đã tồn tại, trả về mảng mới
-        if (replaced || newComments.some((c) => c._id === newComment._id)) {
-          return newComments;
-        }
-
-        // Nếu không, thêm comment mới vào đầu
-        return [newComment, ...newComments];
-      });
-    } else {
-      // It's a reply - add it to the parent comment
-      setComments((prev) => {
-        // Clone mảng để thao tác
-        const newComments = [...prev];
-
-        // Thử thay thế comment tạm thời nếu có
-        const replaced = findAndReplaceTempComment(newComments);
-        if (replaced) {
-          return newComments;
-        }
-
-        // Nếu không thay thế được, thêm vào parent bình thường
-        return prev.map((comment) => {
-          if (comment._id === newComment.parentId) {
-            // This is the parent comment - add the reply
-            const replies = comment.replies || [];
-            // Avoid duplicate replies
-            if (replies.some((r) => r._id === newComment._id)) {
-              return comment;
-            }
-            return {
-              ...comment,
-              replies: [newComment, ...replies],
-            };
-          }
-          return comment;
-        });
-      });
-    }
+    setComments((prevComments) => [newComment, ...prevComments]);
   };
 
-  const handleCommentDeleted = (
-    commentId,
-    newReply = null,
-    replyToUsername = null,
-    replyToUserId = null
-  ) => {
-    if (newReply) {
-      // This is handling a reply to a reply case
-      handleCommentAdded(newReply, null, replyToUsername, replyToUserId);
-      return;
-    }
-
-    // Otherwise, handle the standard delete case
-    if (!commentId) return;
-
-    setComments((prev) => prev.filter((c) => c._id !== commentId));
+  // Helper function to delete comments
+  const handleCommentDeleted = (commentId) => {
+    setComments((prevComments) =>
+      prevComments.filter((comment) => comment._id !== commentId)
+    );
   };
 
-  const handleCommentUpdated = (updatedComment) => {
-    setComments((prev) => {
-      return prev.map((comment) => {
-        if (comment._id === updatedComment._id) {
-          return updatedComment;
-        } else if (comment.replies) {
-          // Check replies
-          const updatedReplies = comment.replies.map((r) => {
-            if (r._id === updatedComment._id) {
-              return updatedComment;
-            }
-            return r;
-          });
-          return { ...comment, replies: updatedReplies };
-        }
-        return comment;
-      });
-    });
-  };
+  // Render a comments header with refresh button
+  const renderCommentsHeader = () => (
+    <div className="flex justify-between items-center mb-4">
+      <h3 className="text-base font-medium text-[var(--color-text-primary)]">
+        Comments {comments.length > 0 && `(${comments.length})`}
+      </h3>
+      <button
+        onClick={() => refetch()}
+        className="text-sm text-[var(--color-primary)] hover:underline flex items-center gap-1"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-4 w-4"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fillRule="evenodd"
+            d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+            clipRule="evenodd"
+          />
+        </svg>
+        Refresh
+      </button>
+    </div>
+  );
 
   // Load more comments from API
   const loadMoreComments = async () => {
@@ -1715,47 +1375,14 @@ const PostComments = ({ postId }) => {
       {/* Comment header and input form */}
       <div className="border-t border-[var(--color-border)] pt-4 mt-4 mb-5 px-2.5">
         {/* Comment count and most relevant filter */}
-        {commentCount > 0 && (
-          <div className="flex justify-between items-center mb-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2"
-            >
-              <span className="text-[15px] font-medium text-[var(--color-text-primary)]">
-                {commentCount} {commentCount === 1 ? "Comment" : "Comments"}
-              </span>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 }}
-              className="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors cursor-pointer flex items-center"
-            >
-              <span className="mr-1">Most relevant</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </motion.div>
-          </div>
-        )}
+        {commentCount > 0 && renderCommentsHeader()}
 
         {/* Comment input */}
         <CommentForm postId={postId} onCommentAdded={handleCommentAdded} />
       </div>
 
       {/* Error message */}
-      {errorMessage && (
+      {error && (
         <motion.div
           className="p-3 bg-red-500/10 text-red-400 rounded-lg border border-red-500/20 text-[13px]"
           initial={{ opacity: 0, y: -10 }}
@@ -1776,7 +1403,7 @@ const PostComments = ({ postId }) => {
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            {errorMessage}
+            {error}
           </div>
         </motion.div>
       )}

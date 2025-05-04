@@ -26,7 +26,19 @@ export const useFriendQueries = {
           const response = await axiosService.get("/friendship", {
             params: { page, limit },
           });
-          return response.data;
+
+          // Filter out duplicate friends based on _id
+          const uniqueFriends = response.data.data.reduce((acc, friend) => {
+            if (!acc.some((f) => f._id === friend._id)) {
+              acc.push(friend);
+            }
+            return acc;
+          }, []);
+
+          return {
+            ...response.data,
+            data: uniqueFriends,
+          };
         } catch (error) {
           console.error("Error fetching friends:", error);
           throw error;

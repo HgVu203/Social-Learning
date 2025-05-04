@@ -131,33 +131,42 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
   const handleLeaveGroup = async () => {
     if (isJoining) return;
 
-    showConfirmToast("Are you sure you want to leave this group?", async () => {
-      setIsJoining(true);
-      try {
-        const response = await leaveGroup.mutateAsync(groupId);
-        // Thông báo thành công đã được xử lý trong mutation, không cần hiển thị thêm
+    showConfirmToast(
+      "Are you sure you want to leave this group?",
+      async () => {
+        setIsJoining(true);
+        try {
+          const response = await leaveGroup.mutateAsync(groupId);
+          // Thông báo thành công đã được xử lý trong mutation, không cần hiển thị thêm
 
-        // If response has a message about group deletion, navigate to the groups list
-        if (
-          response.message &&
-          response.message.includes("group was deleted")
-        ) {
-          navigate("/groups");
-          return;
+          // If response has a message about group deletion, navigate to the groups list
+          if (
+            response.message &&
+            response.message.includes("group was deleted")
+          ) {
+            navigate("/groups");
+            return;
+          }
+
+          // For normal leave, the component will be re-rendered with updated data
+        } catch (error) {
+          console.error("Failed to leave group:", error);
+          showErrorToast(
+            error?.response?.data?.error ||
+              error?.response?.data?.message ||
+              "Failed to leave the group. Please try again."
+          );
+        } finally {
+          setIsJoining(false);
         }
-
-        // For normal leave, the component will be re-rendered with updated data
-      } catch (error) {
-        console.error("Failed to leave group:", error);
-        showErrorToast(
-          error?.response?.data?.error ||
-            error?.response?.data?.message ||
-            "Failed to leave the group. Please try again."
-        );
-      } finally {
-        setIsJoining(false);
+      },
+      null,
+      {
+        icon: "logout",
+        confirmText: "Leave Group",
+        confirmColor: "purple",
       }
-    });
+    );
   };
 
   const handleSaveSettings = async () => {
@@ -293,6 +302,12 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       () => {
         // Implementation for deleting group would go here
         showInfoToast("Delete group functionality is not yet implemented");
+      },
+      null,
+      {
+        icon: "delete",
+        confirmText: "Delete Group",
+        confirmColor: "red",
       }
     );
   };

@@ -1,0 +1,13 @@
+{
+  "verbose": true,
+  "ignore": ["data/*", "data/vectors/*", "data/cache/*", "*.json"],
+  "watch": [
+    "*.js",
+    "controllers/",
+    "middleware/",
+    "models/",
+    "routers/",
+    "services/",
+    "utils/"
+  ]
+}

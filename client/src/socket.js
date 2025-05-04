@@ -10,11 +10,29 @@ import tokenService from "./services/tokenService";
 let socket = null;
 let commentListeners = new Map();
 let messageListeners = new Map();
+let userStatusListeners = new Map();
 let disconnectReason = null;
 let lastConnectionTime = 0;
 let socketConnected = false;
 let connectionAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 100; // Tăng số lần thử kết nối tối đa
+let heartbeatInterval = null;
+let autoReconnectTimeout = null;
+let lastPingResponse = 0;
+let serverProbeTimeout = null;
+let manuallyDisconnected = false;
+
+// Cấu hình Socket.io
+const baseUrl =
+  import.meta.env.MODE === "production"
+    ? import.meta.env.VITE_API_URL || "/"
+    : "http://localhost:3000";
+
+// Thời gian chờ giữa các lần thử kết nối (ms)
+const getBackoffTime = (attempt) => {
+  // Exponential backoff: 1s, 2s, 4s, 8s... tối đa 60s
+  return Math.min(1000 * Math.pow(2, Math.min(attempt, 6)), 60000);
+};
 
 /**
  * Get the user ID from the stored token
@@ -51,225 +69,433 @@ const getUserIdFromToken = () => {
  */
 const resetConnectionState = () => {
   if (socket) {
-    socket.disconnect();
-    socket = null;
+    try {
+      socket.disconnect();
+      socket = null;
+    } catch (err) {
+      console.error("Error during socket disconnect in reset:", err);
+    }
   }
+
+  // Clear any existing intervals
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
+  if (autoReconnectTimeout) {
+    clearTimeout(autoReconnectTimeout);
+    autoReconnectTimeout = null;
+  }
+
   disconnectReason = null;
   socketConnected = false;
   connectionAttempts = 0;
 };
 
 /**
+ * Setup heartbeat mechanism to keep connection alive
+ * This is the only heartbeat mechanism we should use
+ */
+const setupHeartbeat = () => {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
+  // Cập nhật thời gian phản hồi cuối cùng
+  lastPingResponse = Date.now();
+
+  heartbeatInterval = setInterval(() => {
+    if (socket && socket.connected) {
+      // Check time since last ping response
+      const now = Date.now();
+      const timeSinceLastResponse = now - lastPingResponse;
+
+      // If no response for more than 50 seconds, connection might be stale
+      if (timeSinceLastResponse > 50000) {
+        console.warn(
+          "No ping response for 50+ seconds, connection may be stale"
+        );
+
+        // Try to reconnect
+        if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
+          checkAndRestoreConnection();
+        }
+      }
+
+      // Send a ping to keep the connection alive
+      try {
+        socket.emit("client_ping", { timestamp: now }, (response) => {
+          if (response && response.received) {
+            // Cập nhật thời gian phản hồi
+            lastPingResponse = Date.now();
+          } else {
+            console.warn("No/invalid response to ping");
+            // Không ngắt kết nối ngay, chỉ ghi log để theo dõi
+          }
+        });
+      } catch (err) {
+        console.error("Error sending heartbeat ping:", err);
+        // Không ngắt kết nối ngay, thử lại sau
+      }
+    } else if (socket && !manuallyDisconnected) {
+      // Socket exists but not connected and not manually disconnected
+      checkAndRestoreConnection();
+    }
+  }, 25000); // Sync với server (25 seconds)
+
+  // Handle server probes (lắng nghe ping từ server)
+  if (socket) {
+    socket.on("server_probe", (data) => {
+      // Khi nhận được probe từ server, cập nhật thời gian phản hồi
+      lastPingResponse = Date.now();
+
+      // Respond to server probe
+      socket.emit("client_pong", {
+        timestamp: data.timestamp,
+        receivedAt: Date.now(),
+      });
+    });
+  }
+
+  // Set up timeout to detect server probe missing
+  if (serverProbeTimeout) {
+    clearTimeout(serverProbeTimeout);
+  }
+
+  // Kiểm tra mỗi 2.5 phút nếu không nhận được probe từ server
+  serverProbeTimeout = setInterval(() => {
+    const now = Date.now();
+
+    // Also send our own ping periodically to keep connection alive
+    if (socket && socket.connected) {
+      sendKeepAlive();
+    }
+
+    // Nếu không nhận probe trong 2.5 phút, kết nối có thể đã mất
+    if (now - lastPingResponse > 150000) {
+      console.warn(
+        "No server probe received for 2.5 minutes, checking connection"
+      );
+      checkAndRestoreConnection();
+    }
+  }, 150000);
+};
+
+/**
  * Initialize socket connection
  */
 export const initSocket = () => {
-  const now = Date.now();
-
-  // Check if user is authenticated
-  const token = tokenService.getToken();
-  if (!token) {
-    console.warn("Cannot initialize socket - no authentication token");
-    return null;
-  }
-
-  // Get user ID
-  const userId = getUserIdFromToken();
-  if (!userId) {
-    console.warn("Cannot initialize socket - no user ID found in token");
-    return null;
-  }
-
-  // Throttle reconnection attempts
-  if (now - lastConnectionTime < 1000) {
-    console.log("Throttling socket reconnection attempts");
-    return socket;
-  }
-
-  // Track connection attempt time
-  lastConnectionTime = now;
-
-  // If already connected, return existing socket
-  if (socket && socket.connected) {
-    console.log("Socket already connected");
-    return socket;
-  }
-
-  // If socket exists but was disconnected for navigation, just reconnect
-  if (socket && disconnectReason === "navigation") {
-    console.log("Reconnecting existing socket after navigation");
-    socket.connect();
-    disconnectReason = null;
-    return socket;
-  }
-
-  // Maximum reconnection attempts reached
-  if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.warn(
-      `Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Resetting connection state.`
-    );
-    resetConnectionState();
-  }
-
-  // Increment connection attempts
-  connectionAttempts++;
-
-  // Close existing socket connection if any
-  if (socket) {
-    socket.disconnect();
-  }
-
-  // Extract the base URL from the API URL
-  const apiUrl = import.meta.env.VITE_API_URL || "";
-  const baseUrlMatch = apiUrl.match(/^(https?:\/\/[^/]+)/);
-  const baseUrl = baseUrlMatch ? baseUrlMatch[1] : "http://localhost:8000";
-
-  console.log(
-    `Socket connecting to: ${baseUrl} (attempt ${connectionAttempts})`
-  );
-
   try {
-    // Create new socket with auth token
-    socket = io(baseUrl, {
-      auth: {
-        token,
-      },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 10000,
-    });
+    // Reset manually disconnected flag when initializing
+    manuallyDisconnected = false;
 
-    // Socket event handlers
-    socket.on("connect", () => {
-      console.log("Socket connected successfully", socket.id);
+    const now = Date.now();
+
+    // Check if user is authenticated
+    const token = tokenService.getToken();
+    if (!token) {
+      console.warn("Cannot initialize socket - no authentication token");
+      return null;
+    }
+
+    // Get user ID
+    const userId = getUserIdFromToken();
+    if (!userId) {
+      console.warn("Cannot initialize socket - no user ID found in token");
+      return null;
+    }
+
+    // Throttle reconnection attempts (sử dụng backoff thay vì thời gian cố định)
+    if (now - lastConnectionTime < getBackoffTime(connectionAttempts)) {
+      return socket;
+    }
+
+    // Track connection attempt time
+    lastConnectionTime = now;
+
+    // If already connected, return existing socket
+    if (socket && socket.connected) {
+      return socket;
+    }
+
+    // If socket exists but was disconnected for navigation, just reconnect
+    if (socket && disconnectReason === "navigation") {
+      socket.connect();
       disconnectReason = null;
-      socketConnected = true;
-      connectionAttempts = 0;
+      return socket;
+    }
 
-      // Send authentication immediately on connection - FIX: send token as a string
-      socket.emit("authenticate", token);
-
-      // Send user ID for easier server-side user tracking
-      socket.emit("identify_user", { userId });
-      console.log("User identification sent to socket server:", userId);
-
-      // Dispatch event for reconnection
-      window.dispatchEvent(new CustomEvent("socket_reconnected"));
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error.message);
-      socketConnected = false;
-
-      // Dispatch event for socket error
-      window.dispatchEvent(
-        new CustomEvent("socket_disconnect", {
-          detail: { reason: error.message },
-        })
+    // Maximum reconnection attempts reached
+    if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn(
+        `Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Resetting connection state.`
       );
+      resetConnectionState();
+    }
 
-      // Don't auto-reconnect if token is invalid
-      if (
-        error.message === "Authentication error" ||
-        error.message.includes("authentication")
-      ) {
+    // Increment connection attempts
+    connectionAttempts++;
+
+    // Close existing socket connection if any
+    if (socket) {
+      try {
         socket.disconnect();
-        // Don't remove token here as it might be needed for API calls
+        socket.close();
+      } catch (err) {
+        console.error("Error closing existing socket:", err);
       }
-    });
+      socket = null;
+    }
 
-    socket.on("authentication_failed", (error) => {
-      console.error("Socket authentication failed:", error);
-      socketConnected = false;
+    console.log(
+      `Socket connecting to: ${baseUrl} (attempt ${connectionAttempts})`
+    );
 
-      // Try to reauthenticate after a delay
-      setTimeout(() => {
-        if (socket && socket.connected) {
-          const refreshedToken = tokenService.getToken();
-          if (refreshedToken) {
-            // FIX: send token as a string
-            socket.emit("authenticate", refreshedToken);
+    try {
+      // Create new socket with auth token
+      socket = io(baseUrl, {
+        auth: {
+          token,
+        },
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionAttempts: 20,
+        reconnectionDelay: 1000,
+        timeout: 45000, // Tăng lên đồng bộ với server
+        forceNew: connectionAttempts > 10,
+        pingTimeout: 60000, // 60 seconds - đồng bộ với server
+        pingInterval: 25000, // 25 seconds - đồng bộ với server
+        autoConnect: true,
+        withCredentials: true,
+        path: "/socket.io",
+        upgrade: true,
+        rememberUpgrade: true,
+      });
 
-            // Also re-identify the user
-            const userId = getUserIdFromToken();
-            if (userId) {
-              socket.emit("identify_user", { userId });
+      // Tạo biến phòng tránh lỗi
+      window.socketState = { socket, connected: false };
+
+      // Socket event handlers
+      socket.on("connect", () => {
+        console.log("Socket connected successfully", socket.id);
+        disconnectReason = null;
+        socketConnected = true;
+        connectionAttempts = 0;
+        window.socketState.connected = true;
+        lastPingResponse = Date.now(); // Reset ping response time
+
+        // Add user_status_change event listener
+        socket.on("user_status_change", (data) => {
+          try {
+            const { userId, isOnline } = data;
+            console.log(
+              `Received status update: User ${userId} is ${
+                isOnline ? "online" : "offline"
+              }`
+            );
+
+            // Notify all registered listeners about the status change
+            if (userStatusListeners.size > 0) {
+              userStatusListeners.forEach((callback) => {
+                if (typeof callback === "function") {
+                  callback(userId, isOnline);
+                }
+              });
             }
 
-            console.log("Retrying socket authentication");
+            // Dispatch a global event for components that aren't directly subscribed
+            window.dispatchEvent(
+              new CustomEvent("user_status_updated", {
+                detail: { userId, isOnline },
+              })
+            );
+          } catch (error) {
+            console.error("Error handling user status change:", error);
           }
+        });
+
+        // Setup heartbeat after connection - chỉ cài đặt một cơ chế duy nhất
+        setupHeartbeat();
+
+        // Setup server probe handler
+        setupServerProbeHandler();
+
+        // Send authentication immediately on connection
+        socket.emit("authenticate", token);
+
+        // Send user ID for easier server-side user tracking
+        socket.emit("identify_user", { userId });
+
+        // Dispatch event for reconnection
+        window.dispatchEvent(new CustomEvent("socket_reconnected"));
+
+        // Rejoin all active chat rooms
+        for (const userId of messageListeners.keys()) {
+          joinChatRoom(userId);
         }
-      }, 2000);
-    });
+      });
 
-    socket.on("authentication_success", (data) => {
-      console.log("Socket authentication successful:", data);
-      socketConnected = true;
-      connectionAttempts = 0;
-    });
+      // Server response to heartbeat
+      socket.on("server_pong", (data) => {
+        // Connection is healthy
+        lastPingResponse = Date.now();
+        const latency = Date.now() - data.timestamp;
+        if (latency > 1000) {
+          console.warn(`Socket latency is high: ${latency}ms`);
+        }
+      });
 
-    socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
-      disconnectReason = reason;
-      socketConnected = false;
+      // Thêm xử lý sự kiện connect_timeout
+      socket.on("connect_timeout", (timeout) => {
+        console.error("Socket connect timeout:", timeout);
+        socketConnected = false;
+        window.socketState.connected = false;
 
-      // If disconnected due to transport close, try to reconnect
-      if (reason === "transport close" || reason === "ping timeout") {
+        // Khởi tạo lại kết nối với delay tùy theo số lần thử
         setTimeout(() => {
-          if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
-            console.log("Attempting to reconnect socket after transport close");
-            if (socket) socket.connect();
-          }
-        }, 1000);
-      }
-    });
+          resetConnectionState();
+          initSocket();
+        }, getBackoffTime(connectionAttempts));
+      });
 
-    // Handle socket errors
-    socket.on("error", (error) => {
-      console.error("Socket error:", error);
-      socketConnected = false;
-    });
+      socket.on("connect_error", (error) => {
+        console.error("Socket connection error:", error.message);
+        socketConnected = false;
+        window.socketState.connected = false;
 
-    // Ping to keep connection alive
-    const pingInterval = setInterval(() => {
-      if (socket && socket.connected) {
-        socket.emit("ping");
-      } else if (
-        socket &&
-        !socket.connected &&
-        connectionAttempts < MAX_RECONNECT_ATTEMPTS
-      ) {
-        console.log(
-          "Ping detected disconnected socket, attempting to reconnect"
+        // Dispatch event for socket error
+        window.dispatchEvent(
+          new CustomEvent("socket_disconnect", {
+            detail: { reason: error.message },
+          })
         );
-        socket.connect();
-      }
-    }, 15000);
 
-    // Auto-refresh heartbeat to detect stale connections
-    const heartbeatInterval = setInterval(() => {
-      if (socketConnected && socket && !socket.connected) {
-        console.log("Heartbeat detected stale connection, resetting socket");
-        socket.disconnect();
+        // Retry connection with backoff delay unless authentication failed
+        if (
+          !error.message.includes("authentication") &&
+          connectionAttempts < MAX_RECONNECT_ATTEMPTS
+        ) {
+          setTimeout(() => {
+            try {
+              if (socket) socket.connect();
+            } catch (e) {
+              console.error("Error during reconnect:", e);
+              // Reset socket if connection attempt fails
+              if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                resetConnectionState();
+
+                // Try with a completely fresh connection after reset
+                setTimeout(() => {
+                  initSocket();
+                }, getBackoffTime(connectionAttempts));
+              }
+            }
+          }, getBackoffTime(connectionAttempts));
+        } else if (error.message.includes("authentication")) {
+          socket.disconnect();
+
+          // Try to refresh the token
+          setTimeout(() => {
+            const newToken = tokenService.getToken();
+            if (newToken) {
+              initSocket();
+            }
+          }, 3000);
+        }
+      });
+
+      socket.on("authentication_failed", (error) => {
+        console.error("Socket authentication failed:", error);
+        socketConnected = false;
+
+        // Try to reauthenticate after a delay
         setTimeout(() => {
-          if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
-            socket.connect();
+          if (socket && socket.connected) {
+            const refreshedToken = tokenService.getToken();
+            if (refreshedToken) {
+              socket.emit("authenticate", refreshedToken);
+
+              // Also re-identify the user
+              const userId = getUserIdFromToken();
+              if (userId) {
+                socket.emit("identify_user", { userId });
+              }
+            }
           }
-        }, 500);
-      }
-    }, 20000);
+        }, 2000);
+      });
 
-    // Clean up intervals on window unload
-    window.addEventListener("beforeunload", () => {
-      clearInterval(pingInterval);
-      clearInterval(heartbeatInterval);
-    });
+      socket.on("authentication_success", (data) => {
+        console.log("Socket authentication successful:", data);
+        socketConnected = true;
+        connectionAttempts = 0;
+      });
 
-    return socket;
+      socket.on("disconnect", (reason) => {
+        console.log("Socket disconnected:", reason);
+        disconnectReason = reason;
+        socketConnected = false;
+        window.socketState.connected = false;
+
+        // If manually disconnected, don't automatically reconnect
+        if (manuallyDisconnected) {
+          console.log("Socket was manually disconnected, not reconnecting");
+          return;
+        }
+
+        // More intelligent handling of different disconnect reasons
+        if (
+          reason === "transport close" ||
+          reason === "ping timeout" ||
+          reason === "transport error"
+        ) {
+          const reconnectDelay = getBackoffTime(connectionAttempts);
+          console.log(
+            `Reconnecting in ${reconnectDelay}ms (attempt ${connectionAttempts})`
+          );
+
+          setTimeout(() => {
+            if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
+              if (socket) socket.connect();
+            } else {
+              // Reset and try with a fresh connection
+              resetConnectionState();
+              initSocket();
+            }
+          }, reconnectDelay);
+        } else if (reason === "io server disconnect") {
+          // Server forced disconnect, may need a completely new connection
+          console.log("Server forced disconnect, creating new connection");
+          setTimeout(() => {
+            resetConnectionState();
+            initSocket();
+          }, getBackoffTime(connectionAttempts));
+        }
+
+        // Dispatch event for disconnect
+        window.dispatchEvent(
+          new CustomEvent("socket_disconnect", {
+            detail: { reason },
+          })
+        );
+      });
+
+      // Handle socket errors
+      socket.on("error", (error) => {
+        console.error("Socket error:", error);
+        socketConnected = false;
+        window.socketState.connected = false;
+      });
+
+      return socket;
+    } catch (socketError) {
+      console.error("Socket.io initialization error:", socketError);
+      return null;
+    }
   } catch (error) {
-    console.error("Error initializing socket:", error);
-    socketConnected = false;
+    console.error("Fatal error in socket initialization:", error);
+    // Return null instead of throwing to prevent UI crashes
     return null;
   }
 };
@@ -285,13 +511,41 @@ export const closeSocket = (isNavigation = false) => {
       socket.disconnect();
       console.log("Socket connection paused for navigation");
     } else {
-      socket.disconnect();
-      socket = null;
-      disconnectReason = null;
-      commentListeners.clear();
-      messageListeners.clear();
-      socketConnected = false;
-      console.log("Socket connection closed completely");
+      try {
+        // Set the flag to prevent auto-reconnect
+        manuallyDisconnected = true;
+
+        // Thông báo cho server về việc client đang disconnect
+        if (socket.connected) {
+          socket.emit("client_disconnect");
+        }
+        socket.disconnect();
+        socket = null;
+        disconnectReason = null;
+        commentListeners.clear();
+        messageListeners.clear();
+        userStatusListeners.clear();
+        socketConnected = false;
+        console.log("Socket connection closed completely");
+
+        // Clear any intervals
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+
+        if (autoReconnectTimeout) {
+          clearTimeout(autoReconnectTimeout);
+          autoReconnectTimeout = null;
+        }
+
+        if (serverProbeTimeout) {
+          clearTimeout(serverProbeTimeout);
+          serverProbeTimeout = null;
+        }
+      } catch (error) {
+        console.error("Error during socket close:", error);
+      }
     }
   }
 };
@@ -303,23 +557,14 @@ export const getSocket = () => {
   if (!socket) {
     return initSocket();
   }
-
-  // If socket exists but is not connected, try to reconnect
-  if (socket && !socket.connected) {
-    console.log(
-      "Socket instance exists but not connected, trying to reconnect"
-    );
-    socket.connect();
-  }
-
   return socket;
 };
 
 /**
- * Check if socket is currently connected
+ * Check if socket is connected
  */
 export const isSocketConnected = () => {
-  return socketConnected && socket && socket.connected;
+  return socket && socket.connected && socketConnected;
 };
 
 /**
@@ -330,7 +575,6 @@ export const joinPostRoom = (postId) => {
   if (!socket) return;
 
   socket.emit("join_post", postId);
-  console.log(`Joined post room: ${postId}`);
 };
 
 /**
@@ -341,7 +585,6 @@ export const leavePostRoom = (postId) => {
   if (!socket) return;
 
   socket.emit("leave_post", postId);
-  console.log(`Left post room: ${postId}`);
 };
 
 /**
@@ -352,7 +595,6 @@ export const joinChatRoom = (userId) => {
   if (!socket) return;
 
   socket.emit("join_chat", userId);
-  console.log(`Joined chat room with user: ${userId}`);
 };
 
 /**
@@ -363,7 +605,6 @@ export const leaveChatRoom = (userId) => {
   if (!socket) return;
 
   socket.emit("leave_chat", userId);
-  console.log(`Left chat room with user: ${userId}`);
 };
 
 /**
@@ -440,8 +681,6 @@ export const subscribeToMessages = (userId, callbacks) => {
   // Join the chat room
   joinChatRoom(userId);
 
-  console.log(`Subscribing to messages for user ${userId}`);
-
   // Store callbacks for this userId
   messageListeners.set(userId, callbacks);
 
@@ -450,7 +689,6 @@ export const subscribeToMessages = (userId, callbacks) => {
     // CRITICAL FIX: Add direct new message handler for immediate updates
     socket.on("new_message_received", (data) => {
       try {
-        console.log("✅ DIRECT message received event:", data);
         const { message, fromId } = data;
 
         if (!message || !fromId) {
@@ -483,8 +721,6 @@ export const subscribeToMessages = (userId, callbacks) => {
 
     socket.on("message_sent", (data) => {
       try {
-        console.log("Received message_sent event:", data);
-
         // Safely extract IDs
         const senderId = data.senderId && (data.senderId._id || data.senderId);
         const receiverId =
@@ -522,8 +758,6 @@ export const subscribeToMessages = (userId, callbacks) => {
           currentUserId = senderId; // This is a fallback that might not be correct
         }
 
-        console.log("Current user ID for message processing:", currentUserId);
-
         // Find the listener for the conversation partner
         const partnerId =
           senderId.toString() === currentUserId.toString()
@@ -553,8 +787,6 @@ export const subscribeToMessages = (userId, callbacks) => {
 
     socket.on("message_read", (data) => {
       try {
-        console.log("Received message_read event:", data);
-
         // Safely extract sender ID
         const senderId = data.senderId && (data.senderId._id || data.senderId);
 
@@ -569,14 +801,12 @@ export const subscribeToMessages = (userId, callbacks) => {
           listener.onMessageRead(data);
         }
       } catch (error) {
-        console.error("Error handling message_read event:", error, data);
+        console.error("Error handling message_read event:", error);
       }
     });
 
     socket.on("message_deleted", (data) => {
       try {
-        console.log("Received message_deleted event:", data);
-
         // Safely extract IDs
         const senderId = data.senderId && (data.senderId._id || data.senderId);
         const receiverId =
@@ -624,14 +854,12 @@ export const subscribeToMessages = (userId, callbacks) => {
           listener.onMessageDeleted(data);
         }
       } catch (error) {
-        console.error("Error handling message_deleted event:", error, data);
+        console.error("Error handling message_deleted event:", error);
       }
     });
 
     socket.on("conversation_updated", (data) => {
       try {
-        console.log("Received conversation_updated event:", data);
-
         const { partnerId } = data;
         if (!partnerId) {
           console.error("Invalid conversation data received:", data);
@@ -647,17 +875,12 @@ export const subscribeToMessages = (userId, callbacks) => {
         // Dispatch a global event for other components to react
         window.dispatchEvent(new CustomEvent("conversation_updated"));
       } catch (error) {
-        console.error(
-          "Error handling conversation_updated event:",
-          error,
-          data
-        );
+        console.error("Error handling conversation_updated event:", error);
       }
     });
 
     // Add reconnection logic for message rooms
     socket.on("reconnect", () => {
-      console.log("Socket reconnected, rejoining message rooms");
       // Rejoin all active chat rooms
       for (const userId of messageListeners.keys()) {
         joinChatRoom(userId);
@@ -669,10 +892,209 @@ export const subscribeToMessages = (userId, callbacks) => {
 
   // Return an unsubscribe function
   return () => {
-    console.log(`Unsubscribing from messages for user ${userId}`);
     messageListeners.delete(userId);
     leaveChatRoom(userId);
   };
+};
+
+/**
+ * Check socket connection and try to restore if needed
+ * @returns {boolean} Whether connection is now active or being restored
+ */
+export const checkAndRestoreConnection = () => {
+  // If manually disconnected, don't auto reconnect
+  if (manuallyDisconnected) {
+    console.log(
+      "Socket was manually disconnected, not attempting to reconnect"
+    );
+    return false;
+  }
+
+  // If socket doesn't exist or window was reloaded, initialize
+  if (!socket || !window.socketState) {
+    return !!initSocket();
+  }
+
+  // If socket exists but is disconnected, try to reconnect
+  if (
+    socket &&
+    !socket.connected &&
+    connectionAttempts < MAX_RECONNECT_ATTEMPTS
+  ) {
+    try {
+      // Reset token before reconnecting to ensure fresh authentication
+      const token = tokenService.getToken();
+      if (token) {
+        socket.auth = { token };
+      }
+
+      // Try to reconnect existing socket
+      socket.connect();
+
+      // Dispatch reconnecting event
+      window.dispatchEvent(new CustomEvent("socket_reconnecting"));
+
+      // Setup fresh heartbeat when reconnecting
+      setupHeartbeat();
+
+      return true;
+    } catch (error) {
+      console.error("Error reconnecting socket:", error);
+
+      // If reconnection fails, try to initialize a fresh connection after a delay
+      setTimeout(() => {
+        resetConnectionState();
+        initSocket();
+      }, getBackoffTime(connectionAttempts));
+
+      return false;
+    }
+  }
+
+  // If socket isn't active for more than 45 seconds, force a refresh
+  if (socket && socket.connected && Date.now() - lastPingResponse > 45000) {
+    try {
+      // Send a test ping to verify connection
+      socket.emit("client_ping", { timestamp: Date.now() }, (response) => {
+        if (!response || !response.received) {
+          console.log("No ping response, force reconnecting");
+          resetConnectionState();
+          initSocket();
+        } else {
+          lastPingResponse = Date.now();
+        }
+      });
+    } catch (error) {
+      console.error("Error sending ping:", error);
+      // Force reconnect on error
+      resetConnectionState();
+      initSocket();
+    }
+  }
+
+  // Socket is already connected
+  return socket && socket.connected;
+};
+
+// Cách khác để khôi phục kết nối
+export const forceReconnect = () => {
+  manuallyDisconnected = false; // Reset flag
+  resetConnectionState();
+  return initSocket();
+};
+
+// Handle unload/beforeunload to clean up connections
+window.addEventListener("beforeunload", () => {
+  try {
+    // Clean shutdown of socket connections
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+
+    if (autoReconnectTimeout) {
+      clearTimeout(autoReconnectTimeout);
+    }
+
+    if (socket && socket.connected) {
+      socket.emit("client_disconnect");
+      socket.disconnect();
+    }
+  } catch (err) {
+    console.error("Error during page unload cleanup:", err);
+  }
+});
+
+// Check connection when page becomes visible again
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    // Immediately check connection when tab becomes visible
+    checkAndRestoreConnection();
+  }
+});
+
+// Add network status checking to detect connection changes
+window.addEventListener("online", () => {
+  console.log("Network back online, checking connection");
+  checkAndRestoreConnection();
+});
+
+window.addEventListener("offline", () => {
+  console.warn("Network offline, socket will reconnect when back online");
+});
+
+// Thêm kiểm tra khi tab nhận focus
+window.addEventListener("focus", () => {
+  checkAndRestoreConnection();
+});
+
+/**
+ * Subscribe to user status changes
+ * @param {Function} callback - Function to call when a user's status changes
+ * @returns {Function} - Function to unsubscribe
+ */
+export const subscribeToUserStatus = (callback) => {
+  if (typeof callback !== "function") {
+    console.error("Invalid callback provided to subscribeToUserStatus");
+    return () => {};
+  }
+
+  // Generate a unique ID for this subscription
+  const subscriptionId =
+    Date.now().toString() + Math.random().toString(36).substr(2, 9);
+
+  // Store the callback
+  userStatusListeners.set(subscriptionId, callback);
+
+  // Return unsubscribe function
+  return () => {
+    userStatusListeners.delete(subscriptionId);
+  };
+};
+
+// Thêm cơ chế keep-alive chủ động cho socket đã kết nối
+export const sendKeepAlive = () => {
+  try {
+    if (socket && socket.connected) {
+      socket.emit("client_ping", {
+        timestamp: Date.now(),
+        isKeepAlive: true,
+      });
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error sending keep-alive ping:", error);
+    return false;
+  }
+};
+
+// Handle server probes separately from heartbeat
+const setupServerProbeHandler = () => {
+  if (!socket) return;
+
+  // Remove existing handler if any
+  socket.off("server_probe");
+
+  // Add handler for server probes
+  socket.on("server_probe", (data) => {
+    // Update ping response time
+    lastPingResponse = Date.now();
+
+    // Send an immediate response
+    socket.emit("client_pong", {
+      timestamp: data.timestamp,
+      receivedAt: Date.now(),
+      userId: getUserIdFromToken(),
+    });
+
+    // Also ensure connection state is up to date
+    socketConnected = true;
+
+    // Ensure socketState is updated
+    if (window.socketState) {
+      window.socketState.connected = true;
+    }
+  });
 };
 
 export default {
@@ -686,4 +1108,9 @@ export default {
   subscribeToComments,
   subscribeToMessages,
   isSocketConnected,
+  checkAndRestoreConnection,
+  forceReconnect,
+  subscribeToUserStatus,
+  sendKeepAlive,
+  setupServerProbeHandler,
 };

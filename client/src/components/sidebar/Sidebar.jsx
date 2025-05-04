@@ -3,13 +3,16 @@ import { useAuth } from "../../contexts/AuthContext";
 import Avatar from "../../components/common/Avatar";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FiSettings } from "react-icons/fi";
+import { FiSettings, FiX } from "react-icons/fi";
+import { IoGameControllerOutline } from "react-icons/io5";
 import { SkeletonSidebar } from "../skeleton";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const Sidebar = ({ onClose }) => {
   const location = useLocation();
   const { user, isAuthenticated, loading } = useAuth();
   const [isMenuLoaded, setIsMenuLoaded] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   useEffect(() => {
     // Set menu loaded state once authentication check is complete
@@ -28,6 +31,11 @@ const Sidebar = ({ onClose }) => {
           <path d="M12 2.09L1 12h3v9h7v-6h2v6h7v-9h3L12 2.09zm0 2.82L19 12v7h-3v-6H8v6H5v-7l7-7.09z" />
         </svg>
       ),
+    },
+    {
+      name: "Games",
+      path: "/game",
+      icon: <IoGameControllerOutline className="w-6 h-6" />,
     },
   ];
 
@@ -109,17 +117,33 @@ const Sidebar = ({ onClose }) => {
 
   return (
     <div className="h-screen p-4 flex flex-col">
-      {/* Logo */}
-      <Link to="/" className="flex items-center mb-8 px-3">
-        <motion.span
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-          className="text-2xl font-bold bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] bg-clip-text text-transparent"
+      {/* Header with Logo and Close Button */}
+      <div className="flex items-center justify-between mb-8 px-3">
+        <Link
+          to="/"
+          className="flex items-center"
+          onClick={isDesktop ? undefined : onClose}
         >
-          DevConnect
-        </motion.span>
-      </Link>
+          <motion.span
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className="text-2xl font-bold bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] bg-clip-text text-transparent"
+          >
+            DevConnect
+          </motion.span>
+        </Link>
+
+        {!isDesktop && (
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
+            aria-label="Close menu"
+          >
+            <FiX className="w-6 h-6" />
+          </button>
+        )}
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1">
@@ -135,7 +159,7 @@ const Sidebar = ({ onClose }) => {
               <motion.li key={menuItem.path} variants={menuItemVariant}>
                 <Link
                   to={menuItem.path}
-                  className={`flex items-center px-4 py-3 text-base rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-all ${
+                  className={`flex items-center px-4 py-3.5 text-base rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-all ${
                     isActive
                       ? "bg-[var(--color-bg-tertiary)] text-[var(--color-primary-light)] font-medium shadow-sm border-l-4 border-[var(--color-primary)]"
                       : "text-[var(--color-text-secondary)]"
@@ -173,12 +197,16 @@ const Sidebar = ({ onClose }) => {
           className="mt-auto"
         >
           <div className="flex items-center justify-between p-3 rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-            <Link to="/profile" className="flex items-center" onClick={onClose}>
+            <Link
+              to="/profile"
+              className="flex items-center flex-1"
+              onClick={onClose}
+            >
               <Avatar
                 src={user.avatar}
                 alt={user.fullname || user.username}
                 size="md"
-                className="mr-3"
+                className="mr-3 border-2 border-[var(--color-bg-primary)]"
               />
               <div>
                 <div className="font-medium text-[var(--color-text-primary)]">

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosService from "../../services/axiosService";
 import { useEffect } from "react";
-import { subscribeToMessages } from "../../socket";
+import { useSocket } from "../../contexts/SocketContext";
 import { useAuth } from "../../contexts/AuthContext";
 
 export const MESSAGE_QUERY_KEYS = {
@@ -76,6 +76,71 @@ export const useMessages = (
   const { page, limit } = options;
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { subscribeToMessages, isConnected } = useSocket();
+
+  // New: Track last seen messages to prevent disappearance when switching conversations
+  useEffect(() => {
+    if (!userId) return;
+
+    // Save the current messages in localStorage when unmounting or changing conversations
+    return () => {
+      try {
+        const currentData = queryClient.getQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(userId)
+        );
+
+        if (currentData?.messages?.length > 0) {
+          // Store a timestamp with the cache to allow expiration
+          const cacheEntry = {
+            data: currentData,
+            timestamp: Date.now(),
+          };
+
+          // Save to session storage (cleared when browser is closed)
+          sessionStorage.setItem(
+            `message_cache_${userId}`,
+            JSON.stringify(cacheEntry)
+          );
+          console.log(
+            `Saved ${currentData.messages.length} messages to cache for ${userId}`
+          );
+        }
+      } catch (error) {
+        console.error("Error saving message cache:", error);
+      }
+    };
+  }, [userId, queryClient]);
+
+  // Check for cached messages at the beginning
+  useEffect(() => {
+    if (!userId) return;
+
+    try {
+      // Check if we have cached messages for this conversation
+      const cachedDataRaw = sessionStorage.getItem(`message_cache_${userId}`);
+      if (!cachedDataRaw) return;
+
+      const cachedEntry = JSON.parse(cachedDataRaw);
+      const cachedData = cachedEntry.data;
+      const cacheAge = Date.now() - cachedEntry.timestamp;
+
+      // Only use cache if it's less than 3 minutes old
+      if (cachedData?.messages?.length > 0 && cacheAge < 1000 * 60 * 3) {
+        console.log(
+          `Restored ${cachedData.messages.length} messages from cache for ${userId}`
+        );
+        queryClient.setQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(userId),
+          cachedData
+        );
+      } else if (cacheAge >= 1000 * 60 * 3) {
+        // Clear expired cache
+        sessionStorage.removeItem(`message_cache_${userId}`);
+      }
+    } catch (error) {
+      console.error("Error restoring message cache:", error);
+    }
+  }, [userId, queryClient]);
 
   // Get messages history with a specific user
   const { data, isLoading, error, refetch } = useQuery({
@@ -88,6 +153,11 @@ export const useMessages = (
           `Fetching messages for conversation ${userId}, page ${page}`
         );
 
+        // First get the current cached data to preserve it in case of error
+        const previousData = queryClient.getQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(userId)
+        );
+
         const response = await axiosService.get("/message", {
           params: { partnerId: userId, page, limit },
         });
@@ -96,29 +166,45 @@ export const useMessages = (
           `Fetched ${response.data.data?.length || 0} messages for ${userId}`
         );
 
-        // Kiểm tra thêm dữ liệu trả về để gỡ lỗi
+        // Validate response data
         if (!response.data.data || !Array.isArray(response.data.data)) {
           console.warn("Invalid message data format:", response.data);
-          return {
-            messages: [],
-            hasMore: false,
-            currentPage: parseInt(page),
-            error: "Invalid data format from server",
-          };
+          // Return previous messages instead of empty array to prevent disappearing
+          return (
+            previousData || {
+              messages: [],
+              hasMore: false,
+              currentPage: parseInt(page),
+              error: "Invalid data format from server",
+            }
+          );
         }
 
-        // Tiền xử lý tin nhắn để đảm bảo cấu trúc senderId đúng
+        // If we got an empty array but had previous messages, something may be wrong
+        // So keep previous messages if this is the first page (avoid wiping out history)
+        if (
+          response.data.data.length === 0 &&
+          page === 1 &&
+          previousData?.messages?.length > 0
+        ) {
+          console.warn(
+            "Received empty message array but had previous messages, preserving cache"
+          );
+          return previousData;
+        }
+
+        // Process messages to ensure structure consistency
         const processedMessages = response.data.data.map((message) => {
-          // Đảm bảo senderId là chuỗi nếu nó là ID, hoặc là object nếu đã populate
+          // Ensure senderId is consistent
           if (message.senderId && typeof message.senderId === "object") {
-            // Tin nhắn đã được populate với thông tin người gửi
+            // Message with populated sender
             console.log(
               "Message with populated sender:",
               message.senderId._id,
               message.message
             );
           } else if (message.senderId) {
-            // Tin nhắn chỉ có ID người gửi
+            // Message with sender ID only
             console.log(
               "Message with sender ID only:",
               message.senderId,
@@ -136,226 +222,199 @@ export const useMessages = (
         };
       } catch (error) {
         console.error("Error fetching messages:", error);
-        // Trả về dữ liệu trống thay vì throw lỗi để tránh màn hình trắng
-        return {
-          messages: [],
-          hasMore: false,
-          error: error.message,
-          currentPage: parseInt(page),
-        };
+        // Get current cached data
+        const previousData = queryClient.getQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(userId)
+        );
+
+        // Return previous messages instead of empty array to prevent disappearing
+        return (
+          previousData || {
+            messages: [],
+            hasMore: false,
+            error: error.message,
+            currentPage: parseInt(page),
+          }
+        );
       }
     },
     enabled: !!userId,
-    staleTime: 1000 * 5, // Giảm xuống 5 giây để cập nhật nhanh hơn
+    staleTime: 1000 * 2, // 2 seconds
     refetchOnWindowFocus: true,
-    retry: 3, // Tăng số lần retry lên 3
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff
-    ...queryOptions, // Cho phép override các options
+    // Reduced polling frequency to prevent race conditions
+    refetchInterval: isConnected ? 8000 : 3000, // Less aggressive polling
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    // This is crucial - tell React Query how to merge new data with old data
+    structuralSharing: (oldData, newData) => {
+      // If we have no new data or it has an error, keep old data
+      if (!newData || newData.error)
+        return oldData || { messages: [], hasMore: false };
+
+      // If we have no messages in new data but had old messages, something's wrong
+      if (newData.messages.length === 0 && oldData?.messages?.length > 0) {
+        return oldData;
+      }
+
+      return newData;
+    },
+    ...queryOptions,
   });
 
-  // Websocket subscription to listen for new messages
+  // Set up a function to refresh messages when socket reconnects
   useEffect(() => {
-    if (!userId || !user) return;
+    const handleSocketReconnect = () => {
+      console.log("Socket reconnected, refreshing messages");
+      if (userId) {
+        refetch();
+      }
+    };
 
-    console.log(`Setting up message subscription for user ${userId}`);
+    window.addEventListener("socket_reconnected", handleSocketReconnect);
 
-    // Add a retry mechanism for socket subscription
-    let retries = 0;
-    const maxRetries = 3;
-    let unsubscribe = null;
+    return () => {
+      window.removeEventListener("socket_reconnected", handleSocketReconnect);
+    };
+  }, [refetch, userId]);
 
-    const setupSubscription = () => {
+  // Set up a function to handle forced message refresh
+  useEffect(() => {
+    const handleForceRefresh = (event) => {
+      const { conversationId } = event.detail || {};
+      if (conversationId && conversationId === userId) {
+        console.log(`Force refreshing messages for conversation ${userId}`);
+        refetch();
+      }
+    };
+
+    window.addEventListener("force_message_refresh", handleForceRefresh);
+
+    return () => {
+      window.removeEventListener("force_message_refresh", handleForceRefresh);
+    };
+  }, [refetch, userId]);
+
+  // Watch for new message event - trigger refetch
+  useEffect(() => {
+    const handleNewMessage = (event) => {
       try {
-        // Clear any existing subscription
-        if (typeof unsubscribe === "function") {
-          unsubscribe();
-        }
+        const { partnerId, message, updateId } = event?.detail || {};
 
-        unsubscribe = subscribeToMessages(userId, {
-          onMessageReceived: (message) => {
-            console.log("Message received from socket:", message);
+        // Skip if no partner ID
+        if (!partnerId) return;
 
-            // PRIORITY FIX: Ensure message has priority in queryClient cache
-            // Assign an ID to ensure message tracking in logs
-            const logId = `msg-${Date.now()}`;
-            console.log(
-              `Processing message ${logId}:`,
-              message._id || "unknown"
-            );
+        // Only process if this is for our conversation
+        if (partnerId === userId) {
+          console.log("New message notification, refreshing data");
 
-            // Force invalidate and refetch immediately
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(userId),
-              refetchType: "active",
-            });
+          // Track processed messages to prevent duplicates
+          const processedKey = `processed_${updateId || Date.now()}`;
+          if (window[processedKey]) return;
+          window[processedKey] = true;
 
-            // CRITICAL FIX: Always update cache with new message
+          // For urgent updates with actual message data, update cache directly
+          if (message && updateId) {
+            // Add message directly to cache for immediate display
             queryClient.setQueryData(
               MESSAGE_QUERY_KEYS.messagesWithUser(userId),
               (oldData) => {
-                // If no existing data, create new structure
-                if (!oldData)
+                if (!oldData) {
                   return {
                     messages: [message],
                     hasMore: false,
                     currentPage: 1,
                   };
+                }
 
-                // Skip if message already exists
+                // Check if message already exists
                 const messageExists = oldData.messages.some(
-                  (m) =>
-                    m._id === message._id ||
-                    (m.message === message.message &&
-                      Math.abs(
-                        new Date(m.createdAt) - new Date(message.createdAt)
-                      ) < 5000)
+                  (m) => m._id === message._id
                 );
 
                 if (messageExists) return oldData;
 
-                // Add message to existing messages array
+                // Add the message to the cache
                 return {
                   ...oldData,
-                  messages: [...oldData.messages, message],
+                  messages: [message, ...oldData.messages],
                 };
               }
             );
 
-            // Invalidate conversations to update UI
+            // Also update conversations
             queryClient.invalidateQueries({
               queryKey: MESSAGE_QUERY_KEYS.conversations(),
-              exact: true,
-              refetchType: "all",
             });
 
-            // Update unread count
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
-              exact: true,
-            });
-
-            // Dispatch global event for conversation updates with data
-            window.dispatchEvent(
-              new CustomEvent("conversation_updated", {
-                detail: {
-                  message,
-                  partnerId: userId,
-                  timestamp: Date.now(),
-                },
-              })
-            );
-          },
-
-          onMessageRead: (message) => {
-            console.log("Message read event received:", message);
-            // Update the read status of this message in the cache
-            queryClient.setQueryData(
-              MESSAGE_QUERY_KEYS.messagesWithUser(userId),
-              (oldData) => {
-                if (!oldData) return oldData;
-
-                return {
-                  ...oldData,
-                  messages: oldData.messages.map((m) => {
-                    if (m._id === message._id) {
-                      return { ...m, read: true };
-                    }
-                    return m;
-                  }),
-                };
-              }
-            );
-
-            // Update conversation list when read status changes
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.conversations(),
-              exact: true,
-            });
-          },
-
-          onMessageDeleted: (message) => {
-            console.log("Message deleted event received:", message);
-            // Remove the deleted message from the cache
-            queryClient.setQueryData(
-              MESSAGE_QUERY_KEYS.messagesWithUser(userId),
-              (oldData) => {
-                if (!oldData) return oldData;
-
-                return {
-                  ...oldData,
-                  messages: oldData.messages.filter(
-                    (m) => m._id !== message._id
-                  ),
-                };
-              }
-            );
-
-            // Also invalidate conversations list to update the last message preview
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.conversations(),
-              exact: true,
-            });
-
-            // Dispatch global event for conversation updates
-            window.dispatchEvent(new CustomEvent("conversation_updated"));
-          },
-
-          onConversationUpdated: () => {
-            console.log("Conversation updated event received");
-            // Invalidate queries to refresh data
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.conversations(),
-              exact: true,
-            });
-
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
-              exact: true,
-            });
-
-            // Dispatch global event for conversation updates
-            window.dispatchEvent(new CustomEvent("conversation_updated"));
-          },
-        });
-
-        // Reset retries on successful connection
-        retries = 0;
-      } catch (error) {
-        console.error(
-          `Error setting up message subscription for user ${userId}:`,
-          error
-        );
-
-        // Retry the subscription if under max retries
-        if (retries < maxRetries) {
-          retries++;
-          console.log(
-            `Retrying subscription (attempt ${retries}/${maxRetries})...`
-          );
-          setTimeout(setupSubscription, 1000 * retries);
+            // Clean up after a delay
+            setTimeout(() => {
+              delete window[processedKey];
+            }, 5000);
+          } else {
+            // For regular updates, just refetch
+            refetch();
+          }
         }
+      } catch (error) {
+        console.error("Error handling new message notification:", error);
       }
     };
 
-    // Initial setup
-    setupSubscription();
-
-    // Listen for socket reconnection events to reestablish the subscription
-    const handleReconnect = () => {
-      console.log("Socket reconnected, setting up message subscription again");
-      setupSubscription();
-    };
-
-    window.addEventListener("socket_reconnected", handleReconnect);
+    // Listen for message events
+    window.addEventListener("new_message_received", handleNewMessage);
+    window.addEventListener("urgent_new_message", handleNewMessage);
 
     return () => {
-      console.log(`Cleaning up message subscription for user ${userId}`);
-      window.removeEventListener("socket_reconnected", handleReconnect);
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
+      window.removeEventListener("new_message_received", handleNewMessage);
+      window.removeEventListener("urgent_new_message", handleNewMessage);
     };
-  }, [userId, user, queryClient]);
+  }, [userId, refetch, queryClient]);
+
+  // Websocket subscription for notifications only
+  useEffect(() => {
+    if (!userId || !user) return;
+
+    console.log(`Setting up message notification for user ${userId}`);
+
+    try {
+      // Set up message subscriptions using Socket Context
+      const unsubscribe = subscribeToMessages(userId, {
+        onMessageReceived: (message) => {
+          console.log("New message received via socket:", message);
+
+          // Create a unique update ID
+          const socketUpdateId = `socket_${message._id}_${Date.now()}`;
+
+          // Dispatch event to trigger refetch with full message data
+          window.dispatchEvent(
+            new CustomEvent("urgent_new_message", {
+              detail: {
+                partnerId: userId,
+                message: message,
+                updateId: socketUpdateId,
+              },
+            })
+          );
+
+          // Also update other caches
+          queryClient.invalidateQueries({
+            queryKey: MESSAGE_QUERY_KEYS.conversations(),
+          });
+        },
+        onMessageRead: () => {
+          refetch();
+        },
+        onMessageDeleted: () => {
+          refetch();
+        },
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error subscribing to messages:", error);
+      return () => {};
+    }
+  }, [userId, user, queryClient, subscribeToMessages, refetch]);
 
   return {
     data: data || { messages: [], hasMore: false },
@@ -395,6 +454,11 @@ export const useMessageMutations = () => {
 
       console.log("Message sent successfully:", sentMessage);
 
+      // Prevent duplicate messages by checking before update
+      // CRITICAL: Create a unique ID to track this specific update
+      const updateId = `msg_${sentMessage._id}_${Date.now()}`;
+      window.lastMessageUpdate = updateId;
+
       // Update the messages cache with the new message
       queryClient.setQueryData(
         MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId),
@@ -413,7 +477,7 @@ export const useMessageMutations = () => {
 
           if (messageExists) return oldData;
 
-          // Add the new message
+          // Add the new message while preserving all existing messages
           return {
             ...oldData,
             messages: [sentMessage, ...oldData.messages],
@@ -421,13 +485,33 @@ export const useMessageMutations = () => {
         }
       );
 
-      // Invalidate conversations to update the last message preview
-      queryClient.invalidateQueries({
-        queryKey: MESSAGE_QUERY_KEYS.conversations(),
-      });
+      // IMPORTANT: Wait a moment before dispatching socket events to prevent event race conditions
+      setTimeout(() => {
+        // Dispatch an urgent event to force update of both sides
+        window.dispatchEvent(
+          new CustomEvent("urgent_new_message", {
+            detail: {
+              message: sentMessage,
+              partnerId: variables.receiverId,
+              updateId: updateId,
+            },
+          })
+        );
+      }, 300);
 
-      // Dispatch global event for conversation updates
-      window.dispatchEvent(new Event("conversation_updated"));
+      // Delay cache invalidation to prevent duplicate processing
+      setTimeout(() => {
+        // Only proceed if this is still the latest update
+        if (window.lastMessageUpdate !== updateId) return;
+
+        // Invalidate conversations to update the last message preview
+        queryClient.invalidateQueries({
+          queryKey: MESSAGE_QUERY_KEYS.conversations(),
+        });
+
+        // Dispatch global event for conversation updates
+        window.dispatchEvent(new Event("conversation_updated"));
+      }, 1000);
     },
     onError: (error) => {
       console.error("Failed to send message:", error);

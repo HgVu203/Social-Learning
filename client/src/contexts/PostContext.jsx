@@ -1,7 +1,8 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePostQueries } from "../hooks/queries/usePostQueries";
 import { usePostMutations } from "../hooks/mutations/usePostMutations";
+import { useAuth } from "./AuthContext";
 
 const PostContext = createContext({
   posts: [],
@@ -24,8 +25,21 @@ const PostContext = createContext({
 });
 
 export const PostProvider = ({ children }) => {
-  const [filter, setFilter] = useState("latest");
+  const { user } = useAuth();
+
+  // Initialize filter mặc định dựa vào trạng thái đăng nhập
+  const [filter, setFilter] = useState(user ? "recommended" : "latest");
   const [page, setPage] = useState(1);
+
+  // Đồng bộ filter mặc định khi user thay đổi
+  useEffect(() => {
+    if (user && filter !== "recommended") {
+      setFilter("recommended");
+    } else if (!user && filter === "recommended") {
+      setFilter("latest");
+    }
+  }, [user]);
+
   const [limit, setLimit] = useState(10);
   const [selectedPost, setSelectedPost] = useState(null);
   const [groupId, setGroupId] = useState(null);
@@ -88,8 +102,15 @@ export const PostProvider = ({ children }) => {
 
   // Methods for changing filter or loading more
   const changeFilter = (newFilter) => {
+    // Don't allow non-authenticated users to use recommended filter
+    if (newFilter === "recommended" && !user) {
+      console.log("User not authenticated, cannot use recommended filter");
+      return;
+    }
+
     setFilter(newFilter);
     setPage(1);
+    // Invalidate query để tải lại dữ liệu
     queryClient.invalidateQueries({ queryKey: ["posts"] });
   };
 

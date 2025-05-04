@@ -35,12 +35,6 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        console.log("Google profile:", {
-          id: profile.id,
-          displayName: profile.displayName,
-          emails: profile.emails,
-        });
-
         if (!profile.emails || !profile.emails[0] || !profile.emails[0].value) {
           return done(new Error("Email not provided by Google"), null);
         }

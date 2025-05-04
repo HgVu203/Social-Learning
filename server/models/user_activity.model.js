@@ -20,7 +20,7 @@ const UserActivitySchema = new mongoose.Schema(
         "create_post",
         "comment",
         "like",
-        "view",
+        "view_post",
         "search",
         "follow_user",
         "unfollow_user",
@@ -39,6 +39,11 @@ const UserActivitySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Index để tăng tốc truy vấn
+UserActivitySchema.index({ userId: 1, createdAt: -1 });
+UserActivitySchema.index({ userId: 1, type: 1 });
+UserActivitySchema.index({ postId: 1, type: 1 });
 
 const UserActivity = mongoose.model("UserActivity", UserActivitySchema);
 export default UserActivity;

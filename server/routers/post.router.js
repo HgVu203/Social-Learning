@@ -24,18 +24,23 @@ const postLimiter = rateLimit({
   message: { success: false, error: "Too many posts" },
 });
 
-// Public routes with optional authentication
-router.get("/", optionalAuth, PostController.getPosts);
+// *** EXACT PATH ROUTES (NOT PARAMETERIZED) ***
+// These must come BEFORE any routes with parameters like :id
 
+// Public routes with optional auth
+router.get("/", optionalAuth, PostController.getPosts);
 router.get("/search", optionalAuth, PostController.searchPosts);
 
-router.get("/recommend", protectedRouter, PostController.recommendPosts);
+// Protected exact paths - CRITICAL: these must be BEFORE parameterized routes
+router.use("/recommended", protectedRouter);
+router.get("/recommended", PostController.getRecommendedPosts);
 
-router.get("/:id", optionalAuth, PostController.getPostById);
-
+// *** PARAMETERIZED ROUTES ***
+// Public routes with optional auth
+router.get("/:id", optionalAuth, trackUserActivity, PostController.getPostById);
 router.get("/:id/comments", optionalAuth, PostController.getComments);
 
-// Protected routes
+// All remaining routes require authentication
 router.use(protectedRouter);
 
 // Post management

@@ -533,7 +533,6 @@ export const AuthController = {
           `${process.env.CLIENT_URL}/login?error=No user data received from Google`
         );
       }
-      console.log("Google authentication successful for user:", user.email);
       handleOAuthSuccess(req, res, user);
     })(req, res, next);
   },
@@ -645,8 +644,6 @@ const handleOAuthSuccess = async (req, res, user) => {
     const redirectUrl = `${
       process.env.CLIENT_URL
     }/auth/social-callback?${params.toString()}`;
-
-    console.log("Redirecting to:", redirectUrl);
 
     // Use 303 See Other to ensure a GET request (prevents token reuse issues)
     res.redirect(303, redirectUrl);

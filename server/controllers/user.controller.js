@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import Follow from "../models/follow.model.js";
 import UserActivity from "../models/user_activity.model.js";
+import RecommendationService from "../services/recommendation.service.js";
 
 export const UserController = {
   updatePoints: async (req, res) => {
@@ -388,12 +389,13 @@ export const UserController = {
         },
       };
 
-      // Theo dõi hoạt động người dùng (không đợi)
-      UserActivity.create({
-        userId: currentUserId,
-        type: isFollowing ? "follow_user" : "unfollow_user",
-        targetUserId: targetUserId,
-      }).catch((err) => {});
+      // Không cần track activity ở đây nữa, vì đã có middleware trackUserActivity
+      // Đồng thời invalidate cache recommendation
+      RecommendationService.invalidateUserRecommendations(currentUserId).catch(
+        (err) => {
+          console.error("[Server] Failed to invalidate recommendations:", err);
+        }
+      );
 
       return res.status(200).json(response);
     } catch (error) {

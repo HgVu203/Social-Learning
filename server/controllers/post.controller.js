@@ -1,9 +1,10 @@
+import express from "express";
 import Post from "../models/post.model.js";
+import User from "../models/user.model.js";
 import Feedback from "../models/feedback.model.js";
 import UserActivity from "../models/user_activity.model.js";
-import User from "../models/user.model.js";
-import RecommendationService from "../services/recommendation.service.js";
 import Friendship from "../models/friendship.model.js";
+import RecommendationService from "../services/recommendation.service.js";
 import { emitCommentEvent } from "../socket.js";
 
 export const PostController = {
@@ -89,6 +90,11 @@ export const PostController = {
         postId: newPost._id,
       });
 
+      // Index post for recommendations
+      RecommendationService.indexPost(newPost).catch((err) => {
+        console.error("Error indexing post for recommendations:", err);
+      });
+
       return res.status(201).json({
         success: true,
         data: postWithCounts,
@@ -151,10 +157,6 @@ export const PostController = {
           // Trường hợp userId là string hoặc ObjectId
           return like.userId.toString() === userId;
         });
-
-        console.log(
-          `[Server] Post detail ${post._id} isLiked for user ${userId}: ${isLiked}`
-        );
       }
 
       // Create response with additional data
@@ -238,6 +240,34 @@ export const PostController = {
         query.author = { $in: friendIds };
       }
 
+      // Handle Recommended filter
+      let recommendedPosts = [];
+      if (filter === "recommended" && req.user) {
+        const RecommendationService = (
+          await import("../services/recommendation.service.js")
+        ).default;
+        recommendedPosts = await RecommendationService.getRecommendations(
+          req.user._id,
+          limit * 1
+        );
+
+        if (recommendedPosts && recommendedPosts.length > 0) {
+          // Nếu có bài được đề xuất, trả về ngay
+          const total = recommendedPosts.length;
+
+          return res.status(200).json({
+            success: true,
+            data: recommendedPosts,
+            pagination: {
+              total,
+              page: parseInt(page),
+              totalPages: Math.ceil(total / limit),
+            },
+          });
+        }
+        // Nếu không có bài đề xuất, tiếp tục xử lý bình thường
+      }
+
       const posts = await Post.find(query)
         .populate("author", "username email avatar fullname")
         .sort({ createdAt: -1 })
@@ -276,10 +306,6 @@ export const PostController = {
               // Trường hợp userId là string hoặc ObjectId
               return like.userId.toString() === userId;
             });
-
-            console.log(
-              `[Server] Post ${post._id} isLiked for user ${userId}: ${isLiked}`
-            );
           }
 
           return {
@@ -330,14 +356,33 @@ export const PostController = {
 
   searchPosts: async (req, res) => {
     try {
-      const { keyword, tag, author, page = 1, limit = 10 } = req.query;
-      const query = { deleted: false };
+      const { q, keyword, tag, author, page = 1, limit = 10 } = req.query;
+      const searchQuery = q || keyword;
+      let query = { deleted: false };
 
-      if (keyword) {
-        query.$or = [
-          { title: { $regex: keyword, $options: "i" } },
-          { content: { $regex: keyword, $options: "i" } },
-        ];
+      if (searchQuery) {
+        // Cải thiện tìm kiếm để tìm cả nội dung liên quan
+        const searchPattern = searchQuery
+          .split(/\s+/)
+          .map((word) => (word.length > 3 ? word : null))
+          .filter(Boolean);
+
+        if (searchPattern.length > 0) {
+          // Sử dụng $text search nếu từ khoá đủ dài
+          query.$or = [
+            { title: { $regex: searchQuery, $options: "i" } },
+            { content: { $regex: searchQuery, $options: "i" } },
+            ...searchPattern.map((word) => ({
+              tags: { $regex: word, $options: "i" },
+            })),
+          ];
+        } else {
+          // Tìm kiếm đơn giản nếu từ khóa ngắn
+          query.$or = [
+            { title: { $regex: searchQuery, $options: "i" } },
+            { content: { $regex: searchQuery, $options: "i" } },
+          ];
+        }
       }
 
       if (tag) {
@@ -355,26 +400,153 @@ export const PostController = {
         query.author = user._id;
       }
 
-      const posts = await Post.find(query)
-        .populate("author", "username email fullname")
-        .sort({ createdAt: -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      try {
+        // Lấy danh sách bài viết
+        const posts = await Post.find(query)
+          .populate("author", "username email fullname avatar")
+          .sort({ createdAt: -1 })
+          .limit(limit * 1)
+          .skip((page - 1) * limit);
 
-      const total = await Post.countDocuments(query);
+        // Lấy thông tin về likes và comments cho mỗi bài viết
+        const postsWithDetails = await Promise.all(
+          posts.map(async (post) => {
+            try {
+              // Get likes and comments for this post
+              const [likes, comments] = await Promise.all([
+                Feedback.find({
+                  postId: post._id,
+                  type: "like",
+                }).select("userId"),
+                Feedback.countDocuments({
+                  postId: post._id,
+                  type: "comment",
+                }),
+              ]);
 
-      return res.status(200).json({
-        success: true,
-        data: posts,
-        pagination: {
-          total,
-          page: parseInt(page),
-          totalPages: Math.ceil(total / limit),
-        },
-      });
+              // Xác định trạng thái isLiked cho người dùng hiện tại
+              let isLiked = false;
+              if (req.user) {
+                const userId = req.user._id.toString();
+                isLiked = likes.some((like) => {
+                  if (!like.userId) return false;
+                  if (typeof like.userId === "object" && like.userId._id) {
+                    return like.userId._id.toString() === userId;
+                  }
+                  return like.userId.toString() === userId;
+                });
+              }
+
+              // Thêm thông tin chi tiết vào đối tượng bài viết
+              return {
+                ...post.toJSON(),
+                type: "post", // Đánh dấu loại là bài viết
+                likes: likes.map((like) => like.userId),
+                likesCount: likes.length,
+                commentsCount: comments,
+                isLiked,
+              };
+            } catch (error) {
+              console.error("Error processing post details:", error);
+              // Vẫn trả về bài viết cơ bản nếu xử lý chi tiết thất bại
+              return {
+                ...post.toJSON(),
+                type: "post",
+                likes: [],
+                likesCount: 0,
+                commentsCount: 0,
+                isLiked: false,
+              };
+            }
+          })
+        );
+
+        const total = await Post.countDocuments(query);
+
+        // Nếu không tìm thấy kết quả chính xác, tìm bài viết liên quan
+        let relatedPosts = [];
+        if (postsWithDetails.length === 0 && searchQuery) {
+          try {
+            // Tìm bài viết dựa trên tags có liên quan
+            const relatedQuery = { deleted: false };
+            const tagWords = searchQuery
+              .split(/\s+/)
+              .filter((word) => word.length > 3)
+              .map((word) => new RegExp(word, "i"));
+
+            if (tagWords.length > 0) {
+              relatedQuery.tags = { $in: tagWords };
+
+              relatedPosts = await Post.find(relatedQuery)
+                .populate("author", "username email fullname avatar")
+                .sort({ createdAt: -1 })
+                .limit(5);
+
+              relatedPosts = await Promise.all(
+                relatedPosts.map(async (post) => {
+                  try {
+                    const [likes, comments] = await Promise.all([
+                      Feedback.find({ postId: post._id, type: "like" }).select(
+                        "userId"
+                      ),
+                      Feedback.countDocuments({
+                        postId: post._id,
+                        type: "comment",
+                      }),
+                    ]);
+
+                    return {
+                      ...post.toJSON(),
+                      type: "post",
+                      likes: likes.map((like) => like.userId),
+                      likesCount: likes.length,
+                      commentsCount: comments,
+                      isRelated: true,
+                    };
+                  } catch (error) {
+                    console.error("Error processing related post:", error);
+                    // Trả về bài viết cơ bản nếu xử lý chi tiết thất bại
+                    return {
+                      ...post.toJSON(),
+                      type: "post",
+                      likes: [],
+                      likesCount: 0,
+                      commentsCount: 0,
+                      isRelated: true,
+                    };
+                  }
+                })
+              );
+            }
+          } catch (error) {
+            console.error("Error finding related posts:", error);
+            // Vẫn tiếp tục mà không có bài viết liên quan
+            relatedPosts = [];
+          }
+        }
+
+        return res.status(200).json({
+          success: true,
+          data: [...postsWithDetails, ...relatedPosts],
+          pagination: {
+            total,
+            page: parseInt(page),
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      } catch (innerError) {
+        console.error("Error in search query execution:", innerError);
+        return res.status(500).json({
+          success: false,
+          error: "Lỗi khi xử lý tìm kiếm. Vui lòng thử lại sau.",
+        });
+      }
     } catch (error) {
-      console.error(error);
-      return res.status(500).json({ success: false, error: error.message });
+      console.error("Search error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Lỗi máy chủ khi tìm kiếm.",
+      });
     }
   },
 
@@ -434,8 +606,6 @@ export const PostController = {
       const postId = req.params.id;
       const userId = req.user._id;
 
-      console.log(`[Server] User ${userId} toggling like for post ${postId}`);
-
       // Check if post exists
       const post = await Post.findOne({
         _id: postId,
@@ -460,15 +630,11 @@ export const PostController = {
 
       // Toggle like status
       if (existingLike) {
-        // Unlike: Remove the like
-        console.log(`[Server] Removing like ${existingLike._id}`);
         await Feedback.deleteOne({
           _id: existingLike._id,
         });
         isLiked = false;
       } else {
-        // Like: Create new like
-        console.log(`[Server] Creating new like for post ${postId}`);
         await Feedback.create({
           postId,
           userId,
@@ -502,13 +668,6 @@ export const PostController = {
         userId: userId.toString(),
       };
 
-      console.log(`[Server] Response for like toggle:`, {
-        success: response.success,
-        isLiked: response.isLiked,
-        likesCount: response.likesCount,
-        userId: response.userId,
-      });
-
       // Track user activity asynchronously
       UserActivity.create({
         userId,
@@ -516,6 +675,13 @@ export const PostController = {
         postId,
       }).catch((err) =>
         console.error("[Server] Failed to track activity:", err)
+      );
+
+      // Invalidate recommendation cache for this user
+      RecommendationService.invalidateUserRecommendations(userId).catch(
+        (err) => {
+          console.error("[Server] Failed to invalidate recommendations:", err);
+        }
       );
 
       return res.status(200).json(response);
@@ -1026,67 +1192,102 @@ export const PostController = {
     }
   },
 
-  recommendPosts: async (req, res) => {
+  getRecommendedPosts: async (req, res) => {
     try {
+      if (!req.user || !req.user._id) {
+        return res.status(401).json({
+          success: false,
+          error: "Authentication required for recommendations",
+        });
+      }
+
       const userId = req.user._id;
       const { limit = 10 } = req.query;
+      console.log(
+        `Getting recommendations for user ${userId} with limit ${limit}`
+      );
 
-      // 1. Get user's recent activities
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const recentActivities = await UserActivity.find({
-        userId,
-        createdAt: { $gte: thirtyDaysAgo },
-        postId: { $exists: true },
-      })
-        .sort({ createdAt: -1 })
-        .populate({
-          path: "postId",
-          select: "title content tags views createdAt",
-          match: { deleted: false },
-          populate: { path: "author", select: "username" },
-        })
-        .lean();
+      // Get personalized recommendations
+      try {
+        const recommendations = await RecommendationService.getRecommendations(
+          userId,
+          Number(limit)
+        );
 
-      // 2. Build user profile using RecommendationService
-      const userProfile =
-        RecommendationService.buildUserProfile(recentActivities);
+        console.log(
+          `Received ${recommendations.length} recommendations from service`
+        );
 
-      // 3. Get candidate posts
-      const candidatePosts = await Post.find({
-        deleted: false,
-        _id: {
-          $nin: recentActivities.map((a) => a.postId?._id).filter(Boolean),
-        },
-        tags: { $in: Object.keys(userProfile.tags) },
-      })
-        .populate("author", "username fullname")
-        .populate("likeCount")
-        .sort({ createdAt: -1 })
-        .limit(100)
-        .lean();
+        if (recommendations.length === 0) {
+          console.log("No recommendations found. Returning empty array.");
+          return res.status(200).json({
+            success: true,
+            data: [],
+            meta: {
+              count: 0,
+              requestedLimit: Number(limit),
+              message: "No recommendations available",
+            },
+          });
+        }
 
-      // 4. Score and rank posts using RecommendationService
-      const recommendedPosts = candidatePosts
-        .map((post) => ({
-          post,
-          scores: RecommendationService.scorePost(userProfile, post),
-        }))
-        .sort((a, b) => b.scores.final - a.scores.final)
-        .slice(0, limit)
-        .map(({ post, scores }) => ({
-          ...post,
-          recommendationScores: scores,
-        }));
+        // Add additional post metadata if needed
+        const enhancedRecommendations = await Promise.all(
+          recommendations.map(async (post) => {
+            // Check if user has liked the post
+            const isLiked = await Feedback.exists({
+              postId: post._id,
+              userId,
+              type: "like",
+            });
 
-      return res.status(200).json({
-        success: true,
-        data: recommendedPosts,
-      });
+            // Get comments count
+            const commentsCount = await Feedback.countDocuments({
+              postId: post._id,
+              type: "comment",
+            });
+
+            // Get likes count
+            const likesCount = await Feedback.countDocuments({
+              postId: post._id,
+              type: "like",
+            });
+
+            return {
+              ...post,
+              isLiked: !!isLiked,
+              commentsCount,
+              likesCount,
+            };
+          })
+        );
+
+        console.log(
+          `Returning ${enhancedRecommendations.length} enhanced recommendations`
+        );
+
+        return res.status(200).json({
+          success: true,
+          data: enhancedRecommendations,
+          meta: {
+            count: enhancedRecommendations.length,
+            requestedLimit: Number(limit),
+          },
+        });
+      } catch (recommendationError) {
+        console.error("Error in recommendation service:", recommendationError);
+        return res.status(500).json({
+          success: false,
+          error:
+            recommendationError.message ||
+            "Failed to get recommendations from service",
+        });
+      }
     } catch (error) {
-      console.error("Recommendation error:", error);
+      console.error("Error getting recommended posts:", error);
       return res.status(500).json({
         success: false,
-        error: error.message,
+        error: error.message || "Failed to get recommendations",
       });
     }
   },

@@ -5,6 +5,7 @@ import optionalAuth from "../middleware/optionalAuth.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { userValidationSchema } from "../utils/validator/user.validator.js";
 import { userImageUpload } from "../middleware/upload.cloudinary.js";
+import trackUserActivity from "../middleware/trackUserActivity.js";
 
 const router = express.Router();
 
@@ -43,6 +44,6 @@ router.post(
 router.get("/profile/", UserController.myProfile);
 
 // Follow/Unfollow endpoint
-router.post("/:id/follow", UserController.toggleFollow);
+router.post("/:id/follow", trackUserActivity, UserController.toggleFollow);
 
 export default router;

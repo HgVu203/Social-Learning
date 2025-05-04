@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useGroup } from "../../contexts/GroupContext";
 import { useFriend } from "../../contexts/FriendContext";
@@ -10,18 +10,20 @@ import {
   FiSearch,
   FiUserCheck,
   FiMessageCircle,
-  FiInfo,
-  FiLock,
-  FiFileText,
 } from "react-icons/fi";
 import ThemeToggle from "../ui/ThemeToggle";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const RightPanel = () => {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState("");
   const { usePopularGroups } = useGroup();
   const { data: popularGroupsData, isLoading: popularGroupsLoading } =
     usePopularGroups(3); // Only get top 3 popular groups
+  const isLargeScreen = useMediaQuery("(min-width: 1280px)");
 
-  const popularGroups = popularGroupsData?.data || [];
+  // Giới hạn chỉ hiển thị 3 nhóm phổ biến
+  const popularGroups = (popularGroupsData?.data || []).slice(0, 3);
 
   const { friends, friendsLoading, fetchFriends } = useFriend();
 
@@ -35,9 +37,42 @@ const RightPanel = () => {
     }
   }, [fetchFriends]);
 
+  // Listen for user status updates
+  useEffect(() => {
+    const handleUserStatusUpdate = (event) => {
+      const { userId, isOnline } = event.detail;
+
+      // Fetch updated friend list to reflect online status changes
+      if (fetchFriends) {
+        console.log(
+          `User ${userId} status changed to ${
+            isOnline ? "online" : "offline"
+          }, refreshing friends list`
+        );
+        fetchFriends();
+      }
+    };
+
+    // Add event listener
+    window.addEventListener("user_status_updated", handleUserStatusUpdate);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("user_status_updated", handleUserStatusUpdate);
+    };
+  }, [fetchFriends]);
+
   const fadeInUp = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
+  };
+
+  // Handle search form submission
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
   };
 
   // If both popular groups and friends are loading, show skeleton loader
@@ -46,25 +81,49 @@ const RightPanel = () => {
   }
 
   return (
-    <div className="h-full p-4">
-      {/* Search bar */}
+    <div className="h-full p-4 overflow-y-auto">
+      {/* Search bar - Only on large screens */}
+      {isLargeScreen && (
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         className="sticky top-0 bg-[var(--color-bg-primary)] pt-1 pb-3 z-10"
       >
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
+        <form onSubmit={handleSearch}>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search developers, groups..."
+              className="w-full bg-[var(--color-bg-secondary)] rounded-full py-3 px-12 text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-all"
+            />
+            <button
+              type="submit"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </button>
           </div>
-          <input
-            type="text"
-            placeholder="Search developers, groups..."
-            className="w-full bg-[var(--color-bg-secondary)] rounded-full py-3 px-12 text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-all"
-          />
-        </div>
+        </form>
       </motion.div>
+      )}
 
       {/* Popular Groups */}
       <motion.div
@@ -191,87 +250,61 @@ const RightPanel = () => {
             </div>
           ) : !onlineFriends || onlineFriends.length === 0 ? (
             <div className="p-4 text-[var(--color-text-tertiary)] text-center">
-              No friends online at the moment
+              No friends online
             </div>
           ) : (
-            onlineFriends.map((friend) => (
-              <Link
+            onlineFriends.slice(0, 5).map((friend) => (
+              <div
                 key={friend._id}
-                to={`/profile/${friend._id}`}
-                className="px-4 py-3 hover:bg-[var(--color-bg-hover)] block transition-colors"
+                className="px-4 py-3 hover:bg-[var(--color-bg-hover)] transition-colors flex items-center justify-between"
               >
-                <div className="flex items-center">
+                <Link
+                  to={`/profile/${friend._id}`}
+                  className="flex items-center flex-1"
+                >
                   <div className="relative">
                     <Avatar
                       src={friend.avatar}
-                      alt={friend.fullname || friend.username}
+                      alt={friend.username}
                       size="md"
-                      className="mr-3"
                     />
-                    <span className="absolute right-2 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[var(--color-bg-primary)]"></span>
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[var(--color-bg-primary)]"></span>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-[var(--color-text-primary)]">
+                  <div className="ml-3">
+                    <h3 className="font-medium text-[var(--color-text-primary)]">
                       {friend.fullname || friend.username}
                     </h3>
-                    <p className="text-sm text-green-400">Active now</p>
+                    <p className="text-xs text-[var(--color-text-tertiary)]">
+                      Active now
+                    </p>
                   </div>
+                </Link>
                   <Link
                     to={`/messages/${friend._id}`}
-                    className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-[var(--color-bg-secondary)] p-2 rounded-full transition-all hover:shadow-md"
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
                   >
                     <FiMessageCircle className="w-5 h-5" />
                   </Link>
                 </div>
-              </Link>
             ))
           )}
         </div>
+        {(onlineFriends?.length > 5 || (friends && friends.length > 0)) && (
         <Link
           to="/friends"
           className="block px-4 py-3 text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] transition-colors text-center font-medium"
         >
-          Show all friends
+            {onlineFriends?.length > 5
+              ? `See all online friends (${onlineFriends.length})`
+              : "See all friends"}
         </Link>
+        )}
       </motion.div>
-
-      {/* Footer */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
-        className="px-4 py-3 text-xs text-[var(--color-text-tertiary)] bg-[var(--color-bg-secondary)] rounded-lg"
-      >
-        <div className="flex flex-wrap gap-3">
-          <Link
-            to="/about"
-            className="hover:text-[var(--color-primary)] transition-colors flex items-center"
-          >
-            <FiInfo className="w-3 h-3 mr-1" /> About
-          </Link>
-          <Link
-            to="/privacy"
-            className="hover:text-[var(--color-primary)] transition-colors flex items-center"
-          >
-            <FiLock className="w-3 h-3 mr-1" /> Privacy
-          </Link>
-          <Link
-            to="/terms"
-            className="hover:text-[var(--color-primary)] transition-colors flex items-center"
-          >
-            <FiFileText className="w-3 h-3 mr-1" /> Terms
-          </Link>
-        </div>
-        <div className="mt-2 text-center">© 2024 DevConnect</div>
 
         {/* Theme Toggle */}
-        <div className="mt-4 flex items-center justify-center">
-          <ThemeToggle className="mr-2" />
-          <span className="text-sm text-[var(--color-text-secondary)]">
-            Toggle Theme
-          </span>
+      <div className="mt-4 flex justify-center">
+        <ThemeToggle />
         </div>
-      </motion.div>
     </div>
   );
 };

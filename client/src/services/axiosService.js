@@ -236,6 +236,21 @@ axiosInstance.interceptors.response.use(
       error.response.data
     );
 
+    // Better logging for recommendation errors
+    if (originalRequest.url.includes("/api/posts/recommended")) {
+      console.error("Recommendation API error details:", {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers,
+        config: {
+          url: originalRequest.url,
+          method: originalRequest.method,
+          headers: originalRequest.headers,
+        },
+      });
+    }
+
     // Special case: If the error is a 404 for groups endpoint, try with group endpoint
     if (
       error.response.status === 404 &&

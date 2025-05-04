@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import PostList from "../../components/post/PostList";
 import defaultAvatar from "../../assets/images/default-avatar.svg";
+import LazyImage from "../../components/common/LazyImage";
 import { useAuth } from "../../contexts/AuthContext";
 import { useUserProfile } from "../../hooks/queries/useUserQueries";
 import EditProfileModal from "../../components/profile/EditProfileModal";
@@ -323,10 +324,11 @@ const ProfilePage = () => {
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.4 }}
               >
-                <img
+                <LazyImage
                   src={profile.avatar || defaultAvatar}
                   alt={profile.username}
-                  className="w-36 h-36 rounded-full border-4 border-[var(--color-bg-secondary)] shadow-xl object-cover"
+                  className="w-36 h-36 rounded-full border-4 border-[var(--color-bg-secondary)] shadow-xl"
+                  style={{ objectFit: "cover" }}
                 />
                 {isOwnProfile && (
                   <button

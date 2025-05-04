@@ -5,7 +5,20 @@
 export const connectSocket = () => {
   try {
     // Dynamically import socket.js to prevent circular dependency
-    import("../socket").then(({ initSocket }) => {
+    import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
+      // First try to restore existing connection
+      if (checkAndRestoreConnection()) {
+        console.log("Socket connection restored or already connected");
+
+        // Dispatch event for socket connection
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("socket_reconnected"));
+        }, 500);
+
+        return true;
+      }
+
+      // If restore failed, try to initialize a new connection
       const socket = initSocket();
 
       if (!socket) {
@@ -82,29 +95,38 @@ export const getSocketInstance = () => {
  */
 export const reconnectAndRefresh = (conversationId) => {
   try {
-    // Disconnect first
-    disconnectSocket(true);
+    // First try to check and restore connection
+    import("../socket").then(({ checkAndRestoreConnection, closeSocket }) => {
+      // First disconnect if needed
+      closeSocket(true);
 
-    // Wait a brief moment
-    setTimeout(() => {
-      // Reconnect
-      connectSocket();
+      // Wait a brief moment
+      setTimeout(() => {
+        // Try to restore connection
+        checkAndRestoreConnection();
 
-      // Trigger a message refresh event if we have a conversation ID
-      if (conversationId) {
-        setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent("force_message_refresh", {
-              detail: { conversationId },
-            })
-          );
-        }, 200);
-      }
-    }, 50);
+        // Trigger a message refresh event if we have a conversation ID
+        if (conversationId) {
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("force_message_refresh", {
+                detail: { conversationId },
+              })
+            );
+          }, 500); // Increased timeout for better reliability
+        }
+      }, 200); // Increased timeout for better reliability
+    });
 
     return true;
   } catch (error) {
     console.error("Error during reconnect and refresh:", error);
+
+    // Fallback to direct connection if dynamic import fails
+    setTimeout(() => {
+      connectSocket();
+    }, 300);
+
     return false;
   }
 };
