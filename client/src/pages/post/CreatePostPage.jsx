@@ -444,13 +444,13 @@ const CreatePostPage = ({ isEditing = false }) => {
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">
+    <div className="max-w-5xl mx-auto py-3 sm:py-5 md:py-8 px-2 sm:px-4 md:px-6">
+      <div className="mb-3 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[var(--color-text-primary)]">
           {isEditing ? "Edit Post" : "Create New Post"}
         </h1>
         {groupId && group && (
-          <div className="mt-2 text-[var(--color-text-secondary)]">
+          <div className="mt-1 sm:mt-2 text-sm sm:text-base text-[var(--color-text-secondary)]">
             Posting in group: <span className="font-medium">{group.name}</span>
           </div>
         )}
@@ -458,43 +458,43 @@ const CreatePostPage = ({ isEditing = false }) => {
 
       {/* Show loading indicator while fetching post data in edit mode */}
       {isEditing && postLoading ? (
-        <div className="max-w-2xl mx-auto py-8">
+        <div className="max-w-2xl mx-auto py-3 sm:py-8">
           <SkeletonPostDetail />
         </div>
       ) : (
-        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 shadow-lg border border-[var(--color-border)]">
+        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3 sm:p-4 md:p-6 shadow-lg border border-[var(--color-border)]">
           {/* Page Header with tabs navigation */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-6 border-b border-[var(--color-border)]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 sm:pb-6 mb-3 sm:mb-6 border-b border-[var(--color-border)]">
             {/* Mode Switching Tabs */}
-            <div className="flex mb-4 sm:mb-0 rounded-md overflow-hidden border border-[var(--color-border)] shadow-sm">
+            <div className="flex mb-3 sm:mb-0 rounded-md overflow-hidden border border-[var(--color-border)] shadow-sm">
               <button
                 onClick={() => setActiveTab("write")}
-                className={`px-4 py-2 flex items-center text-sm font-medium cursor-pointer ${
+                className={`px-2 sm:px-4 py-1.5 sm:py-2 flex items-center text-xs sm:text-sm font-medium cursor-pointer ${
                   activeTab === "write"
                     ? "bg-[var(--color-primary)] text-white"
                     : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
                 } transition-colors`}
               >
-                <FiEdit className="mr-2" />
+                <FiEdit className="mr-1 sm:mr-2" />
                 Write
               </button>
               <button
                 onClick={() => setActiveTab("preview")}
-                className={`px-4 py-2 flex items-center text-sm font-medium cursor-pointer ${
+                className={`px-2 sm:px-4 py-1.5 sm:py-2 flex items-center text-xs sm:text-sm font-medium cursor-pointer ${
                   activeTab === "preview"
                     ? "bg-[var(--color-primary)] text-white"
                     : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
                 } transition-colors`}
               >
-                <FiEye className="mr-2" />
+                <FiEye className="mr-1 sm:mr-2" />
                 Preview
               </button>
             </div>
 
             {groupId && group && (
-              <div className="flex items-center px-3 py-2 bg-[var(--color-primary)]/10 rounded-md">
-                <FiUsers className="h-4 w-4 text-[var(--color-primary)] mr-2" />
-                <p className="text-sm text-[var(--color-primary)]">
+              <div className="flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-[var(--color-primary)]/10 rounded-md">
+                <FiUsers className="h-3 w-3 sm:h-4 sm:w-4 text-[var(--color-primary)] mr-1 sm:mr-2" />
+                <p className="text-xs sm:text-sm text-[var(--color-primary)]">
                   Posting in <strong>{group.name}</strong>
                 </p>
               </div>
@@ -503,13 +503,15 @@ const CreatePostPage = ({ isEditing = false }) => {
 
           {/* Error Alert */}
           {errors.submit && (
-            <div className="mb-6 bg-red-900/20 border-l-4 border-red-500 p-4 rounded-md">
+            <div className="mb-3 sm:mb-6 bg-red-900/20 border-l-4 border-red-500 p-2 sm:p-4 rounded-md">
               <div className="flex">
                 <div className="flex-shrink-0">
-                  <FiAlertCircle className="h-5 w-5 text-red-500" />
+                  <FiAlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-500">{errors.submit}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm text-red-500">
+                    {errors.submit}
+                  </p>
                 </div>
               </div>
             </div>
@@ -518,14 +520,14 @@ const CreatePostPage = ({ isEditing = false }) => {
           {/* Content Area */}
           <div>
             {activeTab === "write" ? (
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-6">
                 {/* Title Input */}
-                <div className="space-y-2">
+                <div className="space-y-1 sm:space-y-2">
                   <label
                     htmlFor="title"
-                    className="flex items-center text-sm font-medium text-[var(--color-text-secondary)]"
+                    className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
                   >
-                    <FiMessageSquare className="mr-2" /> Title
+                    <FiMessageSquare className="mr-1 sm:mr-2" /> Title
                   </label>
                   <input
                     type="text"
@@ -534,41 +536,43 @@ const CreatePostPage = ({ isEditing = false }) => {
                     value={formData.title}
                     onChange={handleChange}
                     placeholder="Enter an attention-grabbing title..."
-                    className={`w-full px-4 py-3 border ${
+                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 border ${
                       errors.title
                         ? "border-red-500"
                         : "border-[var(--color-border)]"
-                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-lg`}
+                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-base sm:text-lg`}
                   />
                   {errors.title && (
-                    <p className="text-sm text-red-500">{errors.title}</p>
+                    <p className="text-xs sm:text-sm text-red-500">
+                      {errors.title}
+                    </p>
                   )}
                 </div>
 
                 {/* Tags Input */}
-                <div className="space-y-2">
+                <div className="space-y-1 sm:space-y-2">
                   <label
                     htmlFor="tagInput"
-                    className="flex items-center text-sm font-medium text-[var(--color-text-secondary)]"
+                    className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
                   >
-                    <FiHash className="mr-2" /> Tags
+                    <FiHash className="mr-1 sm:mr-2" /> Tags
                   </label>
 
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  <div className="flex flex-wrap gap-1 sm:gap-2 mb-2 sm:mb-3">
                     {formData.tags.map((tag) => (
                       <motion.span
                         key={tag}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+                        className="inline-flex items-center px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
                       >
                         #{tag}
                         <button
                           type="button"
                           onClick={() => removeTag(tag)}
-                          className="ml-2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
+                          className="ml-1 sm:ml-2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
                         >
-                          <FiX className="w-4 h-4" />
+                          <FiX className="w-3 h-3 sm:w-4 sm:h-4" />
                         </button>
                       </motion.span>
                     ))}
@@ -584,49 +588,51 @@ const CreatePostPage = ({ isEditing = false }) => {
                         onKeyDown={handleTagKeyDown}
                         onBlur={addTag}
                         placeholder="Add relevant tags (press Enter or comma to add)"
-                        className={`w-full px-4 py-3 pl-4 pr-10 border ${
+                        className={`w-full px-3 sm:px-4 py-2 sm:py-3 pl-3 sm:pl-4 pr-8 sm:pr-10 border ${
                           errors.tags
                             ? "border-red-500"
                             : "border-[var(--color-border)]"
-                        } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)]`}
+                        } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-sm`}
                       />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-[var(--color-text-tertiary)]">
-                        <FiTag className="h-5 w-5" />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 pointer-events-none text-[var(--color-text-tertiary)]">
+                        <FiTag className="h-4 w-4 sm:h-5 sm:w-5" />
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={addTag}
-                      className="ml-2 btn btn-secondary flex items-center"
+                      className="ml-2 btn btn-secondary flex items-center text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
                     >
-                      <FiPlus className="mr-1" /> Add
+                      <FiPlus className="mr-0.5 sm:mr-1" /> Add
                     </button>
                   </div>
 
                   {errors.tags && (
-                    <p className="text-sm text-red-500">{errors.tags}</p>
+                    <p className="text-xs sm:text-sm text-red-500">
+                      {errors.tags}
+                    </p>
                   )}
-                  <p className="text-xs text-[var(--color-text-tertiary)]">
+                  <p className="text-[10px] sm:text-xs text-[var(--color-text-tertiary)]">
                     Enter up to 5 tags to help others find your post
                   </p>
                 </div>
 
                 {/* Content Input */}
-                <div className="space-y-2">
+                <div className="space-y-1 sm:space-y-2">
                   <div className="flex justify-between items-center">
                     <label
                       htmlFor="content"
-                      className="flex items-center text-sm font-medium text-[var(--color-text-secondary)]"
+                      className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
                     >
-                      <FiFileText className="mr-2" /> Content
+                      <FiFileText className="mr-1 sm:mr-2" /> Content
                     </label>
                     <a
                       href="https://www.markdownguide.org/cheat-sheet/"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] flex items-center"
+                      className="text-[10px] sm:text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] flex items-center"
                     >
-                      <FiInfo className="mr-1" />
+                      <FiInfo className="mr-0.5 sm:mr-1" />
                       Markdown Supported
                     </a>
                   </div>
@@ -636,17 +642,19 @@ const CreatePostPage = ({ isEditing = false }) => {
                     name="content"
                     value={formData.content}
                     onChange={handleChange}
-                    rows={12}
+                    rows={10}
                     placeholder="Write your post content using Markdown..."
-                    className={`w-full px-4 py-3 border ${
+                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 border ${
                       errors.content
                         ? "border-red-500"
                         : "border-[var(--color-border)]"
-                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] font-mono text-sm leading-relaxed`}
+                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] font-mono text-xs sm:text-sm leading-relaxed`}
                   ></textarea>
 
                   {errors.content && (
-                    <p className="text-sm text-red-500">{errors.content}</p>
+                    <p className="text-xs sm:text-sm text-red-500">
+                      {errors.content}
+                    </p>
                   )}
                 </div>
 

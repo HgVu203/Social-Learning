@@ -47,15 +47,15 @@ export const initSocketServer = (server) => {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    pingTimeout: 60000, // Tăng lên 60 giây
-    pingInterval: 25000, // Tăng lên 25 giây
+    pingTimeout: 60000, // Increased to 60 seconds
+    pingInterval: 25000, // Increased to 25 seconds
     transports: ["websocket", "polling"],
     maxHttpBufferSize: 1e8,
     allowUpgrades: true,
     perMessageDeflate: {
       threshold: 32768,
     },
-    connectTimeout: 45000, // 45 giây timeout khi kết nối
+    connectTimeout: 45000, // 45 seconds timeout for connection
   });
 
   io.on("connection", (socket) => {
@@ -196,10 +196,10 @@ export const initSocketServer = (server) => {
     });
   });
 
-  // Periodic cleanup của stale connections giảm xuống 5 phút (thay vì 30s)
+  // Periodic cleanup of stale connections reduced to 5 minutes (instead of 30s)
   setInterval(() => {
     const now = Date.now();
-    const staleTimeout = 300000; // 5 phút không có ping
+    const staleTimeout = 300000; // 5 minutes without ping
 
     lastPingTimes.forEach((lastPing, userId) => {
       if (now - lastPing > staleTimeout) {
@@ -224,21 +224,21 @@ export const initSocketServer = (server) => {
         publishOnlineStatus(userId, false);
       }
     });
-  }, 300000); // Mỗi 5 phút (300000ms)
+  }, 300000); // Every 5 minutes (300000ms)
 
-  // Bắt đầu cơ chế kiểm tra kết nối - Probe connections mỗi 2 phút
+  // Start connection check mechanism - Probe connections every 2 minutes
   setInterval(() => {
-    // Kiểm tra tất cả socket đang kết nối
+    // Check all connected sockets
     io.sockets.sockets.forEach((socket) => {
       if (socket.userId) {
-        // Cập nhật thời gian ping gần nhất
+        // Update last ping time
         lastPingTimes.set(socket.userId, Date.now());
 
-        // Gửi ping trực tiếp đến client
+        // Send ping directly to client
         socket.emit("server_probe", { timestamp: Date.now() });
       }
     });
-  }, 120000); // Mỗi 2 phút
+  }, 120000); // Every 2 minutes
 
   return io;
 };

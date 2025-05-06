@@ -1,7 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import Avatar from "../../components/common/Avatar";
-import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { FiSettings, FiX } from "react-icons/fi";
 import { IoGameControllerOutline } from "react-icons/io5";
@@ -11,18 +10,10 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 const Sidebar = ({ onClose }) => {
   const location = useLocation();
   const { user, isAuthenticated, loading } = useAuth();
-  const [isMenuLoaded, setIsMenuLoaded] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
-  useEffect(() => {
-    // Set menu loaded state once authentication check is complete
-    if (!loading) {
-      setIsMenuLoaded(true);
-    }
-  }, [loading]);
-
-  // Danh sách menu công khai - hiển thị cho tất cả người dùng
-  const publicMenuItems = [
+  // Tất cả menu items, không phân biệt private/public
+  const allMenuItems = [
     {
       name: "Home",
       path: "/",
@@ -37,10 +28,6 @@ const Sidebar = ({ onClose }) => {
       path: "/game",
       icon: <IoGameControllerOutline className="w-6 h-6" />,
     },
-  ];
-
-  // Danh sách menu dành riêng cho người dùng đã đăng nhập
-  const privateMenuItems = [
     {
       name: "Create Post",
       path: "/create-post",
@@ -88,17 +75,6 @@ const Sidebar = ({ onClose }) => {
     },
   ];
 
-  // Hiển thị các menu dựa trên trạng thái xác thực và đảm bảo chỉ hiển thị khi đã load xong
-  const menuItems = isMenuLoaded
-    ? isAuthenticated
-      ? [...publicMenuItems, ...privateMenuItems]
-      : publicMenuItems
-    : publicMenuItems;
-
-  if (loading) {
-    return <SkeletonSidebar />;
-  }
-
   // Animation variants for staggered menu items
   const containerVariant = {
     hidden: { opacity: 0 },
@@ -114,6 +90,11 @@ const Sidebar = ({ onClose }) => {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0 },
   };
+
+  // Hiển thị Skeleton khi đang loading
+  if (loading) {
+    return <SkeletonSidebar />;
+  }
 
   return (
     <div className="h-screen p-4 flex flex-col">
@@ -153,7 +134,7 @@ const Sidebar = ({ onClose }) => {
           animate="show"
           className="space-y-1"
         >
-          {menuItems.map((menuItem) => {
+          {allMenuItems.map((menuItem) => {
             const isActive = location.pathname === menuItem.path;
             return (
               <motion.li key={menuItem.path} variants={menuItemVariant}>
@@ -188,7 +169,7 @@ const Sidebar = ({ onClose }) => {
         </motion.ul>
       </nav>
 
-      {/* User Profile */}
+      {/* User Profile - Chỉ hiển thị khi đã đăng nhập */}
       {isAuthenticated && user && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}

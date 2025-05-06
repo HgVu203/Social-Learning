@@ -202,8 +202,11 @@ axiosInstance.interceptors.request.use(
       config.url = `/api/${config.url.substring(4)}`;
     }
 
-    // Fix incorrect 'groups' endpoint to 'group'
-    if (config.url.includes("/api/groups/") || config.url === "/api/groups") {
+    // Fix incorrect 'groups' endpoint to 'group', but don't change admin routes
+    if (
+      (config.url.includes("/api/groups/") || config.url === "/api/groups") &&
+      !config.url.includes("/api/admin/groups")
+    ) {
       config.url = config.url.replace("/api/groups", "/api/group");
     }
 

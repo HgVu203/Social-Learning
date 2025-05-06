@@ -118,10 +118,14 @@ router.get("/check", async (req, res) => {
       });
     }
 
-    // Return user data
+    // Kiểm tra user.role để đảm bảo admin được xử lý đúng
+    console.log(`Auth check for user ${user._id}, role: ${user.role}`);
+
+    // Return user data and token
     return res.status(200).json({
       success: true,
       data: {
+        token: token, // Gửi lại token để đảm bảo client luôn có token mới nhất
         user: {
           _id: user._id,
           username: user.username,

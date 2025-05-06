@@ -295,10 +295,10 @@ const PostCard = ({ post }) => {
 
         {/* Post Content */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-3 text-[var(--color-text-primary)]">
+          <h2 className="text-xl font-semibold mb-3 text-[var(--color-text-primary)] truncate">
             {localPost.title}
           </h2>
-          <p className="text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
+          <p className="text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed line-clamp-3">
             {localPost.content}
           </p>
           {localPost.images && localPost.images.length > 0 ? (

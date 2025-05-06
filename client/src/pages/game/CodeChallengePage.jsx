@@ -197,6 +197,7 @@ const CodeChallengePage = () => {
         level,
         userRank,
         points: userPoints,
+        count: 5,
         useAI: true,
       });
 

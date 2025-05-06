@@ -38,10 +38,20 @@ export const postService = {
     return response.data;
   },
 
-  addComment: async (postId, comment) => {
-    const response = await axiosInstance.post(`/posts/${postId}/comments`, {
+  addComment: async (postId, comment, parentId, image) => {
+    const commentData = {
       comment,
-    });
+      parentId,
+    };
+
+    if (image) {
+      commentData.image = image;
+    }
+
+    const response = await axiosInstance.post(
+      `/posts/${postId}/comments`,
+      commentData
+    );
     return response.data;
   },
 

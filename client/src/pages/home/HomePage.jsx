@@ -56,18 +56,18 @@ const HomePage = () => {
   }, [loading, hasMore, loadMorePosts]);
 
   return (
-    <div className="max-w-2xl mx-auto pt-10 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-2xl mx-auto pt-2 sm:pt-6 md:pt-10 px-2 sm:px-4 md:px-6 lg:px-8">
       {/* Welcome and Create Post Section */}
-      <div className="bg-[var(--color-bg-secondary)] shadow-sm rounded-lg mb-6 p-6">
+      <div className="bg-[var(--color-bg-secondary)] shadow-sm rounded-lg mb-3 sm:mb-6 p-3 sm:p-4 md:p-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          <div className="max-w-[60%]">
+            <h1 className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] truncate">
               Welcome{user ? `, ${user.fullname}` : ""}!
             </h1>
           </div>
           <Link
             to="/create-post"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] transition duration-150 ease-in-out cursor-pointer"
+            className="inline-flex items-center px-3 sm:px-4 py-1.5 sm:py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)] transition duration-150 ease-in-out cursor-pointer"
           >
             <svg
               className="h-5 w-5 mr-2"

@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { usePostContext } from "../../contexts/PostContext";
 import Avatar from "../common/Avatar";
 import { formatDistanceToNow } from "date-fns";
-import { showDeleteConfirmToast } from "../../utils/toast";
+import { showDeleteConfirmToast, showErrorToast } from "../../utils/toast";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePostComments } from "../../hooks/queries/usePostQueries";
 import { motion, AnimatePresence } from "framer-motion";
+import { uploadImage } from "../../services/uploadService";
 
 // Map to store user mentions for tagging
 const userMentionMap = new Map();
@@ -191,7 +192,10 @@ const CommentForm = ({
   );
   const [isFocused, setIsFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const { createComment, updateComment, optimisticAddComment } =
     usePostContext();
   const { user } = useAuth();
@@ -254,105 +258,183 @@ const CommentForm = ({
     }
   }, [replyToId, isEditing, replyingToUser]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!content.trim() || !user || isSubmitting) return;
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setIsSubmitting(true);
-
-    if (isEditing && onEditComplete) {
-      try {
-        await updateComment.mutateAsync({
-          postId,
-          commentId: replyToId, // Using replyToId to store commentId for editing
-          content: content.trim(),
-        });
-
-        onEditComplete(content.trim());
-      } catch (error) {
-        console.error("Error updating comment:", error);
-      } finally {
-        setIsSubmitting(false);
-      }
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      showErrorToast("Only image files (JPEG, PNG, GIF) are allowed");
       return;
     }
 
-    // Optimistic update with local data for new comments
-    const tempId = `temp-${Date.now()}`;
-    tempCommentIdRef.current = tempId;
-
-    const tempComment = {
-      _id: tempId,
-      content: content.trim(),
-      userId: {
-        _id: user._id,
-        username: user.username,
-        fullname: user.fullname,
-        avatar: user.avatar,
-      },
-      parentId: replyToId,
-      createdAt: new Date().toISOString(),
-      isOptimistic: true,
-      likes: [],
-      likesCount: 0,
-      isLiked: false,
-    };
-
-    // Add to UI immediately
-    if (onCommentAdded) {
-      onCommentAdded(tempComment);
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      showErrorToast("Image must be less than 5MB");
+      return;
     }
 
-    // Also optimistic update
-    optimisticAddComment({
-      postId,
-      comment: tempComment,
-    });
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
-    // Clear input
-    setContent("");
+  const removeImage = () => {
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
-    // Then send to server
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if ((!content.trim() && !imagePreview) || !user || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    let uploadedImageUrl = null;
+
     try {
-      const response = await createComment.mutateAsync({
-        postId,
-        content: content.trim(),
-        parentId: replyToId,
-      });
+      // Upload image if present
+      if (imagePreview && fileInputRef.current?.files?.[0]) {
+        setUploadingImage(true);
+        try {
+          console.log("Uploading image file:", fileInputRef.current.files[0]);
+          uploadedImageUrl = await uploadImage(fileInputRef.current.files[0]);
+          console.log("Image uploaded successfully:", uploadedImageUrl);
+        } catch (uploadError) {
+          console.error("Image upload failed:", uploadError);
+          showErrorToast("Failed to upload image. Please try again.");
+          setIsSubmitting(false);
+          setUploadingImage(false);
+          return;
+        }
+        setUploadingImage(false);
+      }
 
-      // Xử lý like nếu có pending
-      if (
-        pendingLikeRef.current &&
-        response &&
-        response.data &&
-        response.data.comment
-      ) {
-        pendingLikeRef.current = false;
-        // Delay một chút để đảm bảo UI đã được cập nhật
-        setTimeout(() => {
-          const realCommentId = response.data.comment._id;
-          console.log(
-            "Processing pending like for new comment:",
-            realCommentId
-          );
+      // For empty text with image, we'll send an empty string as the content
+      const commentText = content.trim();
 
-          // Tìm nút like của comment này và trigger click
-          const likeButton = document.querySelector(
-            `[data-comment-id="${realCommentId}"] .like-button`
-          );
-          if (likeButton) {
-            likeButton.click();
-          }
-        }, 500);
+      const payload = {
+        comment: commentText, // Empty string is fine when only uploading image
+        image: uploadedImageUrl,
+      };
+
+      if (replyToId) {
+        payload.parentId = replyToId;
+      }
+
+      console.log("Sending comment payload:", payload);
+
+      if (isEditing && onEditComplete) {
+        console.log(
+          `Updating comment with ${commentText ? "text" : "no text"} and ${
+            uploadedImageUrl ? "image" : "no image"
+          }`
+        );
+
+        const response = await updateComment.mutateAsync({
+          postId,
+          commentId: replyToId, // Using replyToId to store commentId for editing
+          content: commentText,
+          image: uploadedImageUrl,
+        });
+
+        console.log("Update comment response:", response);
+
+        onEditComplete(commentText, uploadedImageUrl);
+        setImagePreview(null);
+      } else {
+        // Optimistic update with local data for new comments
+        const tempId = `temp-${Date.now()}`;
+        tempCommentIdRef.current = tempId;
+
+        console.log(
+          `Creating new comment with ${commentText ? "text" : "no text"} and ${
+            uploadedImageUrl ? "image" : "no image"
+          }`
+        );
+
+        const tempComment = {
+          _id: tempId,
+          content: commentText,
+          image: uploadedImageUrl || imagePreview, // Use uploaded URL or preview for now
+          userId: {
+            _id: user._id,
+            username: user.username,
+            fullname: user.fullname,
+            avatar: user.avatar,
+          },
+          parentId: replyToId,
+          createdAt: new Date().toISOString(),
+          isOptimistic: true,
+          likes: [],
+          likesCount: 0,
+          isLiked: false,
+        };
+
+        // Add to UI immediately
+        if (onCommentAdded) {
+          onCommentAdded(tempComment);
+        }
+
+        // Also optimistic update
+        optimisticAddComment({
+          postId,
+          comment: tempComment,
+        });
+
+        // Clear input and image
+        setContent("");
+        setImagePreview(null);
+
+        // Then send to server
+        const response = await createComment.mutateAsync({
+          postId,
+          ...payload,
+        });
+
+        console.log("Create comment server response:", response);
+
+        // Handle pending likes if needed
+        if (
+          pendingLikeRef.current &&
+          response &&
+          response.data &&
+          response.data.comment
+        ) {
+          pendingLikeRef.current = false;
+          // Delay to ensure UI is updated
+          setTimeout(() => {
+            const realCommentId = response.data.comment._id;
+            console.log(
+              "Processing pending like for new comment:",
+              realCommentId
+            );
+
+            // Find like button for this comment and trigger click
+            const likeButton = document.querySelector(
+              `[data-comment-id="${realCommentId}"] .like-button`
+            );
+            if (likeButton) {
+              likeButton.click();
+            }
+          }, 500);
+        }
       }
     } catch (error) {
-      // You could handle the error by removing the optimistic comment here
-      if (onCommentAdded && error) {
-        // Remove the temp comment by filtering it out in the parent component
-        onCommentAdded(null, tempComment._id);
+      console.error("Comment error:", error);
+      // Remove optimistic comment if there was an error
+      if (onCommentAdded && !isEditing) {
+        onCommentAdded(null, tempCommentIdRef.current);
       }
+      showErrorToast("Failed to submit comment. Please try again.");
     } finally {
       setIsSubmitting(false);
+      setUploadingImage(false);
       tempCommentIdRef.current = null;
     }
 
@@ -383,55 +465,130 @@ const CommentForm = ({
             className="w-10 h-10 rounded-full flex-shrink-0 border-2 border-[var(--color-bg-primary)] shadow-sm"
           />
         )}
-        <div
-          className={`relative border border-gray-400 flex-1 rounded-2xl overflow-hidden ${
-            isFocused
-              ? "ring-2 border-gray-800 ring-[var(--color-primary)]"
-              : ""
-          } transition-all duration-200 bg-[var(--color-bg-secondary)] shadow-sm hover:bg-[var(--color-bg-hover)]`}
-        >
-          {replyingToUser && renderHighlightedInput()}
-          <input
-            ref={inputRef}
-            type="text"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder={
-              isEditing
-                ? "Edit your comment..."
-                : replyToId
-                ? `Reply${replyingToUser ? " to " + replyingToUser : ""}...`
-                : "Write a comment..."
-            }
-            className="w-full bg-transparent text-[var(--color-text-primary)] rounded-2xl px-5 py-2.5 text-[15px] focus:outline-none placeholder-[var(--color-text-tertiary)] border-none"
-            disabled={isSubmitting}
-          />
-          {content.trim() && !isSubmitting && (
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              type="submit"
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] p-1.5 rounded-full hover:bg-[var(--color-bg-hover)] transition-colors"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-              </svg>
-            </motion.button>
-          )}
-          {isSubmitting && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
+        <div className="flex-1 flex flex-col gap-2">
+          <div
+            className={`relative border border-gray-400 flex-1 rounded-2xl overflow-hidden ${
+              isFocused
+                ? "ring-2 border-gray-800 ring-[var(--color-primary)]"
+                : ""
+            } transition-all duration-200 bg-[var(--color-bg-secondary)] shadow-sm hover:bg-[var(--color-bg-hover)]`}
+          >
+            {replyingToUser && renderHighlightedInput()}
+            <div className="flex items-center">
+              <input
+                ref={inputRef}
+                type="text"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                placeholder={
+                  isEditing
+                    ? "Edit your comment..."
+                    : replyToId
+                    ? `Reply${replyingToUser ? " to " + replyingToUser : ""}...`
+                    : "Write a comment..."
+                }
+                className="w-full bg-transparent text-[var(--color-text-primary)] rounded-2xl px-5 py-2.5 text-[15px] focus:outline-none placeholder-[var(--color-text-tertiary)] border-none"
+                disabled={isSubmitting || uploadingImage}
+              />
+
+              {/* Image upload button */}
+              <button
+                type="button"
+                className="p-2 mr-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] rounded-full hover:bg-[var(--color-bg-hover)] relative group"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSubmitting || uploadingImage}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="absolute -bottom-9 left-1/2 transform -translate-x-1/2 bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-xs py-1 px-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                  Add image
+                </span>
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+                disabled={isSubmitting || uploadingImage}
+              />
+
+              {(content.trim() || imagePreview) &&
+                !isSubmitting &&
+                !uploadingImage && (
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    type="submit"
+                    className="mr-2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] p-1.5 rounded-full hover:bg-[var(--color-bg-hover)] transition-colors"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                    </svg>
+                  </motion.button>
+                )}
+              {(isSubmitting || uploadingImage) && (
+                <div className="mr-3">
+                  <div className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Image preview */}
+          {imagePreview && (
+            <div className="relative border border-gray-700 rounded-lg overflow-hidden bg-[var(--color-bg-tertiary)] mb-2">
+              <img
+                src={imagePreview}
+                alt="Upload preview"
+                className="max-h-40 max-w-full object-contain mx-auto"
+              />
+              <button
+                type="button"
+                onClick={removeImage}
+                className="absolute top-1 right-1 bg-[var(--color-bg-primary)] p-1 rounded-full text-red-500 hover:text-red-400"
+                disabled={isSubmitting || uploadingImage}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+              {!content.trim() && (
+                <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 bg-[var(--color-bg-primary)]/70 px-2 py-1 rounded text-xs text-[var(--color-text-primary)]">
+                  Press the send button to submit image
+                </div>
+              )}
             </div>
           )}
         </div>
+
         {(isEditing || replyToId) && onCancel && (
           <motion.button
             whileTap={{ scale: 0.95 }}
             type="button"
             onClick={onCancel}
             className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] py-2 px-3 rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors font-medium text-sm"
-            disabled={isSubmitting}
+            disabled={isSubmitting || uploadingImage}
           >
             Cancel
           </motion.button>
@@ -812,8 +969,17 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
   };
 
   // Handle editing completion
-  const handleEditComplete = () => {
+  const handleEditComplete = (updatedContent, updatedImage) => {
     setIsEditing(false);
+
+    // Update local comment with new content and/or image
+    if (updatedContent !== undefined || updatedImage !== undefined) {
+      setLocalComment((prev) => ({
+        ...prev,
+        content: updatedContent !== undefined ? updatedContent : prev.content,
+        image: updatedImage !== undefined ? updatedImage : prev.image,
+      }));
+    }
   };
 
   // Parse comment content to detect @mentions and make them clickable links
@@ -1028,8 +1194,25 @@ const Comment = ({ postId, comment, onDelete, depth = 0 }) => {
                     onEditComplete={handleEditComplete}
                   />
                 ) : (
-                  <div className="text-[var(--color-text-secondary)] break-words whitespace-pre-wrap text-[15px]">
-                    {parseContent(comment.content)}
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[var(--color-text-secondary)] break-words whitespace-pre-wrap text-[15px]">
+                      {parseContent(comment.content)}
+                    </div>
+                    {comment.image && (
+                      <div className="mt-1 rounded-lg overflow-hidden">
+                        <img
+                          src={comment.image}
+                          alt="Comment attachment"
+                          className="max-h-60 max-w-full object-contain bg-[var(--color-bg-tertiary)]"
+                          loading="lazy"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(comment.image, "_blank");
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1248,14 +1431,15 @@ const PostComments = ({ postId }) => {
   const [displayLimit, setDisplayLimit] = useState(5);
   const [showingAll, setShowingAll] = useState(false);
 
-  // Updated to use refetchInterval for polling instead of sockets
+  // Use less frequent polling to reduce API calls
   const {
     data: commentsData,
     isError: isCommentsError,
     error: commentsError,
     refetch,
   } = usePostComments(postId, {
-    refetchInterval: 7000, // Poll for new comments every 7 seconds
+    refetchInterval: 30000, // Poll for new comments every 30 seconds instead of 7 seconds
+    staleTime: 25000, // Increase stale time to match polling interval
   });
 
   // Set comments from the query data

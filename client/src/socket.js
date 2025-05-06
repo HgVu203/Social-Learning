@@ -187,6 +187,21 @@ const setupHeartbeat = () => {
  */
 export const initSocket = () => {
   try {
+    // Kiểm tra xem có đang ở trang message hay không
+    const currentPath = window.location.pathname;
+    const isMessagePage =
+      currentPath.includes("/message") ||
+      currentPath.includes("/messages") ||
+      currentPath.includes("/chat");
+
+    // Nếu không phải trang message, không kết nối socket
+    if (!isMessagePage) {
+      console.log("Not on message page, skipping socket connection");
+      return null;
+    }
+
+    console.log("On message page, connecting socket");
+
     // Reset manually disconnected flag when initializing
     manuallyDisconnected = false;
 
@@ -554,6 +569,20 @@ export const closeSocket = (isNavigation = false) => {
  * Get socket instance
  */
 export const getSocket = () => {
+  // Kiểm tra xem có đang ở trang message không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/messages") || currentPath.includes("/chat");
+
+  if (!isMessagePage) {
+    // Không tự động kết nối socket nếu không phải trong message
+    console.log(
+      "getSocket called outside of message page - avoiding automatic connection"
+    );
+    return null;
+  }
+
+  // Chỉ thực hiện kết nối khi đang ở trang message
   if (!socket) {
     return initSocket();
   }
@@ -565,26 +594,6 @@ export const getSocket = () => {
  */
 export const isSocketConnected = () => {
   return socket && socket.connected && socketConnected;
-};
-
-/**
- * Join a post room to receive comment events
- */
-export const joinPostRoom = (postId) => {
-  const socket = getSocket();
-  if (!socket) return;
-
-  socket.emit("join_post", postId);
-};
-
-/**
- * Leave a post room
- */
-export const leavePostRoom = (postId) => {
-  const socket = getSocket();
-  if (!socket) return;
-
-  socket.emit("leave_post", postId);
 };
 
 /**
@@ -605,67 +614,6 @@ export const leaveChatRoom = (userId) => {
   if (!socket) return;
 
   socket.emit("leave_chat", userId);
-};
-
-/**
- * Subscribe to comment events for a specific post
- */
-export const subscribeToComments = (postId, callbacks) => {
-  const socket = getSocket();
-  if (!socket) return null;
-
-  // Join the post room
-  joinPostRoom(postId);
-
-  // Store callbacks for this postId
-  commentListeners.set(postId, callbacks);
-
-  // Set up the event handlers if they don't exist
-  if (!socket._hasCommentHandlers) {
-    socket.on("comment_added", (data) => {
-      const listener = commentListeners.get(data.postId);
-      if (listener && listener.onCommentAdded) {
-        listener.onCommentAdded(data.comment);
-      }
-    });
-
-    socket.on("comment_deleted", (data) => {
-      const listener = commentListeners.get(data.postId);
-      if (listener && listener.onCommentDeleted) {
-        listener.onCommentDeleted(data.commentId);
-      }
-    });
-
-    socket.on("comment_updated", (data) => {
-      const listener = commentListeners.get(data.postId);
-      if (listener && listener.onCommentUpdated) {
-        listener.onCommentUpdated(data.comment);
-      }
-    });
-
-    socket.on("comment_liked", (data) => {
-      const listener = commentListeners.get(data.postId);
-      if (listener && listener.onCommentLiked) {
-        // Pass the complete comment data including parentId and isNestedComment flags
-        listener.onCommentLiked(data.comment, {
-          commentId: data.commentId,
-          parentId: data.parentId,
-          isNestedComment: data.isNestedComment,
-          likesCount: data.likesCount,
-          isLiked: data.isLiked,
-          postId: data.postId,
-        });
-      }
-    });
-
-    socket._hasCommentHandlers = true;
-  }
-
-  // Return an unsubscribe function
-  return () => {
-    commentListeners.delete(postId);
-    leavePostRoom(postId);
-  };
 };
 
 /**
@@ -902,6 +850,21 @@ export const subscribeToMessages = (userId, callbacks) => {
  * @returns {boolean} Whether connection is now active or being restored
  */
 export const checkAndRestoreConnection = () => {
+  // Kiểm tra xem có đang ở trang message hay không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/message") ||
+    currentPath.includes("/messages") ||
+    currentPath.includes("/chat");
+
+  // Nếu không phải trang message, không kết nối socket
+  if (!isMessagePage) {
+    console.log("Not on message page, skipping socket reconnection");
+    return false;
+  }
+
+  console.log("On message page, checking socket connection");
+
   // If manually disconnected, don't auto reconnect
   if (manuallyDisconnected) {
     console.log(
@@ -978,6 +941,21 @@ export const checkAndRestoreConnection = () => {
 
 // Cách khác để khôi phục kết nối
 export const forceReconnect = () => {
+  // Kiểm tra xem có đang ở trang message hay không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/message") ||
+    currentPath.includes("/messages") ||
+    currentPath.includes("/chat");
+
+  // Nếu không phải trang message, không kết nối socket
+  if (!isMessagePage) {
+    console.log("Not on message page, skipping socket force reconnect");
+    return false;
+  }
+
+  console.log("On message page, force reconnecting socket");
+
   manuallyDisconnected = false; // Reset flag
   resetConnectionState();
   return initSocket();
@@ -1007,15 +985,34 @@ window.addEventListener("beforeunload", () => {
 // Check connection when page becomes visible again
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    // Immediately check connection when tab becomes visible
-    checkAndRestoreConnection();
+    // Kiểm tra xem có đang ở trang message hay không
+    const currentPath = window.location.pathname;
+    const isMessagePage =
+      currentPath.includes("/message") ||
+      currentPath.includes("/messages") ||
+      currentPath.includes("/chat");
+
+    if (isMessagePage) {
+      console.log("Tab visible on message page, checking connection");
+      // Immediately check connection when tab becomes visible
+      checkAndRestoreConnection();
+    }
   }
 });
 
 // Add network status checking to detect connection changes
 window.addEventListener("online", () => {
-  console.log("Network back online, checking connection");
-  checkAndRestoreConnection();
+  // Kiểm tra xem có đang ở trang message hay không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/message") ||
+    currentPath.includes("/messages") ||
+    currentPath.includes("/chat");
+
+  if (isMessagePage) {
+    console.log("Network back online on message page, checking connection");
+    checkAndRestoreConnection();
+  }
 });
 
 window.addEventListener("offline", () => {
@@ -1024,7 +1021,17 @@ window.addEventListener("offline", () => {
 
 // Thêm kiểm tra khi tab nhận focus
 window.addEventListener("focus", () => {
-  checkAndRestoreConnection();
+  // Kiểm tra xem có đang ở trang message hay không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/message") ||
+    currentPath.includes("/messages") ||
+    currentPath.includes("/chat");
+
+  if (isMessagePage) {
+    console.log("Tab focused on message page, checking connection");
+    checkAndRestoreConnection();
+  }
 });
 
 /**
@@ -1101,11 +1108,8 @@ export default {
   initSocket,
   getSocket,
   closeSocket,
-  joinPostRoom,
-  leavePostRoom,
   joinChatRoom,
   leaveChatRoom,
-  subscribeToComments,
   subscribeToMessages,
   isSocketConnected,
   checkAndRestoreConnection,

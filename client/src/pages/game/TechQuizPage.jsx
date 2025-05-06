@@ -117,11 +117,20 @@ const TechQuizPage = () => {
             .id;
       }
 
-      const newQuestions = await generateQuizQuestions(
-        count,
-        categoryValue,
-        difficultyValue
-      );
+      // Get user data from API or use default values
+      const userData = await userService.getCurrentUser().catch(() => ({
+        rank: "Rookie",
+        points: 0,
+      }));
+
+      const newQuestions = await generateQuizQuestions({
+        category: categoryValue,
+        count: count,
+        userRank: userData.rank || "Rookie",
+        points: userData.points || 0,
+        level: difficultyValue,
+      });
+
       setQuestions(newQuestions);
       setCurrentQuestionIndex(0);
       setSelectedAnswer(null);

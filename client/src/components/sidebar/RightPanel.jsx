@@ -84,45 +84,45 @@ const RightPanel = () => {
     <div className="h-full p-4 overflow-y-auto">
       {/* Search bar - Only on large screens */}
       {isLargeScreen && (
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="sticky top-0 bg-[var(--color-bg-primary)] pt-1 pb-3 z-10"
-      >
-        <form onSubmit={handleSearch}>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search developers, groups..."
-              className="w-full bg-[var(--color-bg-secondary)] rounded-full py-3 px-12 text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-all"
-            />
-            <button
-              type="submit"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="sticky top-0 bg-[var(--color-bg-primary)] pt-1 pb-3 z-10"
+        >
+          <form onSubmit={handleSearch}>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <FiSearch className="w-5 h-5 text-[var(--color-text-tertiary)]" />
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search posts, groups, users..."
+                className="w-full text-sm bg-[var(--color-bg-secondary)] rounded-full py-3 px-12 text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-all"
+              />
+              <button
+                type="submit"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </button>
-          </div>
-        </form>
-      </motion.div>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </form>
+        </motion.div>
       )}
 
       {/* Popular Groups */}
@@ -279,32 +279,32 @@ const RightPanel = () => {
                     </p>
                   </div>
                 </Link>
-                  <Link
-                    to={`/messages/${friend._id}`}
+                <Link
+                  to={`/messages/${friend._id}`}
                   className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                  >
-                    <FiMessageCircle className="w-5 h-5" />
-                  </Link>
-                </div>
+                >
+                  <FiMessageCircle className="w-5 h-5" />
+                </Link>
+              </div>
             ))
           )}
         </div>
         {(onlineFriends?.length > 5 || (friends && friends.length > 0)) && (
-        <Link
-          to="/friends"
-          className="block px-4 py-3 text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] transition-colors text-center font-medium"
-        >
+          <Link
+            to="/friends"
+            className="block px-4 py-3 text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] transition-colors text-center font-medium"
+          >
             {onlineFriends?.length > 5
               ? `See all online friends (${onlineFriends.length})`
               : "See all friends"}
-        </Link>
+          </Link>
         )}
       </motion.div>
 
-        {/* Theme Toggle */}
+      {/* Theme Toggle */}
       <div className="mt-4 flex justify-center">
         <ThemeToggle />
-        </div>
+      </div>
     </div>
   );
 };

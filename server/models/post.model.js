@@ -28,6 +28,12 @@ const PostSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "featured", "blocked", "deleted", "active"],
+      default: "approved",
+      index: true,
+    },
     tags: [
       {
         type: String,

@@ -16,10 +16,7 @@ const SocketContext = createContext({
   disconnect: () => {},
   joinChat: () => {},
   leaveChat: () => {},
-  joinPost: () => {},
-  leavePost: () => {},
   subscribeToMessages: () => () => {},
-  subscribeToComments: () => () => {},
   forceReconnect: () => {},
   checkConnection: () => {},
 });
@@ -183,24 +180,24 @@ export const SocketProvider = ({ children }) => {
     };
   }, [isAuthenticated, user, isConnected]);
 
-  // Hàm kiểm tra kết nối và cập nhật trạng thái
+  // Function to check connection and update state
   const checkConnection = useCallback(
     (forceReconnect = false) => {
       const isSocketActive = socketService.isSocketConnected();
 
-      // Cập nhật trạng thái nếu có sự khác biệt
+      // Update state if there's a difference
       if (isConnected !== isSocketActive) {
         console.log(
-          `[SocketContext] Kiểm tra thủ công: socket ${
-            isSocketActive ? "đang kết nối" : "không kết nối"
+          `[SocketContext] Manual check: socket ${
+            isSocketActive ? "is connected" : "is not connected"
           }`
         );
         setIsConnected(isSocketActive);
       }
 
-      // Nếu được yêu cầu force reconnect hoặc socket không kết nối
+      // If force reconnect is requested or socket is not connected
       if (forceReconnect || !isSocketActive) {
-        console.log("[SocketContext] Kết nối lại socket");
+        console.log("[SocketContext] Reconnecting socket");
         return socketService.checkAndRestoreConnection();
       }
 
@@ -209,18 +206,18 @@ export const SocketProvider = ({ children }) => {
     [isConnected]
   );
 
-  // Lên lịch kết nối lại với backoff
+  // Schedule reconnection with backoff
   const scheduleReconnect = (immediate = false) => {
-    // Xóa timer cũ nếu có
+    // Clear old timer if exists
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
     }
 
-    // Tính toán độ trễ với exponential backoff
+    // Calculate delay with exponential backoff
     const calculateDelay = () => {
       if (immediate) return 0;
 
-      // Số lần thử tính từ 0-5
+      // Attempts count from 0-5
       const attempts = Math.min(
         5,
         Math.floor((Date.now() - lastReconnectAttemptRef.current) / 10000)
@@ -233,12 +230,14 @@ export const SocketProvider = ({ children }) => {
 
     reconnectTimerRef.current = setTimeout(() => {
       if (isAuthenticated && user) {
-        console.log(`[SocketContext] Đang thử kết nối lại sau ${delay}ms...`);
+        console.log(
+          `[SocketContext] Attempting to reconnect after ${delay}ms...`
+        );
 
-        // Cập nhật thời gian thử kết nối cuối
+        // Update last reconnection attempt time
         lastReconnectAttemptRef.current = Date.now();
 
-        // Sử dụng forceReconnect khi là immediate để đảm bảo kết nối mới
+        // Use forceReconnect when immediate to ensure new connection
         if (immediate) {
           socketService.forceReconnect();
         } else {
@@ -248,7 +247,7 @@ export const SocketProvider = ({ children }) => {
     }, delay);
   };
 
-  // Kết nối socket
+  // Connect socket
   const connect = useCallback(async () => {
     try {
       if (!isConnected) {
@@ -264,7 +263,7 @@ export const SocketProvider = ({ children }) => {
     }
   }, [isConnected]);
 
-  // Ngắt kết nối socket
+  // Disconnect socket
   const disconnect = useCallback((isNavigation = false) => {
     try {
       socketService.closeSocket(isNavigation);
@@ -276,7 +275,7 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  // Kết nối mạnh (bắt buộc khởi tạo lại)
+  // Force reconnection (mandatory reinitialization)
   const forceReconnect = useCallback(() => {
     console.log("[SocketContext] Force reconnect requested");
 
@@ -291,7 +290,7 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  // Tham gia chat
+  // Join chat
   const joinChat = useCallback(
     (userId) => {
       if (!userId) return false;
@@ -308,7 +307,7 @@ export const SocketProvider = ({ children }) => {
     [connect]
   );
 
-  // Rời chat
+  // Leave chat
   const leaveChat = useCallback((userId) => {
     if (!userId) return false;
     try {
@@ -320,43 +319,14 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
-  // Tham gia room post
-  const joinPost = useCallback(
-    (postId) => {
-      if (!postId) return false;
-      try {
-        connect().then(() => {
-          socketService.joinPostRoom(postId);
-        });
-        return true;
-      } catch (error) {
-        console.error(`Error joining post ${postId}:`, error);
-        return false;
-      }
-    },
-    [connect]
-  );
-
-  // Rời room post
-  const leavePost = useCallback((postId) => {
-    if (!postId) return false;
-    try {
-      socketService.leavePostRoom(postId);
-      return true;
-    } catch (error) {
-      console.error(`Error leaving post ${postId}:`, error);
-      return false;
-    }
-  }, []);
-
-  // Đăng ký lắng nghe tin nhắn
+  // Subscribe to messages
   const subscribeToMessages = useCallback(
     (userId, callbacks) => {
       if (!userId) return () => {};
       try {
         connect();
 
-        // Thêm retry logic cho việc đăng ký
+        // Add retry logic for subscription
         const unsubscribe = socketService.subscribeToMessages(
           userId,
           callbacks
@@ -371,38 +341,13 @@ export const SocketProvider = ({ children }) => {
     [connect]
   );
 
-  // Đăng ký lắng nghe comments
-  const subscribeToComments = useCallback(
-    (postId, callbacks) => {
-      if (!postId) return () => {};
-      try {
-        connect();
-        const unsubscribe = socketService.subscribeToComments(
-          postId,
-          callbacks
-        );
-        return unsubscribe;
-      } catch (error) {
-        console.error(
-          `Error subscribing to comments for post ${postId}:`,
-          error
-        );
-        return () => {};
-      }
-    },
-    [connect]
-  );
-
   const contextValue = {
     isConnected,
     connect,
     disconnect,
     joinChat,
     leaveChat,
-    joinPost,
-    leavePost,
     subscribeToMessages,
-    subscribeToComments,
     forceReconnect,
     checkConnection,
   };

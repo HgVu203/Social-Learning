@@ -82,9 +82,9 @@ const MainLayout = ({ children }) => {
               : isTablet
               ? "ml-0 mr-0 w-full"
               : "ml-0 mr-0 w-full"
-          } overflow-y-auto ${!isDesktop ? "pb-20" : ""}`}
+          } overflow-y-auto ${!isDesktop ? "pb-16" : ""}`}
         >
-          <div className={`${!isDesktop ? "px-3 py-2 mt-14" : "p-2"}`}>
+          <div className={`${!isDesktop ? "px-2 py-1 mt-2" : "p-2"}`}>
             {children}
           </div>
         </motion.main>

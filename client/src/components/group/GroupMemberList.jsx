@@ -14,7 +14,6 @@ import {
   FiShield,
   FiEdit,
   FiUser,
-  FiUserPlus,
 } from "react-icons/fi";
 import { Link } from "react-router-dom";
 
@@ -141,9 +140,20 @@ const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
     );
   }
 
+  // Filter members by role
   const membersByRole = {
     admins: members.filter((m) => m.role === "admin"),
     members: members.filter((m) => m.role !== "admin"),
+  };
+
+  // Apply search filter to both role groups
+  const filteredMembersByRole = {
+    admins: membersByRole.admins.filter((member) =>
+      member.user?.username?.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    members: membersByRole.members.filter((member) =>
+      member.user?.username?.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
   };
 
   return (
@@ -153,10 +163,6 @@ const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
           <h1 className="text-2xl font-bold text-white">
             Group Members Management
           </h1>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors">
-            <FiUserPlus />
-            Invite Members
-          </button>
         </div>
       )}
 
@@ -199,7 +205,7 @@ const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
               {membersByRole.admins.length})
             </h3>
             <div className="bg-[#16181c] rounded-xl border border-gray-700 divide-y divide-gray-800">
-              {membersByRole.admins.map((member) => (
+              {filteredMembersByRole.admins.map((member) => (
                 <MemberItem
                   key={member.user?._id}
                   member={member}
@@ -226,7 +232,7 @@ const GroupMemberList = ({ groupId, isAdmin, isManagePage = false }) => {
       )}
 
       <div className="bg-[#16181c] rounded-xl border border-gray-700 divide-y divide-gray-800">
-        {(isManagePage ? membersByRole.members : filteredMembers).map(
+        {(isManagePage ? filteredMembersByRole.members : filteredMembers).map(
           (member) => (
             <MemberItem
               key={member.user?._id}

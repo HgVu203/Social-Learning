@@ -928,4 +928,204 @@ export const GroupController = {
       return res.status(500).json({ success: false, error: error.message });
     }
   },
+
+  // Improved search function for groups with AI-enhanced results
+  searchGroups: async (req, res) => {
+    try {
+      const { q = "", page = 1, limit = 10, tag } = req.query;
+      const query = q.toLowerCase().trim();
+
+      console.log(`Searching for groups with query: "${query}"`);
+
+      if (!query || query.trim().length < 2) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            totalPages: 0,
+          },
+        });
+      }
+
+      // Import AI search service
+      const { AISearchService } = await import(
+        "../services/ai-search.service.js"
+      );
+      const aiSearchService = new AISearchService();
+
+      // Build search query
+      const searchQuery = { status: "active" };
+
+      // Privacy filter - non-admin users can only see public groups or groups they're a member of
+      if (req.user?.role !== "admin") {
+        searchQuery.$or = [
+          { isPrivate: false },
+          { "members.user": req.user?._id },
+        ];
+      }
+
+      // Text search criteria with more extensive matching
+      const searchTerms = query.split(/\s+/).filter((term) => term.length >= 2);
+
+      // If multiple words, try to match the full phrase and individual terms
+      if (searchTerms.length > 1) {
+        searchQuery.$or = [
+          { name: { $regex: query, $options: "i" } },
+          { description: { $regex: query, $options: "i" } },
+          { tags: { $in: searchTerms.map((term) => new RegExp(term, "i")) } },
+        ];
+
+        // Add individual term matching for each significant term
+        searchTerms.forEach((term) => {
+          if (term.length >= 3) {
+            searchQuery.$or.push(
+              { name: { $regex: term, $options: "i" } },
+              { description: { $regex: term, $options: "i" } }
+            );
+          }
+        });
+      } else {
+        // Single term search
+        searchQuery.$or = [
+          { name: { $regex: query, $options: "i" } },
+          { description: { $regex: query, $options: "i" } },
+          { tags: { $regex: query, $options: "i" } },
+        ];
+      }
+
+      // Tag filter if specified
+      if (tag) {
+        searchQuery.tags = { $in: Array.isArray(tag) ? tag : [tag] };
+      }
+
+      // Log the query for debugging
+      console.log("MongoDB search query:", JSON.stringify(searchQuery));
+
+      // Fetch groups matching the query
+      const groups = await Group.find(searchQuery)
+        .populate("createdBy", "username email avatar")
+        .populate("members.user", "username email avatar")
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .skip((parseInt(page) - 1) * parseInt(limit));
+
+      console.log(
+        `Found ${groups.length} groups matching search query "${query}"`
+      );
+
+      // Process groups to add membership info and count
+      let processedGroups = groups.map((group) => {
+        const members = Array.isArray(group.members) ? group.members : [];
+        const isMember =
+          req.user?._id &&
+          members.some(
+            (member) =>
+              member?.user?._id?.toString() === req.user._id.toString()
+          );
+
+        return {
+          ...group.toObject(),
+          type: "group", // Add type for consistent frontend handling
+          isMember,
+          membersCount: members.length || 0,
+        };
+      });
+
+      // Use AI to enhance search results if there are results
+      if (processedGroups.length > 0) {
+        processedGroups = await aiSearchService.enhanceSearchResults(
+          query,
+          processedGroups
+        );
+      }
+
+      // If no exact matches, find similar groups
+      let similarGroups = [];
+      if (processedGroups.length === 0) {
+        // Try finding groups with partial matches on keywords
+        const keywords = query.split(/\s+/).filter((word) => word.length >= 3);
+
+        if (keywords.length > 0) {
+          const fuzzyConditions = [];
+
+          // Build fuzzy conditions for each keyword
+          keywords.forEach((keyword) => {
+            fuzzyConditions.push(
+              { name: { $regex: keyword, $options: "i" } },
+              { description: { $regex: keyword, $options: "i" } },
+              { tags: { $regex: keyword, $options: "i" } }
+            );
+          });
+
+          // Privacy filter
+          const similarQuery = {
+            status: "active",
+            $or: fuzzyConditions,
+          };
+
+          if (req.user?.role !== "admin") {
+            similarQuery.$and = [
+              {
+                $or: [{ isPrivate: false }, { "members.user": req.user?._id }],
+              },
+            ];
+          }
+
+          // Log similar search query
+          console.log(
+            "Similar groups search query:",
+            JSON.stringify(similarQuery)
+          );
+
+          // Find similar groups
+          const similarGroupsResult = await Group.find(similarQuery)
+            .populate("createdBy", "username email avatar")
+            .populate("members.user", "username email avatar")
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit));
+
+          console.log(`Found ${similarGroupsResult.length} similar groups`);
+
+          // Process similar groups to add metadata
+          similarGroups = similarGroupsResult.map((group) => {
+            const members = Array.isArray(group.members) ? group.members : [];
+            const isMember =
+              req.user?._id &&
+              members.some(
+                (member) =>
+                  member?.user?._id?.toString() === req.user._id.toString()
+              );
+
+            return {
+              ...group.toObject(),
+              type: "group",
+              isMember,
+              membersCount: members.length || 0,
+              isSimilarMatch: true,
+            };
+          });
+        }
+      }
+
+      const total = await Group.countDocuments(searchQuery);
+
+      return res.status(200).json({
+        success: true,
+        data: [...processedGroups, ...similarGroups],
+        pagination: {
+          total,
+          page: parseInt(page),
+          totalPages: Math.ceil(total / parseInt(limit)),
+        },
+      });
+    } catch (error) {
+      console.error("Search groups error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to search groups",
+      });
+    }
+  },
 };

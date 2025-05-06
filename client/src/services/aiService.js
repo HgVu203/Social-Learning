@@ -19,6 +19,25 @@ const getApiKey = () => {
   return "";
 };
 
+// Simple memory cache for responses
+const responseCache = new Map();
+
+// Cache time to live (30 minutes)
+const CACHE_TTL = 30 * 60 * 1000;
+
+// Generate a cache key from prompt and options
+const generateCacheKey = (prompt, options) => {
+  // Create a simpler options object with only relevant fields for caching
+  const cacheOptions = {
+    model: options.model || "gpt-3.5-turbo",
+    max_tokens: options.max_tokens || 1000,
+    temperature: options.temperature || 0.7,
+  };
+
+  // Combine prompt and options into a cache key
+  return JSON.stringify({ prompt, options: cacheOptions });
+};
+
 // Generate AI response with OpenAI API
 export const generateAIResponse = async (prompt, options = {}) => {
   const apiKey = getApiKey();
@@ -27,31 +46,110 @@ export const generateAIResponse = async (prompt, options = {}) => {
     return getLocalFallbackResponse(prompt);
   }
 
-  try {
-    console.log(`🔄 Generating OpenAI response...`);
+  // Skip cache if explicitly requested
+  if (!options.skipCache) {
+    // Check cache first
+    const cacheKey = generateCacheKey(prompt, options);
+    const cachedItem = responseCache.get(cacheKey);
 
-    const response = await axios.post(
-      API_URL,
-      {
-        model: options.model || "gpt-3.5-turbo",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: options.max_tokens || 1000,
-        temperature: options.temperature || 0.7,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-      }
-    );
-
-    console.log("✅ Successfully received OpenAI response");
-    return response.data.choices[0].message.content;
-  } catch (error) {
-    console.error("❌ Error calling OpenAI API:", error);
-    return getLocalFallbackResponse(prompt);
+    if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_TTL) {
+      console.log("✅ Using cached OpenAI response");
+      return cachedItem.data;
+    }
   }
+
+  // Maximum number of retries for rate limit errors
+  const maxRetries = options.maxRetries || 3;
+  let retries = 0;
+
+  // Exponential backoff delay calculation
+  const getBackoffDelay = (retry) => Math.min(1000 * Math.pow(2, retry), 15000);
+
+  while (retries <= maxRetries) {
+    try {
+      console.log(
+        `🔄 Generating OpenAI response... (attempt ${retries + 1}/${
+          maxRetries + 1
+        })`
+      );
+
+      const response = await axios.post(
+        API_URL,
+        {
+          model: options.model || "gpt-3.5-turbo",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: options.max_tokens || 1000,
+          temperature: options.temperature || 0.7,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          timeout: 30000, // 30 second timeout
+        }
+      );
+
+      console.log("✅ Successfully received OpenAI response");
+      const responseContent = response.data.choices[0].message.content;
+
+      // Store in cache if caching is not disabled
+      if (!options.skipCache) {
+        const cacheKey = generateCacheKey(prompt, options);
+        responseCache.set(cacheKey, {
+          data: responseContent,
+          timestamp: Date.now(),
+        });
+      }
+
+      return responseContent;
+    } catch (error) {
+      // Handle rate limit errors (429)
+      if (error.response && error.response.status === 429) {
+        retries++;
+
+        if (retries <= maxRetries) {
+          // Calculate delay with exponential backoff
+          const delay = getBackoffDelay(retries);
+          console.warn(
+            `⚠️ Rate limit exceeded (429). Retrying in ${delay}ms... (attempt ${retries}/${maxRetries})`
+          );
+
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        } else {
+          console.error(
+            "❌ Maximum retries reached for rate limit (429). Using fallback response."
+          );
+          return getLocalFallbackResponse(prompt);
+        }
+      } else {
+        // For other errors, log and use fallback
+        console.error("❌ Error calling OpenAI API:", error);
+
+        // For network errors, try once more after a short delay
+        if (
+          error.code === "ECONNABORTED" ||
+          error.code === "ERR_NETWORK" ||
+          !error.response
+        ) {
+          retries++;
+          if (retries <= 1) {
+            // Only retry once for network errors
+            console.warn("⚠️ Network error. Retrying once after 2s...");
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            return getLocalFallbackResponse(prompt);
+          }
+        } else {
+          // For all other errors, don't retry
+          return getLocalFallbackResponse(prompt);
+        }
+      }
+    }
+  }
+
+  return getLocalFallbackResponse(prompt);
 };
 
 // Generate fallback response when AI is unavailable

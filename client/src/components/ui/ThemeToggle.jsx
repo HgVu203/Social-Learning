@@ -8,7 +8,7 @@ const ThemeToggle = ({ className = "" }) => {
   // Animation variants
   const toggleVariants = {
     dark: { backgroundColor: "#1a1a1f", rotate: 0 },
-    light: { backgroundColor: "#f5f5f7", rotate: 180 },
+    light: { backgroundColor: "#e9ecf1", rotate: 180 },
   };
 
   const iconVariants = {
@@ -23,7 +23,7 @@ const ThemeToggle = ({ className = "" }) => {
 
   return (
     <motion.button
-      className={`p-2 rounded-full relative ${className}`}
+      className={`p-2 rounded-full relative cursor-pointer ${className}`}
       onClick={toggleTheme}
       animate={theme}
       variants={toggleVariants}
@@ -34,7 +34,7 @@ const ThemeToggle = ({ className = "" }) => {
     >
       <div className="relative">
         <motion.div
-          className="absolute inset-0 flex items-center justify-center text-yellow-400"
+          className="absolute inset-0 flex items-center justify-center text-amber-500/80"
           variants={sunVariants}
           initial={false}
           animate={theme}

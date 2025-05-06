@@ -3,42 +3,32 @@
  * @returns {boolean} Whether the connection was successful
  */
 export const connectSocket = () => {
-  try {
-    // Dynamically import socket.js to prevent circular dependency
-    import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
-      // First try to restore existing connection
-      if (checkAndRestoreConnection()) {
-        console.log("Socket connection restored or already connected");
+  console.log("Checking if socket connection is needed");
 
-        // Dispatch event for socket connection
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("socket_reconnected"));
-        }, 500);
+  // Kiểm tra xem hiện tại có đang ở trang message không
+  const currentPath = window.location.pathname;
+  const isMessagePage =
+    currentPath.includes("/messages") || currentPath.includes("/chat");
 
-        return true;
-      }
-
-      // If restore failed, try to initialize a new connection
-      const socket = initSocket();
-
-      if (!socket) {
-        console.error("Failed to initialize socket connection");
-        return false;
-      }
-
-      // Dispatch event for socket connection
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("socket_reconnected"));
-      }, 500);
-
-      return true;
-    });
-
-    return true;
-  } catch (error) {
-    console.error("Error connecting socket:", error);
+  if (!isMessagePage) {
+    console.log("Not on message page, skipping socket connection");
     return false;
   }
+
+  console.log("On message page, connecting socket");
+  // Tiếp tục kết nối socket vì đang ở trang tin nhắn
+  import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
+    try {
+      const socket = initSocket();
+      if (!socket) {
+        checkAndRestoreConnection();
+      }
+      return true;
+    } catch (error) {
+      console.error("Socket connection error:", error);
+      return false;
+    }
+  });
 };
 
 /**

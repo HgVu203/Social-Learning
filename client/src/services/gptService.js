@@ -16,37 +16,95 @@ const getApiKey = () => {
   return "";
 };
 
-// Function to call API with key
-const callGptApi = async (prompt) => {
+// Function to call API with key and exponential backoff for rate limit handling
+const callGptApi = async (prompt, maxRetries = 3) => {
   const apiKey = getApiKey();
   if (!apiKey) {
     console.log("No API key available, skipping API call");
     return null;
   }
 
-  try {
-    console.log("🔄 Calling OpenAI API to generate challenge...");
-    const response = await axios.post(
-      API_URL,
-      {
-        model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 1000,
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+  // Retry counter
+  let retries = 0;
+
+  // Exponential backoff delay calculation
+  const getBackoffDelay = (retry) => Math.min(1000 * Math.pow(2, retry), 10000);
+
+  while (retries <= maxRetries) {
+    try {
+      console.log(
+        `🔄 Calling OpenAI API to generate challenge... (attempt ${
+          retries + 1
+        }/${maxRetries + 1})`
+      );
+
+      const response = await axios.post(
+        API_URL,
+        {
+          model: "gpt-3.5-turbo",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 1000,
+          temperature: 0.7,
         },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          // Increase timeout for potentially slow responses
+          timeout: 30000,
+        }
+      );
+
+      console.log("✅ Successfully received response from OpenAI");
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      // Check if it's a rate limit error (429)
+      if (error.response && error.response.status === 429) {
+        retries++;
+
+        if (retries <= maxRetries) {
+          // Calculate delay with exponential backoff
+          const delay = getBackoffDelay(retries);
+          console.warn(
+            `⚠️ Rate limit exceeded (429). Retrying in ${delay}ms... (attempt ${retries}/${maxRetries})`
+          );
+
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        } else {
+          console.error(
+            "❌ Maximum retries reached for rate limit (429). Using fallback data."
+          );
+          return null;
+        }
+      } else {
+        // For other errors, log and return null immediately
+        console.error("❌ Error calling GPT API:", error);
+
+        // If we have network issues, try once more after a short delay
+        if (
+          error.code === "ECONNABORTED" ||
+          error.code === "ERR_NETWORK" ||
+          !error.response
+        ) {
+          retries++;
+          if (retries <= 1) {
+            // Only retry once for network errors
+            console.warn("⚠️ Network error. Retrying once after 2s...");
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            return null;
+          }
+        } else {
+          // For all other errors, don't retry
+          return null;
+        }
       }
-    );
-    console.log("✅ Successfully received response from OpenAI");
-    return response.data.choices[0].message.content;
-  } catch (error) {
-    console.error("❌ Error calling GPT API:", error);
-    return null;
+    }
   }
+
+  return null;
 };
 
 // Export API key status function for UI
@@ -245,12 +303,41 @@ const generateSampleChallenge = (language, level) => {
   };
 };
 
+// Simple memory cache for responses
+const responseCache = new Map();
+
+// Cache time to live (30 minutes)
+const CACHE_TTL = 30 * 60 * 1000;
+
+// Generate a cache key based on params
+const generateCacheKey = (fnName, params) => {
+  return `${fnName}-${JSON.stringify(params)}`;
+};
+
 // Generate code challenges - now with dynamic generation based on user rank
 export const generateCodeChallenges = async (params) => {
   const language = params?.language || "javascript";
   const level = params?.level || "easy";
   const userRank = params?.userRank || "Rookie";
   const points = params?.points || 0;
+  const count = params?.count || 3; // Number of challenges to generate
+
+  // Check cache first unless explicitly skipped
+  if (!params?.skipCache) {
+    const cacheKey = generateCacheKey("codeChallenges", {
+      language,
+      level,
+      userRank,
+      points,
+      count,
+    });
+    const cachedItem = responseCache.get(cacheKey);
+
+    if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_TTL) {
+      console.log("✅ Using cached code challenges");
+      return cachedItem.data;
+    }
+  }
 
   // Try to use AI to generate challenges
   const apiKey = getApiKey();
@@ -259,51 +346,104 @@ export const generateCodeChallenges = async (params) => {
     try {
       const difficultyByRank = {
         Rookie: "easy",
-        Bronze: "easy",
-        Silver: "easy to medium",
-        Gold: "medium",
-        Platinum: "medium to hard",
-        Diamond: "hard",
-        Master: "very hard",
+        Bronze: "easy to medium",
+        Silver: "medium",
+        Gold: "medium to hard",
+        Platinum: "hard",
+        Diamond: "very hard",
+        Master: "extremely challenging",
       };
 
       const recommendedDifficulty = difficultyByRank[userRank] || "medium";
 
-      // Create enhanced prompt to generate better challenges
-      const enhancedPrompt = `As an expert coding challenge creator, generate a detailed ${level} level coding challenge for a ${language} programmer with rank ${userRank} (${points} points).
+      // Generate multiple challenges in a batch for efficiency
+      const enhancedPrompt = `As an expert coding challenge creator, generate ${count} detailed ${level} level coding challenges for a ${language} programmer with rank ${userRank} (${points} points).
 
-      Consider the following:
-      1. The challenge should match ${level} difficulty, but also be appropriate for ${userRank} rank (recommended difficulty: ${recommendedDifficulty})
-      2. Include a real-world context or practical application for the problem
-      3. The challenge should test algorithmic thinking, not just syntax knowledge
-      4. Provide clear inputs/outputs examples
-      5. Include edge cases in your description
-      6. The code template should have proper function signature and parameter documentation
-      7. The solution should be optimal and well-commented
-      8. Hints should be progressive - first hint subtle, second more direct
+      Adapt the difficulty based on these factors:
+      1. Base difficulty: ${level}
+      2. User rank: ${userRank} (recommended difficulty: ${recommendedDifficulty})
+      3. User points: ${points} points (higher points = more sophisticated challenges)
 
-      Return the result in this exact JSON format without any explanations outside this structure:
-      {
-        "id": "unique-id-${Date.now()}",
-        "language": "${language}",
-        "level": "${level}",
-        "title": "Challenge Title",
-        "description": "Detailed description including problem context, requirements, examples of inputs/outputs, and any constraints",
-        "codeTemplate": "// Function signature and parameters with documentation\n// Input: [describe input]\n// Output: [describe expected output]",
-        "solution": "// Complete working solution with comments explaining key steps",
-        "hints": [
-          "First subtle hint that guides thinking direction",
-          "More direct hint about approach or data structure to use",
-          "Specific technical advice for implementation"
-        ]
-      }`;
+      For each challenge, consider the following:
+      1. Include a real-world context or practical application for the problem
+      2. The challenge should test algorithmic thinking and problem-solving skills
+      3. Provide clear inputs/outputs examples
+      4. Include edge cases in your description
+      5. The code template should have proper function signature and parameter documentation
+      6. The solution should be optimal and well-commented
+      7. Hints should be progressive - first hint subtle, second more direct, third most helpful
+
+      Return the result as an array of ${count} challenge objects in this exact JSON format:
+      [
+        {
+          "id": "challenge-${Date.now()}-1",
+          "language": "${language}",
+          "level": "${level}",
+          "title": "Challenge Title",
+          "description": "Detailed description including problem context, requirements, examples of inputs/outputs, and any constraints",
+          "codeTemplate": "// Function signature and parameters with documentation\n// Input: [describe input]\n// Output: [describe expected output]",
+          "solution": "// Complete working solution with comments explaining key steps",
+          "hints": [
+            "First subtle hint that guides thinking direction",
+            "More direct hint about approach or data structure to use",
+            "Specific technical advice for implementation"
+          ]
+        },
+        {
+          "id": "challenge-${Date.now()}-2",
+          "language": "${language}",
+          "level": "${level}",
+          "title": "Different Challenge Title",
+          "description": "...",
+          "codeTemplate": "...",
+          "solution": "...",
+          "hints": ["...", "...", "..."]
+        }
+        // And so on for the requested number of challenges
+      ]`;
 
       const response = await callGptApi(enhancedPrompt);
       if (response) {
         try {
-          const challenge = JSON.parse(response);
-          // Wrap in array to match expected format
-          return [challenge];
+          const parsedChallenges = JSON.parse(response);
+          if (Array.isArray(parsedChallenges)) {
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("codeChallenges", {
+                language,
+                level,
+                userRank,
+                points,
+                count,
+              });
+              responseCache.set(cacheKey, {
+                data: parsedChallenges,
+                timestamp: Date.now(),
+              });
+            }
+
+            return parsedChallenges;
+          } else {
+            // If response is not an array, wrap it
+            const result = [parsedChallenges];
+
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("codeChallenges", {
+                language,
+                level,
+                userRank,
+                points,
+                count,
+              });
+              responseCache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now(),
+              });
+            }
+
+            return result;
+          }
         } catch (parseError) {
           console.error("Error parsing GPT response:", parseError);
         }
@@ -318,7 +458,7 @@ export const generateCodeChallenges = async (params) => {
   );
 
   // If API call fails or no API key, generate a sample challenge programmatically
-  const challengeCount = 3;
+  const challengeCount = params?.count || 3;
   const challenges = [];
 
   for (let i = 0; i < challengeCount; i++) {
@@ -337,36 +477,133 @@ export const generateCodeChallenges = async (params) => {
   return shuffleArray(challenges);
 };
 
-// Generate math problems - using local data instead of API to avoid rate limiting
+// Generate math problems - using dynamic generation based on user rank and level
 export const generateMathProblems = async (params) => {
   const level = params?.level || "easy";
   const userRank = params?.userRank || "Rookie";
   const points = params?.points || 0;
+  const count = params?.count || 3; // Number of problems to generate
+  const category = params?.category || "general";
+
+  // Check cache first unless explicitly skipped
+  if (!params?.skipCache) {
+    const cacheKey = generateCacheKey("mathProblems", {
+      level,
+      userRank,
+      points,
+      count,
+      category,
+    });
+    const cachedItem = responseCache.get(cacheKey);
+
+    if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_TTL) {
+      console.log("✅ Using cached math problems");
+      return cachedItem.data;
+    }
+  }
 
   // Try to use AI to generate problems
   const apiKey = getApiKey();
 
   if (apiKey) {
     try {
-      const prompt = `Generate a math problem for a user with ${userRank} rank (${points} points).
-      The problem should be ${level} difficulty.
+      const difficultyByRank = {
+        Rookie: "basic",
+        Bronze: "elementary",
+        Silver: "intermediate",
+        Gold: "advanced",
+        Platinum: "challenging",
+        Diamond: "expert",
+        Master: "competition level",
+      };
+
+      const mathDomain = {
+        easy: "arithmetic, basic algebra, simple geometry",
+        medium: "intermediate algebra, geometry, basic probability, statistics",
+        hard: "advanced algebra, calculus concepts, complex probability, combinatorics",
+      };
+
+      const recommendedDifficulty =
+        difficultyByRank[userRank] || "intermediate";
+      const domainFocus = mathDomain[level] || mathDomain.medium;
+
+      const prompt = `Generate ${count} math problems for a user with ${userRank} rank (${points} points).
+      The problems should be ${level} difficulty (${recommendedDifficulty} level).
       
-      Return the result in this exact JSON format without any extra text:
-      {
-        "id": "unique-id",
-        "level": "${level}",
-        "question": "The detailed math problem",
-        "correctAnswer": "The answer to the problem",
-        "explanation": "A detailed explanation of how to solve the problem"
-      }`;
+      Focus on these mathematical domains: ${domainFocus}
+      
+      For each problem:
+      1. Make it clear and concise
+      2. Include step-by-step solution in the explanation
+      3. Ensure the problem is appropriate for the user's rank and points
+      4. For higher ranks, incorporate more advanced concepts
+      
+      Return the result as an array of ${count} problem objects in this exact JSON format:
+      [
+        {
+          "id": "math-${Date.now()}-1",
+          "level": "${level}",
+          "question": "The detailed math problem with clear wording",
+          "correctAnswer": "The answer to the problem (exact format needed for checking)",
+          "explanation": "A detailed step-by-step explanation of how to solve the problem"
+        },
+        {
+          "id": "math-${Date.now()}-2",
+          "level": "${level}",
+          "question": "Different math problem",
+          "correctAnswer": "...",
+          "explanation": "..."
+        }
+        // And so on for the requested number of problems
+      ]`;
 
       const response = await callGptApi(prompt);
       if (response) {
         try {
-          const problem = JSON.parse(response);
-          return [problem];
+          const parsedProblems = JSON.parse(response);
+          if (Array.isArray(parsedProblems)) {
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("mathProblems", {
+                level,
+                userRank,
+                points,
+                count,
+                category,
+              });
+              responseCache.set(cacheKey, {
+                data: parsedProblems,
+                timestamp: Date.now(),
+              });
+            }
+
+            return parsedProblems;
+          } else {
+            // If response is not an array, wrap it
+            const result = [parsedProblems];
+
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("mathProblems", {
+                level,
+                userRank,
+                points,
+                count,
+                category,
+              });
+              responseCache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now(),
+              });
+            }
+
+            return result;
+          }
         } catch (parseError) {
-          console.error("Error parsing GPT response:", parseError);
+          console.error(
+            "Error parsing GPT response for math problems:",
+            parseError
+          );
         }
       }
     } catch (error) {
@@ -407,36 +644,126 @@ export const generateMathProblems = async (params) => {
   return problems;
 };
 
-// Generate quiz questions - using local data instead of API to avoid rate limiting
+// Generate quiz questions - using dynamic generation based on user rank
 export const generateQuizQuestions = async (params) => {
-  const category = params?.category || "programming";
+  const count = params?.count || 10;
+  const category = params?.category || "general";
+  const level = params?.level || "medium";
   const userRank = params?.userRank || "Rookie";
   const points = params?.points || 0;
 
-  // Try to use AI to generate questions
+  // Check cache first unless explicitly skipped
+  if (!params?.skipCache) {
+    const cacheKey = generateCacheKey("quizQuestions", {
+      count,
+      category,
+      level,
+      userRank,
+      points,
+    });
+    const cachedItem = responseCache.get(cacheKey);
+
+    if (cachedItem && Date.now() - cachedItem.timestamp < CACHE_TTL) {
+      console.log("✅ Using cached quiz questions");
+      return cachedItem.data;
+    }
+  }
+
+  // Generate quiz questions using AI if available
   const apiKey = getApiKey();
 
   if (apiKey) {
     try {
-      const prompt = `Generate a quiz question about ${category} for a user with ${userRank} rank (${points} points).
+      const difficultyByRank = {
+        Rookie: "basic knowledge",
+        Bronze: "beginner-friendly",
+        Silver: "intermediate knowledge",
+        Gold: "advanced concepts",
+        Platinum: "expert level",
+        Diamond: "specialist knowledge",
+        Master: "professional level",
+      };
+
+      const recommendedDifficulty =
+        difficultyByRank[userRank] || "intermediate knowledge";
+
+      const prompt = `Generate ${count} quiz questions about ${category} for a user with ${userRank} rank (${points} points).
       
-      Return the result in this exact JSON format without any extra text:
-      {
-        "id": "unique-id",
-        "category": "${category}",
-        "question": "The quiz question",
-        "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-        "correctAnswer": "The correct option exactly as it appears in the options array",
-        "explanation": "An explanation of why this answer is correct"
-      }`;
+      The questions should be tailored to ${recommendedDifficulty} and consider:
+      1. Progressive difficulty based on rank
+      2. Covering both fundamentals and advanced topics appropriate to the rank
+      3. Including questions that test practical knowledge and theoretical understanding
+      4. Each question should have exactly 4 options with only one correct answer
+      5. For higher ranks (Gold+), include more nuanced questions that test deeper understanding
+      
+      Return the result as an array of ${count} question objects in this exact JSON format:
+      [
+        {
+          "id": "quiz-${Date.now()}-1",
+          "category": "${category}",
+          "question": "Clear, specific quiz question",
+          "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+          "correctAnswer": "The correct option exactly as it appears in the options array",
+          "explanation": "A thorough explanation of why this answer is correct and why others are incorrect"
+        },
+        {
+          "id": "quiz-${Date.now()}-2",
+          "category": "${category}",
+          "question": "Different quiz question",
+          "options": ["...", "...", "...", "..."],
+          "correctAnswer": "...",
+          "explanation": "..."
+        }
+        // And so on for the requested number of questions
+      ]`;
 
       const response = await callGptApi(prompt);
       if (response) {
         try {
-          const question = JSON.parse(response);
-          return [question];
+          const parsedQuestions = JSON.parse(response);
+          if (Array.isArray(parsedQuestions)) {
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("quizQuestions", {
+                count,
+                category,
+                level,
+                userRank,
+                points,
+              });
+              responseCache.set(cacheKey, {
+                data: parsedQuestions,
+                timestamp: Date.now(),
+              });
+            }
+
+            return parsedQuestions;
+          } else {
+            // If response is not an array, wrap it
+            const result = [parsedQuestions];
+
+            // Cache the result if not explicitly skipped
+            if (!params?.skipCache) {
+              const cacheKey = generateCacheKey("quizQuestions", {
+                count,
+                category,
+                level,
+                userRank,
+                points,
+              });
+              responseCache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now(),
+              });
+            }
+
+            return result;
+          }
         } catch (parseError) {
-          console.error("Error parsing GPT response:", parseError);
+          console.error(
+            "Error parsing GPT response for quiz questions:",
+            parseError
+          );
         }
       }
     } catch (error) {

@@ -48,11 +48,22 @@ export const useGroupQueries = {
       queryKey: [...GROUP_QUERY_KEYS.lists(), { search: query }],
       queryFn: async ({ pageParam = 1 }) => {
         try {
+          if (!query || query.trim().length < 2) {
+            return {
+              success: true,
+              data: [],
+              pagination: { page: 1, totalPages: 1, total: 0 },
+            };
+          }
+
+          // Use the dedicated search endpoint with 'q' parameter
           const response = await axiosService.get(
-            `/group?query=${encodeURIComponent(
+            `/group/search?q=${encodeURIComponent(
               query
             )}&page=${pageParam}&limit=${limit}`
           );
+
+          console.log("Group search response:", response.data);
           return response.data;
         } catch (error) {
           console.error("Error searching groups:", error);
@@ -68,7 +79,7 @@ export const useGroupQueries = {
       },
       keepPreviousData: true,
       // Only run the query if search term is at least 2 characters
-      enabled: query.length >= 2,
+      enabled: !!query && query.trim().length >= 2,
       ...options,
     });
   },

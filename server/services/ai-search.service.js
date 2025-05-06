@@ -155,34 +155,69 @@ export class AISearchService {
       .map((result) => {
         let score = 0;
 
-        // Calculate relevance score based on content matching
-        const content = (
-          (result.content || "") +
-          " " +
-          (result.title || "")
-        ).toLowerCase();
+        // Calculate relevance score based on content type
+        if (result.type === "group") {
+          // For groups, check name, description and tags
+          const groupText = [result.name || "", result.description || ""]
+            .join(" ")
+            .toLowerCase();
 
-        // Direct phrase match gets high score
-        if (content.includes(original.toLowerCase())) {
-          score += 10;
+          // Direct phrase match gets high score
+          if (groupText.includes(original.toLowerCase())) {
+            score += 10;
+          }
+
+          // Individual keyword matches in name and description
+          keywords.forEach((keyword) => {
+            const regex = new RegExp(keyword, "gi");
+            const matches = groupText.match(regex);
+            if (matches) {
+              score += matches.length;
+            }
+
+            // Check name with higher weight (most important field)
+            if (result.name && result.name.toLowerCase().includes(keyword)) {
+              score += 5;
+            }
+
+            // Check tags (higher weight)
+            if (result.tags && Array.isArray(result.tags)) {
+              const tagMatches = result.tags.filter((tag) =>
+                tag.toLowerCase().includes(keyword)
+              ).length;
+              score += tagMatches * 3;
+            }
+          });
+        } else {
+          // Original implementation for posts and other content types
+          const content = (
+            (result.content || "") +
+            " " +
+            (result.title || "")
+          ).toLowerCase();
+
+          // Direct phrase match gets high score
+          if (content.includes(original.toLowerCase())) {
+            score += 10;
+          }
+
+          // Individual keyword matches
+          keywords.forEach((keyword) => {
+            const regex = new RegExp(keyword, "gi");
+            const matches = content.match(regex);
+            if (matches) {
+              score += matches.length;
+            }
+
+            // Check tags (higher weight)
+            if (result.tags && Array.isArray(result.tags)) {
+              const tagMatches = result.tags.filter((tag) =>
+                tag.toLowerCase().includes(keyword)
+              ).length;
+              score += tagMatches * 2;
+            }
+          });
         }
-
-        // Individual keyword matches
-        keywords.forEach((keyword) => {
-          const regex = new RegExp(keyword, "gi");
-          const matches = content.match(regex);
-          if (matches) {
-            score += matches.length;
-          }
-
-          // Check tags (higher weight)
-          if (result.tags && Array.isArray(result.tags)) {
-            const tagMatches = result.tags.filter((tag) =>
-              tag.toLowerCase().includes(keyword)
-            ).length;
-            score += tagMatches * 2;
-          }
-        });
 
         return {
           ...result,

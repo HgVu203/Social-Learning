@@ -6,6 +6,11 @@ import SkeletonPostDetail from "./SkeletonPostDetail";
 import SkeletonGroup from "./SkeletonGroup";
 import SkeletonSidebar from "./SkeletonSidebar";
 import SkeletonRightPanel from "./SkeletonRightPanel";
+import SkeletonDashboard from "./SkeletonDashboard";
+import SkeletonUserManagement from "./SkeletonUserManagement";
+import SkeletonContentManagement from "./SkeletonContentManagement";
+import SkeletonPointsManagement from "./SkeletonPointsManagement";
+import SkeletonGroupManagement from "./SkeletonGroupManagement";
 
 export {
   SkeletonProfile,
@@ -16,4 +21,9 @@ export {
   SkeletonGroup,
   SkeletonSidebar,
   SkeletonRightPanel,
+  SkeletonDashboard,
+  SkeletonUserManagement,
+  SkeletonContentManagement,
+  SkeletonPointsManagement,
+  SkeletonGroupManagement,
 };

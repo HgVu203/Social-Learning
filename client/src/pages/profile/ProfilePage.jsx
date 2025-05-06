@@ -257,46 +257,24 @@ const ProfilePage = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto py-6 px-4">
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-2xl font-bold text-[var(--color-text-primary)] pb-4"
-        >
+      <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4 md:py-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-4">
           Profile
-        </motion.h1>
-        <div className="card mb-6 overflow-hidden relative p-6">
+        </h1>
+        <div className="space-y-4">
           <SkeletonProfile />
-        </div>
-
-        {/* Skeleton posts */}
-        <div className="card p-6">
-          <div className="bg-[var(--color-bg-light)] h-6 w-24 rounded mb-6"></div>
-          <div className="space-y-6">
-            {[...Array(3)].map((_, index) => (
-              <SkeletonCard key={index} />
-            ))}
+          <div className="grid grid-cols-1 gap-4">
+            <SkeletonCard height="h-40" />
+            <SkeletonCard height="h-40" />
           </div>
         </div>
       </div>
     );
   }
 
-  if (error) {
-    console.error("Profile error:", error);
+  if (error || !profile) {
     return (
-      <div className="max-w-7xl mx-auto p-4">
-        <div className="bg-red-900/20 text-red-500 p-4 rounded-lg">
-          {error.message || "Failed to load profile"}
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    console.log("No profile data available to render");
-    return (
-      <div className="max-w-7xl mx-auto p-4">
+      <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4">
         <div className="text-center py-8 text-gray-400 bg-[var(--color-bg-secondary)] rounded-lg">
           <div className="mb-4">
             <svg
@@ -332,12 +310,12 @@ const ProfilePage = () => {
   const rankColor = rankColors[profile.rank] || rankColors.Rookie;
 
   return (
-    <div className="max-w-7xl mx-auto py-6 px-4">
+    <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4 md:py-6">
       {/* Profile Header */}
       <motion.h1
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-2xl font-bold text-[var(--color-text-primary)] pb-4"
+        className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-4"
       >
         Profile
       </motion.h1>
@@ -347,25 +325,25 @@ const ProfilePage = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="card mb-6 overflow-hidden relative"
+        className="card mb-4 sm:mb-6 overflow-hidden relative"
       >
         {/* Settings button (only visible on own profile) */}
         {isOwnProfile && (
-          <div className="absolute top-4 right-4 z-10">
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
             <button
               onClick={() => navigate("/settings")}
-              className="bg-[var(--color-bg-secondary)] p-2.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors text-[var(--color-text-primary)] shadow-sm cursor-pointer"
+              className="bg-[var(--color-bg-secondary)] p-2 sm:p-2.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors text-[var(--color-text-primary)] shadow-sm cursor-pointer"
               title="Settings"
             >
-              <FiSettings className="w-5 h-5" />
+              <FiSettings className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         )}
 
         {/* Profile Info */}
-        <div className="px-6 py-6 relative">
-          <div className="flex flex-col md:flex-row md:items-center">
-            <div className="mb-4 md:mb-0">
+        <div className="px-4 py-5 sm:px-6 sm:py-6 relative">
+          <div className="flex flex-col sm:flex-row sm:items-center">
+            <div className="flex justify-center sm:justify-start mb-4 sm:mb-0">
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -374,18 +352,18 @@ const ProfilePage = () => {
                 <LazyImage
                   src={profile.avatar || defaultAvatar}
                   alt={profile.username}
-                  className="w-36 h-36 rounded-full border-4 border-[var(--color-bg-secondary)] shadow-xl"
+                  className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full border-4 border-[var(--color-bg-secondary)] shadow-xl"
                   style={{ objectFit: "cover" }}
                 />
               </motion.div>
             </div>
 
-            <div className="md:ml-6 flex-grow">
-              <div className="flex flex-col md:flex-row md:items-center justify-between">
+            <div className="sm:ml-6 flex-grow text-center sm:text-left">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                 <div>
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center sm:justify-start">
                     <h1
-                      className="text-2xl font-bold text-[var(--color-text-primary)] truncate max-w-[200px] md:max-w-[300px] group relative"
+                      className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] truncate max-w-[200px] sm:max-w-[250px] md:max-w-[300px] group relative"
                       title={profile.fullname}
                     >
                       {profile.fullname}
@@ -407,7 +385,7 @@ const ProfilePage = () => {
                     </motion.div>
                   </div>
                   <p
-                    className="text-[var(--color-text-secondary)] text-sm truncate max-w-[200px] md:max-w-[300px]"
+                    className="text-[var(--color-text-secondary)] text-sm truncate max-w-[200px] sm:max-w-[250px] md:max-w-[300px] mx-auto sm:mx-0"
                     title={`@${profile.username}`}
                   >
                     @{profile.username}
@@ -415,9 +393,9 @@ const ProfilePage = () => {
 
                   {/* Replace points display with Follow/Add Friend or Edit Profile buttons based on ownership */}
                   {!isOwnProfile ? (
-                    <div className="mt-4 flex space-x-3">
+                    <div className="mt-4 flex space-x-3 justify-center sm:justify-start">
                       <button
-                        className={`relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
+                        className={`relative overflow-hidden group rounded-md px-4 py-1.5 sm:px-5 sm:py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
                           isFollowing
                             ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
                             : "bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
@@ -426,7 +404,7 @@ const ProfilePage = () => {
                       >
                         <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-indigo-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
                         <svg
-                          className="w-5 h-5 mr-2 relative z-10"
+                          className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 relative z-10"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -447,7 +425,7 @@ const ProfilePage = () => {
                             />
                           )}
                         </svg>
-                        <span className="font-semibold text-base relative z-10">
+                        <span className="font-semibold text-sm sm:text-base relative z-10">
                           {isFollowing ? "Following" : "Follow"}
                         </span>
                       </button>
@@ -456,11 +434,11 @@ const ProfilePage = () => {
                       {isFriend && (
                         <button
                           onClick={() => navigate(`/messages/${profile._id}`)}
-                          className="relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-gray-600 to-gray-700 text-white"
+                          className="relative overflow-hidden group rounded-md px-4 py-1.5 sm:px-5 sm:py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-gray-600 to-gray-700 text-white"
                         >
                           <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-gray-700 to-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
                           <svg
-                            className="w-5 h-5 mr-2 relative z-10"
+                            className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 relative z-10"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -472,7 +450,7 @@ const ProfilePage = () => {
                               d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                             />
                           </svg>
-                          <span className="font-semibold text-base relative z-10">
+                          <span className="font-semibold text-sm sm:text-base relative z-10">
                             Message
                           </span>
                         </button>
@@ -485,7 +463,7 @@ const ProfilePage = () => {
                             friendshipStatus === "PENDING_SENT" ||
                             sendingFriendRequest
                           }
-                          className={`relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
+                          className={`relative overflow-hidden group rounded-md px-4 py-1.5 sm:px-5 sm:py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
                             friendshipStatus === "PENDING_SENT"
                               ? "bg-gray-500 text-white opacity-80 cursor-not-allowed"
                               : "bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
@@ -498,8 +476,8 @@ const ProfilePage = () => {
                                 : ""
                             } rounded-md`}
                           ></span>
-                          <FiUserPlus className="w-5 h-5 mr-2 relative z-10" />
-                          <span className="font-semibold text-base relative z-10">
+                          <FiUserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 relative z-10" />
+                          <span className="font-semibold text-sm sm:text-base relative z-10">
                             {friendshipStatus === "PENDING_SENT"
                               ? "Sent"
                               : friendshipStatus === "PENDING_RECEIVED"
@@ -510,14 +488,14 @@ const ProfilePage = () => {
                       )}
                     </div>
                   ) : (
-                    <div className="mt-4 flex">
+                    <div className="mt-4 flex justify-center sm:justify-start">
                       <button
                         onClick={() => setIsEditModalOpen(true)}
-                        className="relative overflow-hidden group rounded-md px-5 py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-violet-500 to-purple-500 text-white"
+                        className="relative overflow-hidden group rounded-md px-4 py-1.5 sm:px-5 sm:py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-violet-500 to-purple-500 text-white"
                       >
                         <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-purple-500 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
                         <svg
-                          className="w-5 h-5 mr-2 relative z-10"
+                          className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 relative z-10"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -529,7 +507,7 @@ const ProfilePage = () => {
                             d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                           />
                         </svg>
-                        <span className="font-semibold text-base relative z-10">
+                        <span className="font-semibold text-sm sm:text-base relative z-10">
                           Edit Profile
                         </span>
                       </button>
@@ -540,9 +518,9 @@ const ProfilePage = () => {
 
               {/* User Bio & Location */}
               {(profile.bio || profile.location) && (
-                <div className="mt-4 text-[var(--color-text-secondary)]">
+                <div className="mt-4 text-[var(--color-text-secondary)] text-center sm:text-left px-2 sm:px-0">
                   {profile.bio && (
-                    <p className="mb-2 whitespace-pre-wrap line-clamp-3 group relative">
+                    <p className="mb-2 whitespace-pre-wrap line-clamp-2 sm:line-clamp-3 group relative">
                       {profile.bio}
                       {profile.bio.length > 100 && (
                         <button
@@ -556,7 +534,7 @@ const ProfilePage = () => {
                   )}
 
                   {profile.location && (
-                    <div className="flex items-center text-sm mt-2">
+                    <div className="flex items-center text-sm mt-2 justify-center sm:justify-start">
                       <svg
                         className="w-4 h-4 mr-1"
                         fill="none"
@@ -577,7 +555,7 @@ const ProfilePage = () => {
                         />
                       </svg>
                       <span
-                        className="truncate max-w-[150px] md:max-w-[250px]"
+                        className="truncate max-w-[150px] sm:max-w-[250px]"
                         title={profile.location}
                       >
                         {profile.location}
@@ -589,7 +567,7 @@ const ProfilePage = () => {
 
               {/* Social Media Links */}
               {profile.links && profile.links.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-3">
+                <div className="mt-3 flex flex-wrap gap-3 justify-center sm:justify-start">
                   {profile.links.map((link, index) => (
                     <a
                       key={index}
@@ -611,196 +589,251 @@ const ProfilePage = () => {
               )}
             </div>
           </div>
-
-          {/* Message and Edit Profile buttons at the bottom right - removed Message button from here */}
-          {!isOwnProfile ? (
-            <div className="absolute bottom-4 right-6">
-              {/* Message button moved up to be with the Follow button */}
-            </div>
-          ) : (
-            <div className="absolute bottom-4 right-6">
-              {/* Edit Profile button moved to below username */}
-            </div>
-          )}
         </div>
       </motion.div>
 
       {/* Profile Content */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Sidebar */}
-        <div className="w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Rank & Points */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold mb-4 text-[var(--color-text-primary)]">
-                Stats
-              </h2>
+      <div className="mt-4 sm:mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {/* Stats Card */}
+          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6">
+            <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
+              Stats
+            </h2>
 
-              <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Current Rank
+                  </span>
+                  <div
+                    className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${rankColor.text} bg-gradient-to-r ${rankColor.gradient}`}
+                  >
+                    {profile.rank}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Points
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold">
+                    {profile.points || 0}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Followers
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold">
+                    {followersCount || 0}
+                  </span>
+                </div>
+              </div>
+
+              {profile.rank !== "Master" && (
                 <div>
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="flex justify-between items-center mb-1 text-sm">
                     <span className="text-[var(--color-text-secondary)]">
-                      Current Rank
+                      Next rank: {getNextRank(profile.rank)}
                     </span>
+                    <span className="text-[var(--color-text-tertiary)]">
+                      {getPointsToNextRankPercentage(
+                        profile.rank,
+                        profile.points
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
                     <div
-                      className={`px-3 py-1 rounded-full text-xs font-semibold ${rankColor.text} bg-gradient-to-r ${rankColor.gradient}`}
-                    >
-                      {profile.rank}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[var(--color-text-secondary)]">
-                      Points
-                    </span>
-                    <span className="text-[var(--color-text-primary)] font-semibold">
-                      {profile.points || 0}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[var(--color-text-secondary)]">
-                      Followers
-                    </span>
-                    <span className="text-[var(--color-text-primary)] font-semibold">
-                      {followersCount || 0}
-                    </span>
-                  </div>
-                </div>
-
-                {profile.rank !== "Master" && (
-                  <div>
-                    <div className="flex justify-between items-center mb-1 text-sm">
-                      <span className="text-[var(--color-text-secondary)]">
-                        Next rank: {getNextRank(profile.rank)}
-                      </span>
-                      <span className="text-[var(--color-text-tertiary)]">
-                        {getPointsToNextRankPercentage(
+                      className="h-2 rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)]"
+                      style={{
+                        width: `${getPointsToNextRankPercentage(
                           profile.rank,
                           profile.points
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)]"
-                        style={{
-                          width: `${getPointsToNextRankPercentage(
-                            profile.rank,
-                            profile.points
-                          )}%`,
-                        }}
-                      ></div>
-                    </div>
+                        )}%`,
+                      }}
+                    ></div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
+          </div>
 
-            {/* About */}
-            <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6">
-              <h2 className="text-lg font-semibold mb-4 text-[var(--color-text-primary)]">
-                About
-              </h2>
+          {/* About Card */}
+          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6">
+            <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
+              About
+            </h2>
 
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-2 rounded-lg mr-3 flex items-center justify-center">
-                    <BiCalendar className="w-5 h-5 text-[var(--color-text-secondary)]" />
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-1.5 sm:p-2 rounded-lg mr-2 sm:mr-3 flex items-center justify-center">
+                  <BiCalendar className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--color-text-secondary)]" />
+                </div>
+                <div>
+                  <span className="block text-xs sm:text-sm text-[var(--color-text-secondary)]">
+                    Joined
+                  </span>
+                  <span className="block font-medium text-[var(--color-text-primary)] text-sm sm:text-base">
+                    {new Date(
+                      profile.createdAt || Date.now()
+                    ).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+              </div>
+
+              {profile.phone && (
+                <div className="flex items-center mt-2 sm:mt-3">
+                  <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-1.5 sm:p-2 rounded-lg mr-2 sm:mr-3 flex items-center justify-center">
+                    <BiPhone className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--color-text-secondary)]" />
                   </div>
                   <div>
-                    <span className="block text-sm text-[var(--color-text-secondary)]">
-                      Joined
+                    <span className="block text-xs sm:text-sm text-[var(--color-text-secondary)]">
+                      Phone
                     </span>
-                    <span className="block font-medium text-[var(--color-text-primary)]">
-                      {new Date(
-                        profile.createdAt || Date.now()
-                      ).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
+                    <span className="block font-medium text-[var(--color-text-primary)] text-sm sm:text-base">
+                      {profile.phone}
                     </span>
                   </div>
                 </div>
+              )}
 
-                {profile.phone && (
-                  <div className="flex items-center mt-3">
-                    <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-2 rounded-lg mr-3 flex items-center justify-center">
-                      <BiPhone className="w-5 h-5 text-[var(--color-text-secondary)]" />
-                    </div>
-                    <div>
-                      <span className="block text-sm text-[var(--color-text-secondary)]">
-                        Phone
-                      </span>
-                      <span className="block font-medium text-[var(--color-text-primary)]">
-                        {profile.phone}
-                      </span>
-                    </div>
+              {profile.address && (
+                <div className="flex items-center mt-2 sm:mt-3">
+                  <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-1.5 sm:p-2 rounded-lg mr-2 sm:mr-3 flex items-center justify-center">
+                    <BiMap className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--color-text-secondary)]" />
                   </div>
-                )}
+                  <div>
+                    <span className="block text-xs sm:text-sm text-[var(--color-text-secondary)]">
+                      Address
+                    </span>
+                    <span className="block font-medium text-[var(--color-text-primary)] text-sm sm:text-base truncate max-w-[180px] sm:max-w-[220px]">
+                      {profile.address}
+                    </span>
+                  </div>
+                </div>
+              )}
 
-                {profile.address && (
-                  <div className="flex items-center mt-3">
-                    <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-2 rounded-lg mr-3 flex items-center justify-center">
-                      <BiMap className="w-5 h-5 text-[var(--color-text-secondary)]" />
-                    </div>
-                    <div>
-                      <span className="block text-sm text-[var(--color-text-secondary)]">
-                        Address
-                      </span>
-                      <span className="block font-medium text-[var(--color-text-primary)]">
-                        {profile.address}
-                      </span>
-                    </div>
+              {profile.bio ? (
+                <div className="flex items-center mt-2 sm:mt-3">
+                  <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-1.5 sm:p-2 rounded-lg mr-2 sm:mr-3 flex items-center justify-center">
+                    <BiUser className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--color-text-secondary)]" />
                   </div>
-                )}
+                  <div>
+                    <span className="block text-xs sm:text-sm text-[var(--color-text-secondary)]">
+                      Bio
+                    </span>
+                    <span className="block font-medium text-[var(--color-text-primary)] text-sm sm:text-base line-clamp-3">
+                      {profile.bio}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                isOwnProfile && (
+                  <div className="mt-2 sm:mt-3 p-2 sm:p-3 border border-dashed border-[var(--color-border)] rounded-lg text-center">
+                    <p className="text-[var(--color-text-secondary)] text-xs sm:text-sm">
+                      Add information about yourself by{" "}
+                      <button
+                        onClick={() => setIsEditModalOpen(true)}
+                        className="text-[var(--color-primary)] hover:underline"
+                      >
+                        editing your profile
+                      </button>
+                    </p>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
 
-                {profile.bio ? (
-                  <div className="flex items-center mt-3">
-                    <div className="flex-shrink-0 bg-[var(--color-bg-tertiary)] p-2 rounded-lg mr-3 flex items-center justify-center">
-                      <BiUser className="w-5 h-5 text-[var(--color-text-secondary)]" />
-                    </div>
-                    <div>
-                      <span className="block text-sm text-[var(--color-text-secondary)]">
-                        Bio
-                      </span>
-                      <span className="block font-medium text-[var(--color-text-primary)]">
-                        {profile.bio}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  isOwnProfile && (
-                    <div className="mt-3 p-3 border border-dashed border-[var(--color-border)] rounded-lg text-center">
-                      <p className="text-[var(--color-text-secondary)] text-sm">
-                        Add information about yourself by{" "}
-                        <button
-                          onClick={() => setIsEditModalOpen(true)}
-                          className="text-[var(--color-primary)] hover:underline"
-                        >
-                          editing your profile
-                        </button>
-                      </p>
-                    </div>
-                  )
-                )}
+          {/* Additional Info can go in this third column on larger screens */}
+          <div className="hidden lg:block bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold mb-4 text-[var(--color-text-primary)]">
+              Activity
+            </h2>
+
+            <div className="space-y-4">
+              {/* Activity summary could go here */}
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--color-text-secondary)]">
+                  Posts
+                </span>
+                <span className="text-[var(--color-text-primary)] font-semibold">
+                  {profile.posts?.length || 0}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--color-text-secondary)]">
+                  Comments
+                </span>
+                <span className="text-[var(--color-text-primary)] font-semibold">
+                  {profile.commentsCount || 0}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--color-text-secondary)]">
+                  Following
+                </span>
+                <span className="text-[var(--color-text-primary)] font-semibold">
+                  {profile.followingCount || 0}
+                </span>
+              </div>
+
+              <div className="h-px bg-[var(--color-border)] my-2"></div>
+
+              <div className="text-center">
+                <Link
+                  to={`/messages/${profile._id}`}
+                  className={`inline-flex items-center justify-center px-4 py-1.5 text-sm font-medium rounded-md 
+                    ${
+                      isOwnProfile || !isFriend
+                        ? "bg-gray-600/50 text-gray-400 cursor-not-allowed opacity-60"
+                        : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white"
+                    }`}
+                  onClick={(e) => {
+                    if (isOwnProfile || !isFriend) e.preventDefault();
+                  }}
+                >
+                  <svg
+                    className="w-4 h-4 mr-1.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
+                  </svg>
+                  Message
+                </Link>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="w-full">
-          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-[var(--color-text-primary)] mb-4 flex items-center">
+        {/* Posts Section - Full Width */}
+        <div className="w-full mt-4 sm:mt-6">
+          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-bold text-[var(--color-text-primary)] mb-3 sm:mb-4 flex items-center">
               <svg
-                className="w-6 h-6 mr-2 text-[var(--color-text-secondary)]"
+                className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[var(--color-text-secondary)]"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -818,9 +851,9 @@ const ProfilePage = () => {
             {profile.posts && profile.posts.length > 0 ? (
               <PostList posts={profile.posts} loading={false} error={null} />
             ) : (
-              <div className="text-center py-10 bg-[var(--color-bg-tertiary)] rounded-lg">
+              <div className="text-center py-8 sm:py-10 bg-[var(--color-bg-tertiary)] rounded-lg">
                 <svg
-                  className="mx-auto h-12 w-12 text-[var(--color-text-tertiary)]"
+                  className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-[var(--color-text-tertiary)]"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -839,10 +872,10 @@ const ProfilePage = () => {
                 {isOwnProfile && (
                   <Link
                     to="/create-post"
-                    className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]"
+                    className="mt-3 sm:mt-4 inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]"
                   >
                     <svg
-                      className="w-5 h-5 mr-2"
+                      className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"

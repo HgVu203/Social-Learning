@@ -7,7 +7,10 @@ import trackUserActivity from "../middleware/trackUserActivity.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { postValidationSchema } from "../utils/validator/post.validator.js";
 import rateLimit from "express-rate-limit";
-import { postImageUpload } from "../middleware/upload.cloudinary.js";
+import {
+  postImageUpload,
+  messageImageUpload,
+} from "../middleware/upload.cloudinary.js";
 
 const router = express.Router();
 
@@ -73,14 +76,14 @@ router.post(
 );
 
 router.put(
-  "/:id/comment/:commentId",
-  validateRequest(postValidationSchema.comment),
+  "/:id/comments/:commentId",
+  validateRequest(postValidationSchema.addComment),
   trackUserActivity,
   PostController.updateComment
 );
 
 router.delete(
-  "/:id/comment/:commentId",
+  "/:id/comments/:commentId",
   trackUserActivity,
   PostController.deleteComment
 );
@@ -91,6 +94,15 @@ router.post(
   "/:id/comment/:commentId/like",
   trackUserActivity,
   PostController.likeComment
+);
+
+// Post comment routes
+router.post(
+  "/:id/comments",
+  commentLimiter,
+  validateRequest(postValidationSchema.addComment),
+  trackUserActivity,
+  PostController.addComment
 );
 
 export default router;

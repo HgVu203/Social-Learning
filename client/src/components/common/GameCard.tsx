@@ -54,7 +54,7 @@ const GameCard: React.FC<GameCardProps> = ({
       </div>
       <div className="p-6 pt-0">
         <button
-          className={`select-none rounded-lg bg-gradient-to-r ${color} py-3 px-6 text-center align-middle font-sans text-xs font-bold uppercase text-white shadow-md transition-all hover:shadow-lg focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none w-full`}
+          className={`select-none rounded-lg bg-gradient-to-r ${color} py-3 px-6 text-center align-middle font-sans text-xs font-bold uppercase text-white shadow-md transition-all hover:shadow-lg focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none w-full cursor-pointer`}
           type="button"
         >
           Play Now

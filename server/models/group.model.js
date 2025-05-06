@@ -60,7 +60,7 @@ const GroupSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "inactive"],
+      enum: ["active", "inactive", "featured", "pending", "blocked"],
       default: "active",
       index: true,
     },

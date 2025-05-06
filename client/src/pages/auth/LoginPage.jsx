@@ -117,7 +117,12 @@ const LoginPage = () => {
       if (result.success) {
         // Login successful
         console.log("Login successful, navigating to home");
-        navigate("/");
+        // If user is admin, redirect to admin dashboard
+        if (result.data?.user?.role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/");
+        }
       } else if (result.data?.requiresVerification) {
         // Account not verified - clear any errors before redirecting
         console.log(

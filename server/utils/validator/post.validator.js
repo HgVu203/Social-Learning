@@ -33,11 +33,29 @@ export const postValidationSchema = {
   }),
 
   comment: Joi.object({
-    comment: Joi.string().required().min(1).max(1000).messages({
+    comment: Joi.string().min(1).max(1000).messages({
       "string.empty": "Comment cannot be empty",
       "string.min": "Comment must be at least 1 character",
       "string.max": "Comment must not exceed 1000 characters",
     }),
+    image: Joi.string().uri().allow(null, "").optional(),
     parentId: Joi.string().allow(null).optional(),
+  }).or("comment", "image"),
+
+  addComment: Joi.object({
+    comment: Joi.string().allow("", null).default(""),
+    image: Joi.string().uri().allow(null, "").default(null),
+    parentId: Joi.string().allow(null, "").optional(),
+  }).custom((obj, helpers) => {
+    // Custom validation to ensure at least one of comment or image is provided
+    if (
+      (!obj.comment || obj.comment.trim() === "") &&
+      (!obj.image || obj.image.trim() === "")
+    ) {
+      return helpers.error("object.min", {
+        message: "Either comment text or image is required",
+      });
+    }
+    return obj;
   }),
 };

@@ -5,7 +5,6 @@ import Feedback from "../models/feedback.model.js";
 import UserActivity from "../models/user_activity.model.js";
 import Friendship from "../models/friendship.model.js";
 import RecommendationService from "../services/recommendation.service.js";
-import { emitCommentEvent } from "../socket.js";
 
 export const PostController = {
   createPost: async (req, res) => {
@@ -214,7 +213,7 @@ export const PostController = {
 
   getPosts: async (req, res) => {
     try {
-      const { page = 1, limit = 10, filter = "latest", groupId } = req.query;
+      const { page = 1, limit = 20, filter = "latest", groupId } = req.query;
       let query = { deleted: false };
 
       // Thêm điều kiện lọc theo groupId nếu có
@@ -401,6 +400,12 @@ export const PostController = {
       }
 
       try {
+        // Import AISearchService
+        const { AISearchService } = await import(
+          "../services/ai-search.service.js"
+        );
+        const aiSearchService = new AISearchService();
+
         // Lấy danh sách bài viết
         const posts = await Post.find(query)
           .populate("author", "username email fullname avatar")
@@ -409,7 +414,7 @@ export const PostController = {
           .skip((page - 1) * limit);
 
         // Lấy thông tin về likes và comments cho mỗi bài viết
-        const postsWithDetails = await Promise.all(
+        let postsWithDetails = await Promise.all(
           posts.map(async (post) => {
             try {
               // Get likes and comments for this post
@@ -461,34 +466,50 @@ export const PostController = {
           })
         );
 
+        // Enhance search results with AI
+        if (searchQuery && searchQuery.length >= 2) {
+          postsWithDetails = await aiSearchService.enhanceSearchResults(
+            searchQuery,
+            postsWithDetails
+          );
+        }
+
         const total = await Post.countDocuments(query);
 
         // Nếu không tìm thấy kết quả chính xác, tìm bài viết liên quan
         let relatedPosts = [];
         if (postsWithDetails.length === 0 && searchQuery) {
           try {
-            // Tìm bài viết dựa trên tags có liên quan
-            const relatedQuery = { deleted: false };
-            const tagWords = searchQuery
-              .split(/\s+/)
-              .filter((word) => word.length > 3)
-              .map((word) => new RegExp(word, "i"));
+            // Use AI Search Service to find related content
+            relatedPosts = await aiSearchService.findRelatedContent(
+              searchQuery
+            );
 
-            if (tagWords.length > 0) {
-              relatedQuery.tags = { $in: tagWords };
+            // Fallback: Nếu AI search không có kết quả
+            if (relatedPosts.length === 0) {
+              // Tìm bài viết dựa trên tags có liên quan
+              const relatedQuery = { deleted: false };
+              const tagWords = searchQuery
+                .split(/\s+/)
+                .filter((word) => word.length > 3)
+                .map((word) => new RegExp(word, "i"));
 
-              relatedPosts = await Post.find(relatedQuery)
-                .populate("author", "username email fullname avatar")
-                .sort({ createdAt: -1 })
-                .limit(5);
+              if (tagWords.length > 0) {
+                // Tìm bài viết có chứa một trong các từ khóa trong tags
+                relatedQuery.tags = { $in: tagWords };
 
-              relatedPosts = await Promise.all(
-                relatedPosts.map(async (post) => {
-                  try {
+                const relatedTagPosts = await Post.find(relatedQuery)
+                  .populate("author", "username email fullname avatar")
+                  .sort({ createdAt: -1 })
+                  .limit(5);
+
+                relatedPosts = await Promise.all(
+                  relatedTagPosts.map(async (post) => {
                     const [likes, comments] = await Promise.all([
-                      Feedback.find({ postId: post._id, type: "like" }).select(
-                        "userId"
-                      ),
+                      Feedback.find({
+                        postId: post._id,
+                        type: "like",
+                      }).select("userId"),
                       Feedback.countDocuments({
                         postId: post._id,
                         type: "comment",
@@ -498,30 +519,18 @@ export const PostController = {
                     return {
                       ...post.toJSON(),
                       type: "post",
+                      isRelated: true,
                       likes: likes.map((like) => like.userId),
                       likesCount: likes.length,
                       commentsCount: comments,
-                      isRelated: true,
+                      isLiked: false,
                     };
-                  } catch (error) {
-                    console.error("Error processing related post:", error);
-                    // Trả về bài viết cơ bản nếu xử lý chi tiết thất bại
-                    return {
-                      ...post.toJSON(),
-                      type: "post",
-                      likes: [],
-                      likesCount: 0,
-                      commentsCount: 0,
-                      isRelated: true,
-                    };
-                  }
-                })
-              );
+                  })
+                );
+              }
             }
-          } catch (error) {
-            console.error("Error finding related posts:", error);
-            // Vẫn tiếp tục mà không có bài viết liên quan
-            relatedPosts = [];
+          } catch (relatedError) {
+            console.error("Error finding related posts:", relatedError);
           }
         }
 
@@ -590,6 +599,7 @@ export const PostController = {
 
       post.deleted = false;
       post.deletedAt = null;
+      post.status = "approved"; // Restore to approved state
       await post.save();
 
       return res
@@ -696,9 +706,20 @@ export const PostController = {
 
   addComment: async (req, res) => {
     try {
-      const { comment, parentId } = req.body;
+      console.log("Comment request body:", JSON.stringify(req.body));
+
+      // Extract comment data with defaults for empty fields
+      const { comment = "", parentId = null, image = null } = req.body;
+
       const postId = req.params.id;
       const userId = req.user._id;
+
+      // Log the actual values we'll be using
+      console.log(
+        `Creating comment with: text="${comment}", image=${
+          image ? "present" : "none"
+        }, parentId=${parentId || "none"}`
+      );
 
       const post = await Post.findOne({ _id: postId, deleted: false });
       if (!post) {
@@ -724,11 +745,27 @@ export const PostController = {
         }
       }
 
+      // Validate that either comment or image is provided
+      if ((!comment || comment.trim() === "") && !image) {
+        return res.status(400).json({
+          success: false,
+          error: "Comment text or image is required",
+        });
+      }
+
+      console.log(
+        "Creating new comment with content:",
+        comment,
+        "image:",
+        image ? "present" : "none"
+      );
+
       const newFeedback = new Feedback({
         postId,
         userId,
         type: "comment",
-        content: comment,
+        content: comment || "", // Ensure empty string if no comment
+        image: image || null, // Ensure null if no image
         parentId: parentId || null,
       });
       await newFeedback.save();
@@ -743,6 +780,7 @@ export const PostController = {
       const formattedComment = {
         _id: newFeedback._id,
         content: newFeedback.content,
+        image: newFeedback.image,
         parentId: newFeedback.parentId,
         userId: {
           _id: userInfo._id || userId,
@@ -766,14 +804,6 @@ export const PostController = {
 
       // Get post owner ID
       const postOwnerId = post.author.toString();
-
-      // Emit socket event for real-time comment update
-      emitCommentEvent("comment_added", postId, {
-        postId,
-        comment: formattedComment,
-        commentsCount: totalComments,
-        postOwnerId,
-      });
 
       return res.status(200).json({
         success: true,
@@ -844,14 +874,6 @@ export const PostController = {
       // Get post owner ID
       const postOwnerId = post.author.toString();
 
-      // Emit socket event for real-time comment update
-      emitCommentEvent("comment_deleted", postId, {
-        postId,
-        commentId,
-        commentsCount: totalComments,
-        postOwnerId,
-      });
-
       return res.status(200).json({
         success: true,
         message: "Comment deleted successfully",
@@ -867,9 +889,18 @@ export const PostController = {
 
   updateComment: async (req, res) => {
     try {
+      console.log("Update comment request body:", JSON.stringify(req.body));
+
       const { id: postId, commentId } = req.params;
-      const { comment } = req.body;
+      const { comment = "", image } = req.body;
       const userId = req.user._id;
+
+      // Log the actual values we'll be using
+      console.log(
+        `Updating comment ${commentId} with: text="${comment}", image=${
+          image !== undefined ? (image ? "present" : "removed") : "unchanged"
+        }`
+      );
 
       // Check if post exists
       const post = await Post.findOne({ _id: postId, deleted: false });
@@ -905,8 +936,30 @@ export const PostController = {
         });
       }
 
-      // Update comment content
-      commentDoc.content = comment;
+      // Validate that either comment or image is provided
+      const willHaveContent =
+        comment !== undefined
+          ? comment.trim() !== ""
+          : commentDoc.content.trim() !== "";
+      const willHaveImage =
+        image !== undefined ? image !== null : commentDoc.image !== null;
+
+      if (!willHaveContent && !willHaveImage) {
+        return res.status(400).json({
+          success: false,
+          error: "Comment text or image is required",
+        });
+      }
+
+      // Update comment content and image
+      if (comment !== undefined) {
+        commentDoc.content = comment;
+      }
+
+      if (image !== undefined) {
+        commentDoc.image = image;
+      }
+
       await commentDoc.save();
 
       // Populate user info
@@ -917,6 +970,7 @@ export const PostController = {
       const formattedComment = {
         _id: commentDoc._id,
         content: commentDoc.content,
+        image: commentDoc.image,
         parentId: commentDoc.parentId,
         userId: {
           _id: userInfo._id || userId,
@@ -934,13 +988,6 @@ export const PostController = {
 
       // Get post owner ID
       const postOwnerId = post.author.toString();
-
-      // Emit socket event for real-time update
-      emitCommentEvent("comment_updated", postId, {
-        postId,
-        comment: formattedComment,
-        postOwnerId,
-      });
 
       return res.status(200).json({
         success: true,
@@ -995,6 +1042,7 @@ export const PostController = {
         const formattedComment = {
           _id: comment._id,
           content: comment.content,
+          image: comment.image,
           parentId: comment.parentId,
           userId: comment.userId || {
             _id: "deleted",
@@ -1140,6 +1188,7 @@ export const PostController = {
       const formattedComment = {
         _id: comment._id,
         content: comment.content,
+        image: comment.image,
         parentId: comment.parentId,
         userId: {
           _id: userInfo._id || userId,
@@ -1157,18 +1206,6 @@ export const PostController = {
 
       // Get post owner ID
       const postOwnerId = post.author.toString();
-
-      // Emit socket event with enhanced data for nested comments
-      emitCommentEvent("comment_liked", postId, {
-        postId,
-        comment: formattedComment,
-        commentId,
-        parentId,
-        isNestedComment,
-        likesCount: formattedComment.likesCount,
-        isLiked: !isLiked,
-        postOwnerId,
-      });
 
       return res.status(200).json({
         success: true,
@@ -1202,16 +1239,16 @@ export const PostController = {
       }
 
       const userId = req.user._id;
-      const { limit = 10 } = req.query;
+      const { limit = 20, page = 1 } = req.query;
       console.log(
-        `Getting recommendations for user ${userId} with limit ${limit}`
+        `Getting recommendations for user ${userId} with limit ${limit} page ${page}`
       );
 
       // Get personalized recommendations
       try {
         const recommendations = await RecommendationService.getRecommendations(
           userId,
-          Number(limit)
+          Number(limit) * 2 // Get more recommendations to support pagination
         );
 
         console.log(
@@ -1223,6 +1260,11 @@ export const PostController = {
           return res.status(200).json({
             success: true,
             data: [],
+            pagination: {
+              total: 0,
+              page: parseInt(page),
+              totalPages: 0,
+            },
             meta: {
               count: 0,
               requestedLimit: Number(limit),
@@ -1231,9 +1273,19 @@ export const PostController = {
           });
         }
 
+        // Implement pagination
+        const pageInt = parseInt(page);
+        const limitInt = parseInt(limit);
+        const startIndex = (pageInt - 1) * limitInt;
+        const endIndex = startIndex + limitInt;
+        const paginatedRecommendations = recommendations.slice(
+          startIndex,
+          endIndex
+        );
+
         // Add additional post metadata if needed
         const enhancedRecommendations = await Promise.all(
-          recommendations.map(async (post) => {
+          paginatedRecommendations.map(async (post) => {
             // Check if user has liked the post
             const isLiked = await Feedback.exists({
               postId: post._id,
@@ -1266,9 +1318,18 @@ export const PostController = {
           `Returning ${enhancedRecommendations.length} enhanced recommendations`
         );
 
+        // Calculate pagination info
+        const totalRecommendations = recommendations.length;
+        const totalPages = Math.ceil(totalRecommendations / limitInt);
+
         return res.status(200).json({
           success: true,
           data: enhancedRecommendations,
+          pagination: {
+            total: totalRecommendations,
+            page: pageInt,
+            totalPages: totalPages,
+          },
           meta: {
             count: enhancedRecommendations.length,
             requestedLimit: Number(limit),

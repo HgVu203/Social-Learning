@@ -16,7 +16,7 @@ export const POST_QUERY_KEYS = {
 
 export const usePostQueries = {
   // Fetch posts with pagination
-  usePosts: (filter = "latest", limit = 10) => {
+  usePosts: (filter = "latest", limit = 20) => {
     return useInfiniteQuery({
       queryKey: POST_QUERY_KEYS.list({ filter }),
       queryFn: async ({ pageParam = 1 }) => {
@@ -24,7 +24,7 @@ export const usePostQueries = {
           // Use different endpoint for recommended posts
           let endpoint = `/posts?filter=${filter}&page=${pageParam}&limit=${limit}`;
           if (filter === "recommended") {
-            endpoint = `/posts/recommended?limit=${limit}`;
+            endpoint = `/posts/recommended?page=${pageParam}&limit=${limit}`;
             console.log("Fetching recommendations from endpoint:", endpoint);
           }
 
@@ -97,11 +97,7 @@ export const usePostQueries = {
         }
       },
       getNextPageParam: (lastPage) => {
-        // Don't paginate recommended posts - they're returned all at once
-        if (filter === "recommended") {
-          return undefined;
-        }
-
+        // Enable pagination for recommended posts too
         if (lastPage.pagination) {
           const { page, totalPages } = lastPage.pagination;
           return page < totalPages ? page + 1 : undefined;
@@ -196,7 +192,7 @@ export const usePostQueries = {
       },
       enabled: !!postId,
       refetchOnWindowFocus: true,
-      staleTime: 30000, // 30 seconds
+      staleTime: 60000, // 60 seconds (increased from 30 seconds)
       refetchInterval: queryOptions.refetchInterval || null, // Add refetchInterval option for polling
       ...queryOptions, // Merge other options
     });
@@ -234,7 +230,7 @@ export const usePostQueries = {
   },
 
   // Fetch posts for a specific group
-  useGroupPosts: (groupId, limit = 10) => {
+  useGroupPosts: (groupId, limit = 20) => {
     return useInfiniteQuery({
       queryKey: POST_QUERY_KEYS.groupPosts(groupId),
       queryFn: async ({ pageParam = 1 }) => {

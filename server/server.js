@@ -17,6 +17,7 @@ import messageRouter from "./routers/message.router.js";
 import userRouter from "./routers/user.router.js";
 import groupRouter from "./routers/group.router.js";
 import uploadRouter from "./routers/upload.router.js";
+import adminRouter from "./routers/admin.router.js";
 import Post from "./models/post.model.js";
 
 import "./config/passport.js";
@@ -93,6 +94,7 @@ app.use("/api/message", messageRouter);
 app.use("/api/users", userRouter);
 app.use("/api/group", groupRouter);
 app.use("/api/upload", uploadRouter);
+app.use("/api/admin", adminRouter);
 
 app.get("/", (req, res) => {
   res.send("Hello World");

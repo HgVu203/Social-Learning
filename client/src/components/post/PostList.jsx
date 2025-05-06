@@ -1,4 +1,4 @@
-import { memo, useRef, useCallback, useEffect } from "react";
+import { memo, useRef, useCallback, useEffect, useState } from "react";
 import PostCard from "./PostCard";
 import { usePostContext } from "../../contexts/PostContext";
 import { SkeletonCard } from "../skeleton";
@@ -6,6 +6,26 @@ import {
   prefetchImages,
   createImagePrefetchObserver,
 } from "../../utils/prefetch";
+
+// Utility function to check for duplicate IDs
+const checkForDuplicates = (posts) => {
+  if (!posts || !posts.length) return null;
+
+  const ids = new Set();
+  const duplicates = [];
+
+  for (const post of posts) {
+    if (!post._id) continue;
+
+    if (ids.has(post._id)) {
+      duplicates.push(post._id);
+    } else {
+      ids.add(post._id);
+    }
+  }
+
+  return duplicates.length ? duplicates : null;
+};
 
 const PostList = ({
   groupId,
@@ -15,6 +35,9 @@ const PostList = ({
   hasMore: propHasMore,
   loadMore: propLoadMore,
 }) => {
+  // For debugging
+  const [duplicateIDs, setDuplicateIDs] = useState(null);
+
   // Nếu props được cung cấp, sử dụng props, nếu không sử dụng context
   const context = usePostContext();
 
@@ -99,7 +122,7 @@ const PostList = ({
               loadMoreFunc();
             }
           },
-          { threshold: 0.5 }
+          { threshold: 0.1, rootMargin: "500px 0px" }
         );
 
         if (node) observer.current.observe(node);
@@ -115,6 +138,17 @@ const PostList = ({
       postsRef.current[index] = el;
     }
   };
+
+  // Check for duplicates when posts change
+  useEffect(() => {
+    const duplicates = checkForDuplicates(posts);
+    if (duplicates) {
+      console.warn("Duplicate post IDs detected:", duplicates);
+      setDuplicateIDs(duplicates);
+    } else {
+      setDuplicateIDs(null);
+    }
+  }, [posts]);
 
   if (loading && !posts?.length) {
     return (
@@ -132,6 +166,11 @@ const PostList = ({
         {error.message || "Failed to load posts"}
       </div>
     );
+  }
+
+  // Display warning about duplicate IDs if any were found
+  if (duplicateIDs && duplicateIDs.length > 0) {
+    console.warn(`PostList: Found ${duplicateIDs.length} duplicate post IDs`);
   }
 
   if (!posts?.length) {
@@ -159,11 +198,14 @@ const PostList = ({
   return (
     <div className="flex flex-col gap-6">
       {posts.map((post, index) => {
+        // Generate a unique key that includes both ID and index for safety
+        const key = post._id ? `${post._id}-${index}` : `post-${index}`;
+
         // Xác định xem đây có phải là phần tử cuối cùng không để gắn ref
         if (posts.length === index + 1) {
           return (
             <div
-              key={post._id}
+              key={key}
               ref={(el) => {
                 lastPostElementRef(el);
                 setPostRef(el, index);
@@ -174,7 +216,7 @@ const PostList = ({
           );
         } else {
           return (
-            <div key={post._id} ref={(el) => setPostRef(el, index)}>
+            <div key={key} ref={(el) => setPostRef(el, index)}>
               <PostCard post={post} />
             </div>
           );

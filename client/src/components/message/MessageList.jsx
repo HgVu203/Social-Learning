@@ -1,13 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  FiSearch,
-  FiPlus,
-  FiMessageSquare,
-  FiUsers,
-  FiUserPlus,
-} from "react-icons/fi";
+import { FiSearch, FiMessageSquare, FiUsers, FiUserPlus } from "react-icons/fi";
 import { useConversations } from "../../hooks/queries/useMessageQueries.js";
 import {
   useFriends,
@@ -26,8 +20,6 @@ const MessageList = ({ onSelectFriend }) => {
   const { user } = useAuth();
   const { isConversationActive } = useMessageContext();
   const { friends: contextFriends, fetchFriends } = useFriend();
-
-  const containerRef = useRef(null);
 
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -547,92 +539,68 @@ const MessageList = ({ onSelectFriend }) => {
 
   // Main render
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Search input */}
-      <div
-        className={`flex-shrink-0 p-2 border-b border-[var(--color-border)] transition-all duration-300 ${
-          isSearchFocused ? "bg-[var(--color-card-bg)]" : "bg-transparent"
-        }`}
-      >
-        <div
-          className={`relative transition-all duration-300 ${
-            isSearchFocused ? "ring-2 ring-[var(--color-primary)]" : ""
-          }`}
-        >
+    <div className="relative flex flex-col h-full">
+      {/* Fixed Search Header */}
+      <div className="sticky top-0 z-10 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] shadow-sm p-2">
+        <div className="relative mb-2">
           <input
             type="text"
-            placeholder="Search users..."
+            placeholder="Search contacts..."
             value={searchQuery}
             onChange={handleSearchChange}
             onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
-            className="w-full py-1.5 pl-8 pr-3 text-xs rounded-full bg-[var(--color-card-bg)] border border-[var(--color-border)] focus:outline-none transition-colors"
+            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+            className="w-full p-2 pl-8 bg-[var(--color-card-bg)] text-[var(--color-text-primary)] rounded-lg border border-[var(--color-border)] outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-sm"
           />
-          <FiSearch className="absolute left-3 top-2 text-[var(--color-text-secondary)]" />
+          <FiSearch
+            className="absolute left-2.5 top-2.5 text-[var(--color-text-secondary)]"
+            size={16}
+          />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex space-x-1">
+          <button
+            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-colors flex items-center justify-center ${
+              activeTab === "chats"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-card-bg-hover)] text-[var(--color-text-secondary)]"
+            }`}
+            onClick={() => setActiveTab("chats")}
+          >
+            <FiMessageSquare className="mr-1" />
+            <span>Chats</span>
+          </button>
+          <button
+            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-colors flex items-center justify-center ${
+              activeTab === "friends"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-card-bg-hover)] text-[var(--color-text-secondary)]"
+            }`}
+            onClick={() => setActiveTab("friends")}
+          >
+            <FiUsers className="mr-1" />
+            <span>Friends</span>
+          </button>
         </div>
       </div>
 
-      {/* Tabs navigation */}
-      {!searchQuery && (
-        <>
-          <div className="flex-shrink-0 w-full px-2 pt-2 pb-1 flex space-x-1 border-b border-[var(--color-border)]">
-            <button
-              onClick={() => setActiveTab("chats")}
-              className={`flex w-full justify-center items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                activeTab === "chats"
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-card-bg-hover)]"
-              }`}
-            >
-              <FiMessageSquare size={14} />
-              Chats
-            </button>
-            <button
-              onClick={() => setActiveTab("friends")}
-              className={`flex w-full justify-center items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                activeTab === "friends"
-                  ? "bg-[var(--color-primary)] text-white"
-                  : "bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-card-bg-hover)]"
-              }`}
-            >
-              <FiUsers size={14} />
-              Friends
-            </button>
+      {/* Main content - scrollable */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Content based on state */}
+        {isSearchFocused && searchQuery ? (
+          <div className="py-2 px-2">
+            <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider pb-2">
+              Search Results
+            </p>
+            {renderSearchResults()}
           </div>
-
-          {/* Display friends count when on friends tab */}
-          {activeTab === "friends" && (
-            <div className="flex-shrink-0 border-b border-[var(--color-border)] px-2 py-1">
-              <h3 className="text-xs font-medium text-[var(--color-text-primary)]">
-                Friends ({localFriends?.length || contextFriends?.length || 0})
-              </h3>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Main content area - with fixed max height to ensure scrolling is contained */}
-      <div
-        className="flex-1 overflow-y-auto min-h-0 max-h-[calc(100vh-200px)] py-2 no-scrollbar"
-        ref={containerRef}
-        style={{ scrollbarWidth: "none" }}
-      >
-        {searchQuery
-          ? renderSearchResults()
-          : activeTab === "chats"
-          ? renderConversations()
-          : renderFriends()}
+        ) : activeTab === "chats" ? (
+          <div className="py-2 px-2">{renderConversations()}</div>
+        ) : (
+          <div className="py-2 px-2">{renderFriends()}</div>
+        )}
       </div>
-
-      {/* Floating New Chat button */}
-      {activeTab === "chats" && !searchQuery && !isConversationsLoading && (
-        <Link
-          to="/friends"
-          className="absolute bottom-4 right-4 w-12 h-12 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center shadow-lg hover:bg-opacity-90 transition-all"
-        >
-          <FiPlus size={24} />
-        </Link>
-      )}
     </div>
   );
 };

@@ -21,6 +21,10 @@ const FeedbackSchema = new mongoose.Schema(
     content: {
       type: String,
     },
+    image: {
+      type: String,
+      default: null,
+    },
     parentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Feedback",

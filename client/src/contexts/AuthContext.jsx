@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useAuthSession } from "../hooks/queries/useAuthQueries";
 import useAuthMutations from "../hooks/mutations/useAuthMutations";
 import tokenService from "../services/tokenService";
-import { initSocket, closeSocket } from "../socket";
+import { closeSocket } from "../socket";
 
 const AuthContext = createContext({
   isAuthenticated: false,
@@ -57,15 +57,30 @@ export const AuthProvider = ({ children }) => {
         console.log("Adding token to user data");
         userData.token = data.data.token;
       } else if (!userData.token) {
-        console.warn("No token found in session data or user object");
+        // Thử lấy token từ localStorage nếu không có trong response
+        const savedToken = tokenService.getToken();
+        if (savedToken) {
+          console.log("Using token from localStorage");
+          userData.token = savedToken;
+        } else {
+          console.warn(
+            "No token found in session data, user object, or localStorage"
+          );
+        }
       }
 
+      // Lưu user vào state và localStorage để đảm bảo tính nhất quán
       setUser(userData);
+      try {
+        tokenService.setUser(userData);
+      } catch (err) {
+        console.error("Error saving user to localStorage:", err);
+      }
+
       setLoading(false);
 
-      // Initialize socket connection when user is authenticated
-      console.log("Initializing socket connection after authentication");
-      initSocket();
+      // Không tự động kết nối socket sau khi đăng nhập
+      // initSocket(); - đã xóa
     } else {
       console.log("No valid user data in session response:", data);
       setUser(null);
@@ -154,7 +169,10 @@ export const AuthProvider = ({ children }) => {
 
       return result;
     } catch (error) {
-      setError(error.response?.data?.message || "Invalid verification code. Please try again.");
+      setError(
+        error.response?.data?.message ||
+          "Invalid verification code. Please try again."
+      );
       throw error;
     } finally {
       setLoading(false);

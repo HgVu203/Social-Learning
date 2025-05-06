@@ -1,11 +1,11 @@
 import { useEffect, lazy, Suspense } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, Navigate, Outlet } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { defaultConfig } from "./utils/toast";
 import { useAuth } from "./contexts/AuthContext";
 import { useTheme } from "./contexts/ThemeContext";
-import { connectSocket, disconnectSocket } from "./services/socket";
+import { disconnectSocket } from "./services/socket";
 import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
 import ScrollToTop from "./components/common/ScrollToTop";
@@ -45,6 +45,9 @@ const SocialAuthCallback = lazy(() =>
 const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 
+// Admin Pages
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+
 // Game Pages
 const GamesPage = lazy(() => import("./pages/game/GamesPage"));
 const CodeChallengePage = lazy(() => import("./pages/game/CodeChallengePage"));
@@ -58,42 +61,49 @@ const LoadingFallback = () => (
   </div>
 );
 
+// Protected Admin Route Component
+const AdminRoute = () => {
+  const { user, loading } = useAuth();
+
+  // Sử dụng useEffect để kiểm tra cả user từ context và từ localStorage
+  useEffect(() => {
+    if (!loading) {
+      // Có thể thêm logic kiểm tra từ localStorage nếu cần
+      const storedUser = tokenService.getUser();
+      console.log("Admin route check - Context user:", user);
+      console.log("Admin route check - Stored user:", storedUser);
+    }
+  }, [user, loading]);
+
+  if (loading) {
+    return <LoadingFallback />;
+  }
+
+  // Kiểm tra quyền admin từ user trong context hoặc localStorage
+  const storedUser = tokenService.getUser();
+  const isAdmin =
+    (user && user.role === "admin") ||
+    (storedUser && storedUser.role === "admin");
+
+  // Sử dụng Navigate component thay vì hook
+  return isAdmin ? <Outlet /> : <Navigate to="/login" />;
+};
+
 function App() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
 
-  // Handle socket connection based on authentication state
+  // Handle socket disconnection when logging out
   useEffect(() => {
-    if (isAuthenticated && user) {
-      // Connect socket when user logs in
-      try {
-        const userToken =
-          user.token || user.accessToken || tokenService.getToken();
-        if (userToken) {
-          console.log("Connecting socket with token:", userToken);
-          connectSocket(userToken);
-        } else {
-          console.error(
-            "User is authenticated but token is missing - user object:",
-            user
-          );
-          connectSocket();
-        }
-      } catch (error) {
-        console.error("Socket connection error:", error);
-      }
-    } else {
-      // Disconnect socket when user logs out
-      try {
-        console.log("Disconnecting socket due to user logout");
-        disconnectSocket(false); // Complete disconnect on logout
-      } catch (error) {
-        console.error("Socket disconnection error:", error);
-      }
+    console.log("Auth state changed", isAuthenticated);
+
+    if (!isAuthenticated) {
+      // Disconnect socket on logout
+      disconnectSocket(false); // Complete disconnect on logout
     }
 
-    // Cleanup on app unmount only, not on auth state changes
+    // Cleanup on app unmount only
     return () => {
       if (window.isUnmounting) {
         try {
@@ -104,14 +114,7 @@ function App() {
         }
       }
     };
-  }, [isAuthenticated, user]);
-
-  // Set unmounting flag
-  useEffect(() => {
-    return () => {
-      window.isUnmounting = true;
-    };
-  }, []);
+  }, [isAuthenticated]);
 
   // Track navigation to handle socket pausing between pages (except messages pages)
   useEffect(() => {
@@ -128,6 +131,35 @@ function App() {
     if (!isMessagesPage && isAuthenticated) {
       console.log("Navigated away from messages page, pausing socket");
       disconnectSocket(true); // Disconnect with navigation flag to enable reconnection
+    }
+  }, [location.pathname, isAuthenticated]);
+
+  // Track navigation to explicitly handle socket connections only on message pages
+  useEffect(() => {
+    const isMessagesPage =
+      location.pathname.startsWith("/messages") ||
+      location.pathname.includes("/chat");
+    const isInitialLoad = window.initialPageLoad;
+
+    // Skip initial page load
+    if (isInitialLoad) {
+      window.initialPageLoad = false;
+      return;
+    }
+
+    // Chỉ xử lý socket khi người dùng đã đăng nhập
+    if (isAuthenticated) {
+      if (isMessagesPage) {
+        // Nếu đang ở trang message, kết nối socket
+        console.log("Navigated to messages page, connecting socket");
+        import("./services/socket").then(({ connectSocket }) => {
+          connectSocket();
+        });
+      } else {
+        // Nếu đang rời khỏi trang message, đóng socket
+        console.log("Navigated away from messages page, disconnecting socket");
+        disconnectSocket(true); // Ngắt kết nối với flag thông báo do chuyển trang
+      }
     }
   }, [location.pathname, isAuthenticated]);
 
@@ -504,6 +536,18 @@ function App() {
                   <TechQuizPage />
                 </Suspense>
               </MainLayout>
+            }
+          />
+        </Route>
+
+        {/* Admin Routes */}
+        <Route element={<AdminRoute />}>
+          <Route
+            path="/admin"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <AdminDashboard />
+              </Suspense>
             }
           />
         </Route>

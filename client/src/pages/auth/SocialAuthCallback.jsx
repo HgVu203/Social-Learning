@@ -83,7 +83,12 @@ const SocialAuthCallback = () => {
 
             // Redirect with slight delay to ensure state is updated
             setTimeout(() => {
-              navigate("/", { replace: true });
+              // Redirect admin users to admin dashboard
+              if (userWithToken.role === "admin") {
+                navigate("/admin", { replace: true });
+              } else {
+                navigate("/", { replace: true });
+              }
             }, 500);
           } else {
             console.error("Failed to set credentials", result);

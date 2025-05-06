@@ -287,24 +287,52 @@ export const usePostMutations = () => {
 
   // Create a comment
   const createComment = useMutation({
-    mutationFn: async ({ postId, content, parentId = null }) => {
-      console.log(`Creating comment on post ${postId} with content:`, content);
+    mutationFn: async ({
+      postId,
+      content,
+      comment,
+      parentId = null,
+      image = null,
+    }) => {
+      // Support both "content" and "comment" property names for flexibility
+      const commentText = comment || content || "";
+
+      console.log(
+        `Creating comment on post ${postId} with content:`,
+        commentText
+      );
       console.log(`Parent comment ID (if reply):`, parentId);
 
-      const payload = {
-        comment: content,
-      };
-
-      if (parentId) {
-        payload.parentId = parentId;
+      if (image) {
+        console.log(`Comment includes image URL:`, image);
       }
 
-      const response = await axiosService.post(
-        `/posts/${postId}/comment`,
-        payload
-      );
-      console.log("Create comment response:", response.data);
-      return response.data;
+      const payload = {
+        comment: commentText,
+        parentId: parentId || null,
+      };
+
+      if (image) {
+        console.log("Adding image URL to payload:", image);
+        payload.image = image;
+      }
+
+      console.log("Final comment payload:", JSON.stringify(payload));
+
+      try {
+        const response = await axiosService.post(
+          `/posts/${postId}/comments`,
+          payload
+        );
+        console.log("Create comment response:", response.data);
+        return response.data;
+      } catch (error) {
+        console.error(
+          "Comment API error:",
+          error.response?.data || error.message
+        );
+        throw error;
+      }
     },
     onSuccess: (data) => {
       console.log("Comment created successfully:", data);
@@ -326,19 +354,55 @@ export const usePostMutations = () => {
 
   // Update a comment
   const updateComment = useMutation({
-    mutationFn: async ({ postId, commentId, content }) => {
+    mutationFn: async ({
+      postId,
+      commentId,
+      content,
+      comment,
+      image = null,
+    }) => {
+      // Support both "content" and "comment" property names for flexibility
+      const commentText = comment || content || "";
+
       console.log(
         `Updating comment ${commentId} on post ${postId} with content:`,
-        content
+        commentText
       );
-      const response = await axiosService.put(
-        `posts/${postId}/comment/${commentId}`,
-        {
-          comment: content,
-        }
-      );
-      console.log("Update comment response:", response.data);
-      return { ...response.data, postId, commentId, content };
+
+      if (image) {
+        console.log(`Update includes image:`, image);
+      }
+
+      const payload = {
+        comment: commentText,
+      };
+
+      if (image !== undefined) {
+        payload.image = image;
+      }
+
+      console.log("Update comment payload:", JSON.stringify(payload));
+
+      try {
+        const response = await axiosService.put(
+          `posts/${postId}/comments/${commentId}`,
+          payload
+        );
+        console.log("Update comment response:", response.data);
+        return {
+          ...response.data,
+          postId,
+          commentId,
+          content: commentText,
+          image,
+        };
+      } catch (error) {
+        console.error(
+          "Comment update API error:",
+          error.response?.data || error.message
+        );
+        throw error;
+      }
     },
     onSuccess: (data) => {
       console.log("Comment updated successfully:", data);

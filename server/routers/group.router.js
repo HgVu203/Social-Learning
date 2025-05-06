@@ -4,8 +4,12 @@ import protectedRouter from "../middleware/protectedRouter.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import { groupValidationSchema } from "../utils/validator/group.validator.js";
 import { groupImageUpload } from "../middleware/upload.cloudinary.js";
+import optionalAuth from "../middleware/optionalAuth.js";
 
 const router = express.Router();
+
+// Public route with optional authentication for search
+router.get("/search", optionalAuth, GroupController.searchGroups);
 
 // Protected routes
 router.use(protectedRouter);

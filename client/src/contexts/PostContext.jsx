@@ -4,6 +4,25 @@ import { usePostQueries } from "../hooks/queries/usePostQueries";
 import { usePostMutations } from "../hooks/mutations/usePostMutations";
 import { useAuth } from "./AuthContext";
 
+// Utility function to deduplicate posts by ID
+const deduplicatePosts = (posts) => {
+  if (!posts || !posts.length) return [];
+
+  const uniquePosts = [];
+  const seenIds = new Set();
+
+  for (const post of posts) {
+    if (!post._id) continue;
+
+    if (!seenIds.has(post._id)) {
+      seenIds.add(post._id);
+      uniquePosts.push(post);
+    }
+  }
+
+  return uniquePosts;
+};
+
 const PostContext = createContext({
   posts: [],
   currentPost: null,
@@ -89,7 +108,9 @@ export const PostProvider = ({ children }) => {
   } = usePostMutations();
 
   // Derived state
-  const posts = postsData?.pages?.flatMap((page) => page.data) || [];
+  const posts = deduplicatePosts(
+    postsData?.pages?.flatMap((page) => page.data) || []
+  );
   const totalPosts = postsData?.pages?.[0]?.pagination?.total || 0;
   const hasMore = hasNextPage;
 
@@ -122,7 +143,9 @@ export const PostProvider = ({ children }) => {
 
   // Get the appropriate posts data based on whether we're viewing group posts
   const currentPosts = groupId
-    ? groupPostsData?.pages?.flatMap((page) => page.data) || []
+    ? deduplicatePosts(
+        groupPostsData?.pages?.flatMap((page) => page.data) || []
+      )
     : posts;
 
   const currentHasMore = groupId ? hasNextGroupPage : hasMore;

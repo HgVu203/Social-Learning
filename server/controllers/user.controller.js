@@ -272,11 +272,18 @@ export const UserController = {
         });
       }
 
+      // Import AI search service
+      const { AISearchService } = await import(
+        "../services/ai-search.service.js"
+      );
+      const aiSearchService = new AISearchService();
+
       // Tạo điều kiện tìm kiếm (username hoặc fullname chứa query)
       const searchCondition = {
         $or: [
           { username: { $regex: query, $options: "i" } },
           { fullname: { $regex: query, $options: "i" } },
+          { bio: { $regex: query, $options: "i" } }, // Add bio search
         ],
       };
 
@@ -291,11 +298,59 @@ export const UserController = {
         .limit(limit * 1)
         .skip((page - 1) * limit);
 
+      // Mark the type as 'user' for frontend consistency
+      let usersWithType = users.map((user) => ({
+        ...user.toJSON(),
+        type: "user",
+      }));
+
+      // Use AI to enhance search results if there are results
+      if (usersWithType.length > 0) {
+        usersWithType = await aiSearchService.enhanceSearchResults(
+          query,
+          usersWithType
+        );
+      }
+
+      // If no results found, try finding related users with similar interests
+      if (usersWithType.length === 0) {
+        // Try to find users with similar names or usernames (fuzzy matching)
+        const fuzzyQuery = query
+          .split(/\s+/)
+          .filter((word) => word.length >= 3);
+
+        if (fuzzyQuery.length > 0) {
+          const fuzzyConditions = [];
+
+          // For each part of the query, look for partial matches
+          fuzzyQuery.forEach((part) => {
+            fuzzyConditions.push(
+              { username: { $regex: part, $options: "i" } },
+              { fullname: { $regex: part, $options: "i" } }
+            );
+          });
+
+          // Find users with any of the fuzzy conditions
+          const similarUsers = await User.find({
+            $or: fuzzyConditions,
+            _id: userId ? { $ne: userId } : { $exists: true },
+          })
+            .select("username fullname avatar bio")
+            .limit(limit * 1);
+
+          usersWithType = similarUsers.map((user) => ({
+            ...user.toJSON(),
+            type: "user",
+            isSimilarMatch: true,
+          }));
+        }
+      }
+
       const total = await User.countDocuments(searchCondition);
 
       return res.status(200).json({
         success: true,
-        data: users,
+        data: usersWithType,
         pagination: {
           total,
           page: parseInt(page),

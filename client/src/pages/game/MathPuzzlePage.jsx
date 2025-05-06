@@ -79,10 +79,18 @@ const MathPuzzlePage = () => {
   const loadProblems = async () => {
     setIsLoading(true);
     try {
+      // Get user data from API or use default values
+      const userData = await userService.getCurrentUser().catch(() => ({
+        rank: "Rookie",
+        points: 0,
+      }));
+
       const newProblems = await generateMathProblems({
         count: gameMode === "time" ? 20 : 10,
         level: level,
         category: selectedCategory,
+        userRank: userData.rank || "Rookie",
+        points: userData.points || 0,
       });
 
       setProblems(newProblems);

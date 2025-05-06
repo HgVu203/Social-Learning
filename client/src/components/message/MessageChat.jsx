@@ -1587,13 +1587,18 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
   // Kiểm tra và phòng ngừa lỗi
   try {
+    // If no conversation is selected, show the placeholder component instead
+    if (!conversationId) {
+      return <NoConversationSelected />;
+    }
+
     return (
-      <div className="flex flex-col h-full">
-        {/* Chat Header */}
+      <div className="h-full flex flex-col bg-[var(--color-card-bg)] w-full relative">
+        {/* Chat header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 border-b border-[var(--color-border)] flex items-center bg-[var(--color-card-bg-secondary)] sticky top-0 z-10 shadow-sm"
+          className="flex items-center px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-card-bg)]"
         >
           <div className="md:hidden">
             <button
@@ -1622,7 +1627,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
                 <span className="absolute right-0 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[var(--color-card-bg-secondary)] shadow-sm"></span>
               )}
             </div>
-            <div className="ml-3">
+            <div className="ml-3 hidden md:block">
               <Link
                 to={`/profile/${currentConversation._id}`}
                 className="hover:underline"
@@ -1633,6 +1638,11 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
                     "User"}
                 </h3>
               </Link>
+              <p className="text-xs text-[var(--color-text-tertiary)]">
+                {currentConversation?.isOnline ? "Active now" : "Offline"}
+              </p>
+            </div>
+            <div className="ml-3 md:hidden">
               <p className="text-xs text-[var(--color-text-tertiary)]">
                 {currentConversation?.isOnline ? "Active now" : "Offline"}
               </p>
@@ -1688,11 +1698,11 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         {/* Messages */}
         <div
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-3 pb-8 bg-[var(--color-card-bg)] no-scrollbar"
+          className="flex-1 overflow-y-auto px-4 py-3 pb-12 bg-[var(--color-card-bg)] no-scrollbar"
           onScroll={handleScroll}
           style={{
             isolation: "isolate",
-            height: "calc(100vh - 170px)",
+            height: "calc(100% - 140px)" /* Giảm độ dài khung chat */,
             backgroundImage:
               "linear-gradient(to bottom, rgba(40, 40, 50, 0.2) 0%, rgba(30, 30, 40, 0) 100%)",
           }}
@@ -1703,7 +1713,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         {/* Message Input */}
         <form
           onSubmit={handleSendMessage}
-          className="p-2 border-t border-[var(--color-border)] bg-[var(--color-card-bg)] flex items-center justify-between gap-2"
+          className="px-2 py-2 pt-3 mt-2 border-t border-[var(--color-border)] bg-[var(--color-card-bg)] flex items-center justify-between gap-2 sticky bottom-0 z-10 shadow-md"
         >
           <div className="flex items-center space-x-1">
             <button
