@@ -3,17 +3,41 @@ import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import MessagesContainer from "../../components/message/MessagesContainer";
 import { useAuth } from "../../contexts/AuthContext";
+import { connectSocket } from "../../services/socket";
+import { useSocket } from "../../contexts/SocketContext";
 
 const MessagesPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { userId } = useParams(); // Get userId from URL params
+  const { forceReconnect, isConnected } = useSocket();
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
+
+  // Đảm bảo kết nối socket khi trang Messages được tải
+  useEffect(() => {
+    console.log("MessagesPage mounted, establishing socket connection");
+
+    // Kết nối socket ngay khi component mount
+    connectSocket();
+
+    // Nếu chưa kết nối, thử kết nối lại sau 1 giây
+    if (!isConnected) {
+      setTimeout(() => {
+        console.log("Initial socket connect failed, trying again");
+        forceReconnect();
+      }, 1000);
+    }
+
+    // Cleanup khi unmount
+    return () => {
+      console.log("MessagesPage unmounted");
+    };
+  }, [isConnected, forceReconnect]);
 
   return (
     <div className="max-w-7xl mx-auto py-1 sm:py-3 md:py-4 px-2 sm:px-3 md:px-4">

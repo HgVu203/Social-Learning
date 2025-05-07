@@ -36,8 +36,28 @@ const MessagesContainer = ({ userId }) => {
 
   // Cải thiện kết nối socket khi component khởi tạo
   useEffect(() => {
-    // Ensure socket is connected when viewing messages
+    console.log("MessagesContainer mounted, ensuring socket connection");
+
+    // Đảm bảo socket đã kết nối khi xem tin nhắn
     connectSocket();
+
+    // Thử kết nối lại ngay nếu chưa kết nối
+    if (!isConnected) {
+      console.log("Socket not connected yet, forcing immediate reconnect");
+      // Thử kết nối lại ngay lập tức
+      forceReconnect();
+
+      // Thử kết nối lại nhiều lần trong 10 giây đầu tiên
+      const quickReconnectAttempts = [1000, 3000, 6000, 10000];
+      quickReconnectAttempts.forEach((delay) => {
+        setTimeout(() => {
+          if (!isConnected) {
+            console.log(`Retry connection after ${delay}ms`);
+            forceReconnect();
+          }
+        }, delay);
+      });
+    }
 
     // Thiết lập interval để kiểm tra kết nối và thử lại nếu bị mất
     const checkInterval = setInterval(() => {

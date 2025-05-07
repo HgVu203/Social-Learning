@@ -9,6 +9,7 @@ import { disconnectSocket } from "./services/socket";
 import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
 import ScrollToTop from "./components/common/ScrollToTop";
+import RedirectWrapper from "./utils/RedirectWrapper";
 
 // Layout
 import ProtectedRoute from "./utils/ProtectedRoute";
@@ -270,6 +271,26 @@ function App() {
           }
         />
 
+        {/* Admin Routes - Outside MainLayout */}
+        <Route element={<AdminRoute />}>
+          <Route
+            path="/admin"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <AdminDashboard />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/admin/*"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <AdminDashboard />
+              </Suspense>
+            }
+          />
+        </Route>
+
         {/* Main Layout - all page content will be rendered inside the shared layout */}
         <Route element={<MainLayout />}>
           {/* Public Routes */}
@@ -296,6 +317,18 @@ function App() {
                 <PostDetailPage />
               </Suspense>
             }
+          />
+
+          {/* Redirect Routes for URL fixes */}
+          <Route
+            path="/profile"
+            element={
+              <RedirectWrapper targetPath="/profile" appendUserId={true} />
+            }
+          />
+          <Route
+            path="/game"
+            element={<RedirectWrapper targetPath="/games" />}
           />
 
           {/* Protected Routes */}
@@ -443,18 +476,6 @@ function App() {
               element={
                 <Suspense fallback={<LoadingFallback />}>
                   <TechQuizPage />
-                </Suspense>
-              }
-            />
-          </Route>
-
-          {/* Admin Routes */}
-          <Route element={<AdminRoute />}>
-            <Route
-              path="/admin"
-              element={
-                <Suspense fallback={<LoadingFallback />}>
-                  <AdminDashboard />
                 </Suspense>
               }
             />

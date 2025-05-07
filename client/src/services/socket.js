@@ -1,46 +1,34 @@
 /**
- * Connect to the socket server
- * @returns {boolean} Whether the connection was successful
+ * Socket service - Cung cấp các chức năng socket cho các component
+ */
+
+import * as socketManager from "../socket";
+
+/**
+ * Kết nối socket
+ * @returns {boolean} Kết quả kết nối
  */
 export const connectSocket = () => {
   console.log("Checking if socket connection is needed");
 
-  // Import the isOnMessagePage function directly from socket.js
-  import("../socket").then(({ isOnMessagePage }) => {
-    // Check if we're on a message page first
-    if (!isOnMessagePage()) {
-      console.log("Not on message page, skipping socket connection");
-      return false;
-    }
+  // Kiểm tra xem có đang ở trang message không
+  if (!socketManager.isOnMessagePage()) {
+    console.log("Not on messages page, skipping socket connection");
+    return false;
+  }
 
-    console.log("On message page, connecting socket");
-    // Proceed with socket connection since we're on a message page
-    import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
-      try {
-        const socket = initSocket();
-        if (!socket) {
-          checkAndRestoreConnection();
-        }
-        return true;
-      } catch (error) {
-        console.error("Socket connection error:", error);
-        return false;
-      }
-    });
-  });
+  console.log("On messages page, initializing socket connection");
+  const socket = socketManager.initSocket();
+  return !!socket;
 };
 
 /**
- * Disconnect from the socket server
- * @param {boolean} isNavigation - Whether the disconnect is due to navigation
- * @returns {boolean} Whether the disconnection was successful
+ * Ngắt kết nối socket
+ * @returns {boolean} Kết quả ngắt kết nối
  */
-export const disconnectSocket = (isNavigation = false) => {
+export const disconnectSocket = () => {
   try {
-    // Dynamically import socket.js to prevent circular dependency
-    import("../socket").then(({ closeSocket }) => {
-      closeSocket(isNavigation);
-    });
+    socketManager.disconnect();
     return true;
   } catch (error) {
     console.error("Error disconnecting socket:", error);
@@ -49,80 +37,157 @@ export const disconnectSocket = (isNavigation = false) => {
 };
 
 /**
- * Check if the socket is currently connected
- * @returns {boolean} Whether the socket is connected
+ * Kiểm tra socket đã kết nối chưa
+ * @returns {boolean} Trạng thái kết nối
  */
 export const isSocketConnected = () => {
-  try {
-    // Use a more direct approach to check connection status
-    const { socket } = window.socketState || {};
-    return socket && socket.connected;
-  } catch {
-    return false;
-  }
+  return socketManager.isSocketConnected();
 };
 
 /**
- * Get the socket instance
- * @returns {Object} The socket instance
+ * Lấy instance của socket
+ * @returns {Object} Socket instance
  */
 export const getSocketInstance = () => {
-  try {
-    // Dynamically import socket.js to prevent circular dependency
-    return import("../socket").then(({ getSocket }) => {
-      return getSocket();
-    });
-  } catch (error) {
-    console.error("Error getting socket instance:", error);
-    return null;
-  }
+  return socketManager.getSocket();
 };
 
 /**
- * Force reconnect the socket and refresh message subscriptions
- * @param {string} conversationId - Optional ID of current conversation to refresh
+ * Gửi tin nhắn
+ * @param {Object} message - Dữ liệu tin nhắn cần gửi
+ * @returns {boolean} Kết quả gửi tin nhắn
  */
-export const reconnectAndRefresh = (conversationId) => {
+export const sendMessage = (message) => {
+  return socketManager.sendMessage(message);
+};
+
+/**
+ * Đánh dấu tin nhắn đã đọc
+ * @param {Object} data - Dữ liệu tin nhắn cần đánh dấu đã đọc
+ * @returns {boolean} Kết quả đánh dấu
+ */
+export const markMessageAsRead = (data) => {
+  return socketManager.markMessageAsRead(data);
+};
+
+/**
+ * Tham gia phòng chat
+ * @param {string} chatId - ID của phòng chat
+ * @returns {boolean} Kết quả tham gia
+ */
+export const joinChatRoom = (chatId) => {
+  return socketManager.joinChatRoom(chatId);
+};
+
+/**
+ * Rời phòng chat
+ * @param {string} chatId - ID của phòng chat
+ * @returns {boolean} Kết quả rời phòng
+ */
+export const leaveChatRoom = (chatId) => {
+  return socketManager.leaveChatRoom(chatId);
+};
+
+/**
+ * Bắt đầu gõ tin nhắn
+ * @param {string} chatId - ID của phòng chat
+ * @returns {boolean} Kết quả bắt đầu gõ
+ */
+export const startTyping = (chatId) => {
+  return socketManager.startTyping(chatId);
+};
+
+/**
+ * Dừng gõ tin nhắn
+ * @param {string} chatId - ID của phòng chat
+ * @returns {boolean} Kết quả dừng gõ
+ */
+export const stopTyping = (chatId) => {
+  return socketManager.stopTyping(chatId);
+};
+
+/**
+ * Lắng nghe tin nhắn mới
+ * @param {string} chatId - ID của phòng chat
+ * @param {function} callback - Hàm xử lý khi có tin nhắn mới
+ * @returns {function} Hàm hủy lắng nghe
+ */
+export const subscribeToMessages = (chatId, callback) => {
+  return socketManager.subscribeToMessages(chatId, callback);
+};
+
+/**
+ * Lắng nghe trạng thái đang gõ
+ * @param {string} chatId - ID của phòng chat
+ * @param {function} callback - Hàm xử lý khi có người đang gõ
+ * @returns {function} Hàm hủy lắng nghe
+ */
+export const subscribeToTyping = (chatId, callback) => {
+  return socketManager.subscribeToTyping(chatId, callback);
+};
+
+/**
+ * Lắng nghe trạng thái online/offline
+ * @param {function} callback - Hàm xử lý khi có thay đổi trạng thái
+ * @returns {function} Hàm hủy lắng nghe
+ */
+export const subscribeToUserStatus = (callback) => {
+  return socketManager.subscribeToUserStatus(callback);
+};
+
+/**
+ * Buộc kết nối lại socket
+ * @returns {boolean} Kết quả kết nối lại
+ */
+export const forceReconnect = () => {
+  if (!socketManager.isOnMessagePage()) {
+    console.log("Not on messages page, skipping reconnection");
+    return false;
+  }
+
+  // Đánh dấu trạng thái đang kết nối lại
+  console.log("Forcing socket reconnection...");
+
   try {
-    // First check if we're on a message page
-    import("../socket").then(
-      ({ isOnMessagePage, checkAndRestoreConnection, closeSocket }) => {
-        if (!isOnMessagePage()) {
-          console.log("Not on message page, skipping socket reconnection");
+    // Ngắt kết nối hiện tại trước
+    socketManager.disconnect();
+
+    // Tạm dừng một chút để đảm bảo kết nối cũ đã đóng hoàn toàn
+    setTimeout(() => {
+      try {
+        // Khởi tạo kết nối mới
+        const socket = socketManager.initSocket();
+
+        if (socket) {
+          console.log("Socket reconnection successful:", socket.id);
+
+          // Phát sự kiện kết nối thành công nếu chưa được phát từ socket.js
+          if (socket.connected) {
+            window.dispatchEvent(new CustomEvent("socket_connected"));
+          }
+
+          return true;
+        } else {
+          console.error("Socket reconnection failed - initialization error");
+
+          // Thử lại lần nữa sau 2 giây
+          setTimeout(() => {
+            console.log("Trying one final connection attempt...");
+            socketManager.initSocket();
+          }, 2000);
+
           return false;
         }
-
-        // First disconnect if needed
-        closeSocket(true);
-
-        // Wait a brief moment
-        setTimeout(() => {
-          // Try to restore connection
-          checkAndRestoreConnection();
-
-          // Trigger a message refresh event if we have a conversation ID
-          if (conversationId) {
-            setTimeout(() => {
-              window.dispatchEvent(
-                new CustomEvent("force_message_refresh", {
-                  detail: { conversationId },
-                })
-              );
-            }, 500); // Increased timeout for better reliability
-          }
-        }, 200); // Increased timeout for better reliability
+      } catch (innerError) {
+        console.error("Error during socket reinitialization:", innerError);
+        return false;
       }
-    );
+    }, 500);
 
+    // Trả về true vì đã bắt đầu quá trình kết nối lại
     return true;
   } catch (error) {
-    console.error("Error during reconnect and refresh:", error);
-
-    // Fallback to direct connection if dynamic import fails
-    setTimeout(() => {
-      connectSocket();
-    }, 300);
-
+    console.error("Error forcing socket reconnection:", error);
     return false;
   }
 };
@@ -132,5 +197,14 @@ export default {
   disconnectSocket,
   isSocketConnected,
   getSocketInstance,
-  reconnectAndRefresh,
+  sendMessage,
+  markMessageAsRead,
+  joinChatRoom,
+  leaveChatRoom,
+  startTyping,
+  stopTyping,
+  subscribeToMessages,
+  subscribeToTyping,
+  subscribeToUserStatus,
+  forceReconnect,
 };

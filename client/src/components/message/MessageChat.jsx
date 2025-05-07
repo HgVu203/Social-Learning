@@ -30,6 +30,7 @@ import LoadingSpinner from "../common/LoadingSpinner";
 import { Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import axiosService from "../../services/axiosService";
+import { toast } from "react-hot-toast";
 
 // Animation variants outside component
 const messageVariants = {
@@ -107,11 +108,22 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   const [optimisticMessages, setOptimisticMessages] = useState([]);
   const [errorState, setErrorState] = useState(null);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
+  const [tempAttachments, setTempAttachments] = useState([]);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Context
   const { user } = useAuth();
   const { currentConversation, setCurrentConversation } = useMessageContext();
-  const { connect } = useSocket();
+  const {
+    isConnected,
+    sendMessage: socketSendMessage,
+    markAsRead: socketMarkAsRead,
+    startTyping: socketStartTyping,
+    stopTyping: socketStopTyping,
+    subscribeToMessages,
+    subscribeToTyping,
+  } = useSocket();
 
   // Derived values
   const conversationId = currentConversation?._id;
@@ -205,7 +217,6 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         error.message?.includes("network")
       ) {
         setTimeout(() => {
-          connect();
           if (conversationId) {
             window.dispatchEvent(
               new CustomEvent("force_message_refresh", {
@@ -224,7 +235,6 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
       if (conversationId) {
         setTimeout(() => {
-          connect();
           if (conversationId) {
             window.dispatchEvent(
               new CustomEvent("force_message_refresh", {
@@ -244,7 +254,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       window.removeEventListener("error", handleError);
       window.removeEventListener("socket_disconnect", handleSocketError);
     };
-  }, [conversationId, connect]);
+  }, [conversationId]);
 
   // Queries - chỉ query khi có conversation ID hợp lệ và không có lỗi
   const {
@@ -814,67 +824,155 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   }, [loading, loadingMore, prevScrollHeight]);
 
   // Send a text message
-  const handleSendMessage = useCallback(
-    async (event) => {
-      if (event) event.preventDefault();
-      if (!newMessage.trim() || !conversationId) return;
+  const handleSubmitMessage = useCallback(
+    async (e) => {
+      e?.preventDefault();
+
+      // Skip if no message or no conversation
+      if (
+        (!newMessage.trim() && !tempAttachments.length) ||
+        !currentConversation ||
+        !currentConversation._id
+      ) {
+        return;
+      }
 
       try {
-        // Clear input before sending to improve perceived performance
-        const messageToSend = newMessage.trim();
-        setNewMessage("");
-
-        // Create a temporary message object with pending status
-        const tempMessageId = `temp-${Date.now()}`;
-        const optimisticMessage = {
-          _id: tempMessageId,
-          message: messageToSend,
-          type: "text",
-          senderId: user,
-          receiverId: conversationId,
-          createdAt: new Date().toISOString(),
-          status: "sending", // Use status to track message state: sending, sent, delivered, read
-          read: false,
+        // Create message object
+        const messageData = {
+          content: newMessage.trim(),
+          attachments: tempAttachments,
+          chatId: currentConversation._id, // Sử dụng conversation ID làm chatId
+          receiverId: currentConversation.participant._id, // Thêm receiverId từ participant
+          messageType: tempAttachments.length ? "media" : "text",
         };
 
-        // Update UI immediately with the optimistic message
+        // Gửi tin nhắn qua socket thay vì mutation
+        socketSendMessage(messageData);
+
+        // Create optimistic message for UI
+        const optimisticId = `temp-${Date.now()}`;
+        const optimisticMessage = {
+          _id: optimisticId,
+          content: newMessage.trim(),
+          senderId: user._id,
+          receiverId: currentConversation.participant._id,
+          attachments: tempAttachments,
+          status: "sending",
+          createdAt: new Date().toISOString(),
+          isOptimistic: true,
+        };
+
+        // Add optimistic message to state
         setOptimisticMessages((prev) => [...prev, optimisticMessage]);
 
-        // Scroll to bottom to show the new message
-        setTimeout(() => scrollToBottom(), 50);
+        // Reset state
+        setNewMessage("");
+        setTempAttachments([]);
+        setIsEmojiPickerOpen(false);
 
-        // Send the actual message
-        const response = await sendMessage.mutateAsync({
-          receiverId: conversationId,
-          message: messageToSend,
-          type: "text",
-        });
+        // Ngừng trạng thái đang gõ
+        socketStopTyping(currentConversation._id);
 
-        // Update the temporary message status to sent
-        setOptimisticMessages((prev) =>
-          prev.map((msg) =>
-            msg._id === tempMessageId
-              ? {
-                  ...msg,
-                  status: "sent",
-                  previousTempId: tempMessageId,
-                  _id: response.data.message._id || msg._id,
-                }
-              : msg
-          )
-        );
-      } catch (err) {
-        console.error("Failed to send message:", err);
-        // Mark the message as failed
-        setOptimisticMessages((prev) =>
-          prev.map((msg) =>
-            msg._id.startsWith("temp-") ? { ...msg, status: "failed" } : msg
-          )
-        );
+        // Scroll to bottom
+        setTimeout(() => {
+          scrollToBottom();
+        }, 50);
+      } catch (error) {
+        console.error("Error sending message:", error);
+        // Handle error state
+        if (error?.response?.data?.message) {
+          toast.error(error.response.data.message);
+        } else {
+          toast.error("Failed to send message. Please try again.");
+        }
       }
     },
-    [newMessage, conversationId, sendMessage, user, scrollToBottom]
+    [
+      newMessage,
+      tempAttachments,
+      currentConversation,
+      user?._id,
+      socketSendMessage,
+      socketStopTyping,
+    ]
   );
+
+  // Handle input change
+  const handleInputChange = useCallback(
+    (e) => {
+      const value = e.target.value;
+      setNewMessage(value);
+
+      // Chỉ gửi sự kiện đang gõ khi có giá trị
+      if (value.trim() && currentConversation?._id) {
+        socketStartTyping(currentConversation._id);
+      } else if (!value.trim() && currentConversation?._id) {
+        socketStopTyping(currentConversation._id);
+      }
+    },
+    [currentConversation?._id, socketStartTyping, socketStopTyping]
+  );
+
+  // Listen for new messages from socket
+  useEffect(() => {
+    let unsubscribeMessages;
+    let unsubscribeTyping;
+
+    if (currentConversation?._id) {
+      // Đăng ký nhận tin nhắn mới qua socket
+      unsubscribeMessages = subscribeToMessages(
+        currentConversation._id,
+        (newMsg) => {
+          console.log("Received new message via socket:", newMsg);
+
+          // Cập nhật UI với tin nhắn mới
+          setOptimisticMessages((prev) => {
+            // Kiểm tra tin nhắn đã tồn tại chưa
+            const messageExists = prev.some((m) => m._id === newMsg._id);
+            if (messageExists) return prev;
+            return [...prev, newMsg];
+          });
+
+          // Kiểm tra xem có cần scroll xuống cuối không
+          if (isAtBottom) {
+            setTimeout(scrollToBottom, 100);
+          } else {
+            // Nếu không ở cuối, tăng số tin nhắn mới
+            incrementMessageCount(newMsg);
+          }
+
+          // Đánh dấu tin nhắn đã đọc nếu người dùng đang ở cuối
+          if (isAtBottom && newMsg.senderId !== user._id) {
+            socketMarkAsRead({
+              chatId: currentConversation._id,
+              senderId: newMsg.senderId,
+            });
+          }
+        }
+      );
+
+      // Đăng ký nhận trạng thái đang gõ
+      unsubscribeTyping = subscribeToTyping(
+        currentConversation._id,
+        (usersTyping) => {
+          // Lọc ra những người đang gõ không phải người dùng hiện tại
+          const otherTyping = usersTyping.filter(
+            (userId) => userId !== user._id
+          );
+
+          // Cập nhật state hiển thị trạng thái đang gõ
+          setIsTyping(otherTyping.length > 0);
+        }
+      );
+    }
+
+    // Cleanup
+    return () => {
+      if (unsubscribeMessages) unsubscribeMessages();
+      if (unsubscribeTyping) unsubscribeTyping();
+    };
+  }, [currentConversation?._id, user?._id, subscribeToMessages, subscribeToTyping, socketMarkAsRead, isAtBottom, scrollToBottom, incrementMessageCount]);
 
   // Reset mark as read state when conversation has unread messages
   useEffect(() => {
@@ -1490,7 +1588,6 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         <button
           onClick={() => {
             setErrorState(null);
-            connect();
             if (conversationId) {
               window.dispatchEvent(
                 new CustomEvent("force_message_refresh", {
@@ -1652,8 +1749,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
             <button
               onClick={() => {
                 if (currentConversation && currentConversation._id) {
-                  connect();
-                  if (currentConversation._id) {
+                  if (conversationId) {
                     window.dispatchEvent(
                       new CustomEvent("force_message_refresh", {
                         detail: { conversationId: currentConversation._id },
@@ -1712,7 +1808,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
         {/* Message Input */}
         <form
-          onSubmit={handleSendMessage}
+          onSubmit={handleSubmitMessage}
           className="px-2 py-2 pt-3 mt-2 border-t border-[var(--color-border)] bg-[var(--color-card-bg)] flex items-center justify-between gap-2 sticky bottom-0 z-10 shadow-md"
         >
           <div className="flex items-center space-x-1">
@@ -1726,7 +1822,12 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
             <button
               type="button"
-              className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-card-bg-hover)] rounded-full transition-colors flex items-center justify-center"
+              onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)}
+              className={`p-2 ${
+                isEmojiPickerOpen
+                  ? "text-[var(--color-primary)]"
+                  : "text-[var(--color-text-secondary)]"
+              } hover:text-[var(--color-primary)] hover:bg-[var(--color-card-bg-hover)] rounded-full transition-colors flex items-center justify-center`}
             >
               <BsEmojiSmile size={18} />
             </button>
@@ -1735,7 +1836,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           <div className="flex-1 mx-2 relative">
             <textarea
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={handleInputChange}
               placeholder="Type a message..."
               className="w-full px-4 py-2 text-sm bg-[var(--color-card-bg-secondary)] rounded-[18px] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] resize-none"
               style={{
@@ -1747,11 +1848,26 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendMessage(e);
+                  handleSubmitMessage(e);
                 }
               }}
             />
+
+            {/* Typing indicator */}
+            {isTyping && (
+              <div className="absolute -top-6 left-4 text-xs text-[var(--color-text-secondary)] bg-[var(--color-card-bg-secondary)] px-2 py-1 rounded-t-lg">
+                Someone is typing...
+              </div>
+            )}
           </div>
+
+          {/* Connection indicator */}
+          {!isConnected && (
+            <div className="absolute -top-6 right-4 text-xs text-[var(--color-text-error)] bg-[var(--color-card-bg-secondary)] px-2 py-1 rounded-t-lg flex items-center">
+              <span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>
+              Offline
+            </div>
+          )}
 
           {imageUploading ? (
             <div className="p-2 flex items-center justify-center">

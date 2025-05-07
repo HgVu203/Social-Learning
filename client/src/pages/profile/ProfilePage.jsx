@@ -79,6 +79,14 @@ const ProfilePage = () => {
   const { sendFriendRequest } = useFriend();
   const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
 
+  // Nếu truy cập /profile mà không có userId, chuyển hướng đến profile của chính mình
+  useEffect(() => {
+    if (!userId && currentUser && currentUser._id) {
+      console.log("Redirecting to user's own profile:", currentUser._id);
+      navigate(`/profile/${currentUser._id}`, { replace: true });
+    }
+  }, [userId, currentUser, navigate]);
+
   // Get friendship status
   const { data: friendshipData } = useFriendQueries.useFriendshipStatus(
     userId,
