@@ -6,7 +6,6 @@ import { defaultConfig } from "./utils/toast";
 import { useAuth } from "./contexts/AuthContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { disconnectSocket } from "./services/socket";
-import { isOnMessagePage } from "./socket";
 import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
 import ScrollToTop from "./components/common/ScrollToTop";
@@ -117,47 +116,56 @@ function App() {
     };
   }, [isAuthenticated]);
 
-  // Track navigation to handle socket connections based on page
+  // Track navigation to handle socket pausing between pages (except messages pages)
   useEffect(() => {
-    const wasOnMessagePage = window.lastPathWasMessage || false;
-    const currentlyOnMessagePage = isOnMessagePage();
+    const isMessagesPage = location.pathname.startsWith("/messages");
     const isInitialLoad = window.initialPageLoad;
 
     // Skip initial page load
     if (isInitialLoad) {
       window.initialPageLoad = false;
-      window.lastPathWasMessage = currentlyOnMessagePage;
       return;
     }
 
-    // Only handle socket when user is authenticated
-    if (isAuthenticated) {
-      // If transitioning between message and non-message pages
-      if (wasOnMessagePage !== currentlyOnMessagePage) {
-        if (currentlyOnMessagePage) {
-          // If navigating to a message page, connect socket
-          console.log("Navigated to messages page, connecting socket");
-          import("./services/socket").then(({ connectSocket }) => {
-            connectSocket();
-          });
-        } else {
-          // If navigating away from message page, disconnect socket
-          console.log(
-            "Navigated away from messages page, disconnecting socket"
-          );
-          disconnectSocket(true); // Disconnect with navigation flag
-        }
-      }
+    // If navigating away from messages to another page, temporarily disconnect socket
+    if (!isMessagesPage && isAuthenticated) {
+      console.log("Navigated away from messages page, pausing socket");
+      disconnectSocket(true); // Disconnect with navigation flag to enable reconnection
+    }
+  }, [location.pathname, isAuthenticated]);
+
+  // Track navigation to explicitly handle socket connections only on message pages
+  useEffect(() => {
+    const isMessagesPage =
+      location.pathname.startsWith("/messages") ||
+      location.pathname.includes("/chat");
+    const isInitialLoad = window.initialPageLoad;
+
+    // Skip initial page load
+    if (isInitialLoad) {
+      window.initialPageLoad = false;
+      return;
     }
 
-    // Update last path type
-    window.lastPathWasMessage = currentlyOnMessagePage;
+    // Chỉ xử lý socket khi người dùng đã đăng nhập
+    if (isAuthenticated) {
+      if (isMessagesPage) {
+        // Nếu đang ở trang message, kết nối socket
+        console.log("Navigated to messages page, connecting socket");
+        import("./services/socket").then(({ connectSocket }) => {
+          connectSocket();
+        });
+      } else {
+        // Nếu đang rời khỏi trang message, đóng socket
+        console.log("Navigated away from messages page, disconnecting socket");
+        disconnectSocket(true); // Ngắt kết nối với flag thông báo do chuyển trang
+      }
+    }
   }, [location.pathname, isAuthenticated]);
 
   // Set initial page load flag
   useEffect(() => {
     window.initialPageLoad = true;
-    window.lastPathWasMessage = false;
   }, []);
 
   // Khởi tạo prefetching cho các routes phổ biến
@@ -204,91 +212,7 @@ function App() {
     <>
       <ScrollToTop />
       <Routes>
-        {/* Public Routes with MainLayout */}
-        <Route
-          path="/"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <HomePage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/search"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <SearchPage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/post/:postId"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <PostDetailPage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/groups"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <GroupsListPage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/groups/:groupId"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <GroupDetailPage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/groups/:groupId/settings"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <GroupDetailPage isSettingsPage={true} />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/groups/:groupId/manage"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <GroupDetailPage isManagePage={true} />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-        <Route
-          path="/friends"
-          element={
-            <MainLayout>
-              <Suspense fallback={<LoadingFallback />}>
-                <FriendsPage />
-              </Suspense>
-            </MainLayout>
-          }
-        />
-
-        {/* Game Routes moved to protected section */}
-
-        {/* Auth Routes */}
+        {/* Auth Routes - Outside MainLayout */}
         <Route
           path="/login"
           element={
@@ -346,220 +270,209 @@ function App() {
           }
         />
 
-        {/* Protected Routes */}
-        <Route element={<ProtectedRoute />}>
+        {/* Main Layout - all page content will be rendered inside the shared layout */}
+        <Route element={<MainLayout />}>
+          {/* Public Routes */}
           <Route
             path="/"
             element={
-              <MainLayout>
-                <Suspense fallback={<LoadingFallback />}>
-                  <HomePage />
-                </Suspense>
-              </MainLayout>
+              <Suspense fallback={<LoadingFallback />}>
+                <HomePage />
+              </Suspense>
             }
           />
           <Route
-            path="/profile"
+            path="/search"
             element={
-              <MainLayout>
+              <Suspense fallback={<LoadingFallback />}>
+                <SearchPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/post/:postId"
+            element={
+              <Suspense fallback={<LoadingFallback />}>
+                <PostDetailPage />
+              </Suspense>
+            }
+          />
+
+          {/* Protected Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route
+              path="/profile"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <ProfilePage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/friends"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/friends"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <FriendsPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/messages"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/messages"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <MessagesPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/messages/:userId"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/messages/:userId"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <MessagesPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/create-post"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/create-post"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <CreatePostPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/profile/:userId"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/profile/:userId"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <ProfilePage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/edit-profile"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/edit-profile"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <EditProfilePage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/change-password"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/change-password"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <ChangePasswordPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <MainLayout>
-                <Suspense fallback={<LoadingFallback />}>
-                  <SettingsPage />
-                </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/groups/create"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/create-group"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <CreateGroupPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/groups/:groupId/settings"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <SettingsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/groups"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <GroupsListPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/groups/:groupId"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <GroupDetailPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/groups/:groupId/settings"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <GroupDetailPage isSettingsPage={true} />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/groups/:groupId/manage"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/groups/:groupId/manage"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <GroupDetailPage isManagePage={true} />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/post/edit/:postId"
-            element={
-              <MainLayout>
-                <Suspense fallback={<LoadingFallback />}>
-                  <CreatePostPage isEditing={true} />
-                </Suspense>
-              </MainLayout>
-            }
-          />
+              }
+            />
 
-          {/* Game Routes (Protected) */}
-          <Route
-            path="/game"
-            element={
-              <MainLayout>
+            {/* Game Routes */}
+            <Route
+              path="/game"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <GamesPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/game/code-challenge"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/game/code-challenge"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <CodeChallengePage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/game/math-puzzle"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/game/math-puzzle"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <MathPuzzlePage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-          <Route
-            path="/game/tech-quiz"
-            element={
-              <MainLayout>
+              }
+            />
+            <Route
+              path="/game/tech-quiz"
+              element={
                 <Suspense fallback={<LoadingFallback />}>
                   <TechQuizPage />
                 </Suspense>
-              </MainLayout>
-            }
-          />
-        </Route>
+              }
+            />
+          </Route>
 
-        {/* Admin Routes */}
-        <Route element={<AdminRoute />}>
+          {/* Admin Routes */}
+          <Route element={<AdminRoute />}>
+            <Route
+              path="/admin"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <AdminDashboard />
+                </Suspense>
+              }
+            />
+          </Route>
+
+          {/* 404 Page */}
           <Route
-            path="/admin"
+            path="*"
             element={
               <Suspense fallback={<LoadingFallback />}>
-                <AdminDashboard />
+                <NotFoundPage />
               </Suspense>
             }
           />
         </Route>
-
-        {/* 404 */}
-        <Route path="*" element={<NotFoundPage />} />
       </Routes>
 
-      {/* Cấu hình Toast Container */}
-      <ToastContainer
-        position={defaultConfig.position}
-        autoClose={defaultConfig.autoClose}
-        hideProgressBar={defaultConfig.hideProgressBar}
-        closeOnClick={defaultConfig.closeOnClick}
-        pauseOnHover={defaultConfig.pauseOnHover}
-        draggable={defaultConfig.draggable}
-        pauseOnFocusLoss={defaultConfig.pauseOnFocusLoss}
-        theme={theme}
-        limit={defaultConfig.limit}
-      />
+      <ToastContainer {...defaultConfig} theme={theme} />
     </>
   );
 }

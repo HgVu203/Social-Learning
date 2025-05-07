@@ -9,8 +9,8 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
-      // Không ẩn thanh cuộn để vẫn thấy trang Settings phía sau
-      //document.body.style.overflow = "hidden";
+      // Tạm thời tắt overflow hidden để tránh lỗi tương tác
+      document.body.style.overflow = "auto";
     }
 
     return () => {
@@ -22,11 +22,11 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto pointer-events-none">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="min-h-screen px-4 text-center">
-        {/* Backdrop trong suốt, chỉ áp dụng blur */}
+        {/* Backdrop không có blur */}
         <div
-          className="fixed inset-0 backdrop-blur-[1.5px] bg-[rgba(0,0,0,0.15)] pointer-events-auto"
+          className="fixed inset-0 bg-[rgba(0,0,0,0.4)]"
           onClick={onClose}
         ></div>
 
@@ -34,7 +34,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
           &#8203;
         </span>
 
-        <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg pointer-events-auto">
+        <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg relative z-50">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium text-[var(--color-text-primary)]">
               {title}

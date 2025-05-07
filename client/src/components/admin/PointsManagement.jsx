@@ -362,7 +362,7 @@ const PointsManagement = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="min-h-screen px-4 text-center">
             <div
-              className="fixed inset-0 backdrop-blur-[1.5px] bg-[rgba(0,0,0,0.15)] pointer-events-auto"
+              className="fixed inset-0 bg-[rgba(0,0,0,0.4)]"
               onClick={closeModal}
             ></div>
 
@@ -373,7 +373,7 @@ const PointsManagement = () => {
               &#8203;
             </span>
 
-            <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg pointer-events-auto">
+            <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg relative z-50">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-medium text-[var(--color-text-primary)]">
                   Manage User Points

@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
+import { Outlet } from "react-router-dom";
 import Sidebar from "../components/sidebar/Sidebar";
 import RightPanel from "../components/sidebar/RightPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import MobileNavbar from "../components/mobile/MobileNavbar";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
-const MainLayout = ({ children }) => {
+const MainLayout = () => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const isTablet = useMediaQuery("(min-width: 768px)");
@@ -71,11 +72,8 @@ const MainLayout = ({ children }) => {
           )}
         </AnimatePresence>
 
-        {/* Main Content */}
-        <motion.main
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
+        {/* Main Content - Removed animations to prevent jerky transitions */}
+        <div
           className={`flex-1 min-h-screen bg-[var(--color-bg-primary)] ${
             isDesktop
               ? "ml-[280px] mr-[350px] border-r border-[var(--color-border)]"
@@ -85,16 +83,14 @@ const MainLayout = ({ children }) => {
           } overflow-y-auto ${!isDesktop ? "pb-16" : ""}`}
         >
           <div className={`${!isDesktop ? "px-2 py-1 mt-2" : "p-2"}`}>
-            {children}
+            <Outlet />
           </div>
-        </motion.main>
+        </div>
 
         {/* Right Panel - Only visible on desktop */}
         {isDesktop && (
           <motion.div
-            initial={{ x: 30, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 0.3 }}
+            initial={false}
             className="w-[350px] fixed right-0 h-screen z-10 border-l border-[var(--color-border)] bg-[var(--color-bg-primary)] overflow-hidden"
           >
             <RightPanel />

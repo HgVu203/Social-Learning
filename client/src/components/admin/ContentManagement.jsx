@@ -664,7 +664,7 @@ const ContentManagement = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="min-h-screen px-4 text-center">
             <div
-              className="fixed inset-0 backdrop-blur-[1.5px] bg-[rgba(0,0,0,0.15)] transition-opacity"
+              className="fixed inset-0 bg-[rgba(0,0,0,0.4)] transition-opacity"
               onClick={closeModal}
             ></div>
 
@@ -675,7 +675,7 @@ const ContentManagement = () => {
               &#8203;
             </span>
 
-            <div className="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] rounded-lg shadow-xl">
+            <div className="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] rounded-lg shadow-xl relative z-50">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-[var(--color-text-primary)]">
                   Post Details
