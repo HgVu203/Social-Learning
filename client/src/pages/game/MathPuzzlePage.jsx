@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { generateMathProblems } from "../../services/gptService";
+import { generateMathProblems } from "../../services/ollamaService";
 import { motion, AnimatePresence } from "framer-motion";
 import { userService } from "../../services/userService";
 import {

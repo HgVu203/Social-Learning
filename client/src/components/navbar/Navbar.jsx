@@ -78,7 +78,7 @@ const Navbar = ({ onMenuClick }) => {
               to={ROUTES.HOME}
               className="text-xl md:text-2xl font-bold text-[var(--color-primary)]"
             >
-              DevConnect
+              Pin Leaning
             </Link>
           </div>
 

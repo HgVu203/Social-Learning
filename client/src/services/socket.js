@@ -5,29 +5,28 @@
 export const connectSocket = () => {
   console.log("Checking if socket connection is needed");
 
-  // Kiểm tra xem hiện tại có đang ở trang message không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/messages") || currentPath.includes("/chat");
-
-  if (!isMessagePage) {
-    console.log("Not on message page, skipping socket connection");
-    return false;
-  }
-
-  console.log("On message page, connecting socket");
-  // Tiếp tục kết nối socket vì đang ở trang tin nhắn
-  import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
-    try {
-      const socket = initSocket();
-      if (!socket) {
-        checkAndRestoreConnection();
-      }
-      return true;
-    } catch (error) {
-      console.error("Socket connection error:", error);
+  // Import the isOnMessagePage function directly from socket.js
+  import("../socket").then(({ isOnMessagePage }) => {
+    // Check if we're on a message page first
+    if (!isOnMessagePage()) {
+      console.log("Not on message page, skipping socket connection");
       return false;
     }
+
+    console.log("On message page, connecting socket");
+    // Proceed with socket connection since we're on a message page
+    import("../socket").then(({ initSocket, checkAndRestoreConnection }) => {
+      try {
+        const socket = initSocket();
+        if (!socket) {
+          checkAndRestoreConnection();
+        }
+        return true;
+      } catch (error) {
+        console.error("Socket connection error:", error);
+        return false;
+      }
+    });
   });
 };
 
@@ -85,28 +84,35 @@ export const getSocketInstance = () => {
  */
 export const reconnectAndRefresh = (conversationId) => {
   try {
-    // First try to check and restore connection
-    import("../socket").then(({ checkAndRestoreConnection, closeSocket }) => {
-      // First disconnect if needed
-      closeSocket(true);
-
-      // Wait a brief moment
-      setTimeout(() => {
-        // Try to restore connection
-        checkAndRestoreConnection();
-
-        // Trigger a message refresh event if we have a conversation ID
-        if (conversationId) {
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("force_message_refresh", {
-                detail: { conversationId },
-              })
-            );
-          }, 500); // Increased timeout for better reliability
+    // First check if we're on a message page
+    import("../socket").then(
+      ({ isOnMessagePage, checkAndRestoreConnection, closeSocket }) => {
+        if (!isOnMessagePage()) {
+          console.log("Not on message page, skipping socket reconnection");
+          return false;
         }
-      }, 200); // Increased timeout for better reliability
-    });
+
+        // First disconnect if needed
+        closeSocket(true);
+
+        // Wait a brief moment
+        setTimeout(() => {
+          // Try to restore connection
+          checkAndRestoreConnection();
+
+          // Trigger a message refresh event if we have a conversation ID
+          if (conversationId) {
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("force_message_refresh", {
+                  detail: { conversationId },
+                })
+              );
+            }, 500); // Increased timeout for better reliability
+          }
+        }, 200); // Increased timeout for better reliability
+      }
+    );
 
     return true;
   } catch (error) {

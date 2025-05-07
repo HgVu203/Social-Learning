@@ -6,6 +6,7 @@ import { defaultConfig } from "./utils/toast";
 import { useAuth } from "./contexts/AuthContext";
 import { useTheme } from "./contexts/ThemeContext";
 import { disconnectSocket } from "./services/socket";
+import { isOnMessagePage } from "./socket";
 import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
 import ScrollToTop from "./components/common/ScrollToTop";
@@ -116,56 +117,47 @@ function App() {
     };
   }, [isAuthenticated]);
 
-  // Track navigation to handle socket pausing between pages (except messages pages)
+  // Track navigation to handle socket connections based on page
   useEffect(() => {
-    const isMessagesPage = location.pathname.startsWith("/messages");
+    const wasOnMessagePage = window.lastPathWasMessage || false;
+    const currentlyOnMessagePage = isOnMessagePage();
     const isInitialLoad = window.initialPageLoad;
 
     // Skip initial page load
     if (isInitialLoad) {
       window.initialPageLoad = false;
+      window.lastPathWasMessage = currentlyOnMessagePage;
       return;
     }
 
-    // If navigating away from messages to another page, temporarily disconnect socket
-    if (!isMessagesPage && isAuthenticated) {
-      console.log("Navigated away from messages page, pausing socket");
-      disconnectSocket(true); // Disconnect with navigation flag to enable reconnection
-    }
-  }, [location.pathname, isAuthenticated]);
-
-  // Track navigation to explicitly handle socket connections only on message pages
-  useEffect(() => {
-    const isMessagesPage =
-      location.pathname.startsWith("/messages") ||
-      location.pathname.includes("/chat");
-    const isInitialLoad = window.initialPageLoad;
-
-    // Skip initial page load
-    if (isInitialLoad) {
-      window.initialPageLoad = false;
-      return;
-    }
-
-    // Chỉ xử lý socket khi người dùng đã đăng nhập
+    // Only handle socket when user is authenticated
     if (isAuthenticated) {
-      if (isMessagesPage) {
-        // Nếu đang ở trang message, kết nối socket
-        console.log("Navigated to messages page, connecting socket");
-        import("./services/socket").then(({ connectSocket }) => {
-          connectSocket();
-        });
-      } else {
-        // Nếu đang rời khỏi trang message, đóng socket
-        console.log("Navigated away from messages page, disconnecting socket");
-        disconnectSocket(true); // Ngắt kết nối với flag thông báo do chuyển trang
+      // If transitioning between message and non-message pages
+      if (wasOnMessagePage !== currentlyOnMessagePage) {
+        if (currentlyOnMessagePage) {
+          // If navigating to a message page, connect socket
+          console.log("Navigated to messages page, connecting socket");
+          import("./services/socket").then(({ connectSocket }) => {
+            connectSocket();
+          });
+        } else {
+          // If navigating away from message page, disconnect socket
+          console.log(
+            "Navigated away from messages page, disconnecting socket"
+          );
+          disconnectSocket(true); // Disconnect with navigation flag
+        }
       }
     }
+
+    // Update last path type
+    window.lastPathWasMessage = currentlyOnMessagePage;
   }, [location.pathname, isAuthenticated]);
 
   // Set initial page load flag
   useEffect(() => {
     window.initialPageLoad = true;
+    window.lastPathWasMessage = false;
   }, []);
 
   // Khởi tạo prefetching cho các routes phổ biến

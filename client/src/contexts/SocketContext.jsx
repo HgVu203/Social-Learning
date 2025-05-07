@@ -7,7 +7,7 @@ import {
   useRef,
 } from "react";
 import { useAuth } from "./AuthContext";
-import socketService from "../socket";
+import socketService, { isOnMessagePage } from "../socket";
 
 // Tạo Socket Context
 const SocketContext = createContext({
@@ -35,7 +35,7 @@ export const SocketProvider = ({ children }) => {
 
     const initializeSocket = async () => {
       try {
-        if (isAuthenticated && user) {
+        if (isAuthenticated && user && isOnMessagePage()) {
           console.log("Initializing socket connection from context");
           // Kết nối socket
           const socket = await socketService.initSocket();
@@ -45,6 +45,8 @@ export const SocketProvider = ({ children }) => {
 
             // Theo dõi sự kiện kết nối/ngắt kết nối socket
             const handleReconnect = () => {
+              if (!isOnMessagePage()) return;
+
               console.log("Socket reconnected - Context updated");
               setIsConnected(true);
               // Reset reconnect attempt tracking
@@ -52,6 +54,8 @@ export const SocketProvider = ({ children }) => {
             };
 
             const handleDisconnect = (event) => {
+              if (!isOnMessagePage()) return;
+
               console.log(
                 `Socket disconnected - Context updated. Reason: ${
                   event?.detail?.reason || "unknown"
@@ -65,7 +69,7 @@ export const SocketProvider = ({ children }) => {
                 now - lastReconnectAttemptRef.current;
 
               // Only attempt reconnect if we haven't tried in the last 3 seconds
-              if (timeSinceLastAttempt > 3000) {
+              if (timeSinceLastAttempt > 3000 && isOnMessagePage()) {
                 lastReconnectAttemptRef.current = now;
                 scheduleReconnect();
               }
@@ -90,7 +94,7 @@ export const SocketProvider = ({ children }) => {
 
     // Định kỳ kiểm tra kết nối mỗi 1 phút
     connectionCheckTimerRef.current = setInterval(() => {
-      if (isAuthenticated && user) {
+      if (isAuthenticated && user && isOnMessagePage()) {
         const isSocketActive = socketService.isSocketConnected();
 
         // Cập nhật trạng thái nếu có sự khác biệt
@@ -122,7 +126,7 @@ export const SocketProvider = ({ children }) => {
 
     // Thêm ping chủ động để giữ kết nối
     periodicPingTimerRef.current = setInterval(() => {
-      if (isAuthenticated && user && isConnected) {
+      if (isAuthenticated && user && isConnected && isOnMessagePage()) {
         // Gửi ping trực tiếp (không qua heartbeat)
         const socket = socketService.getSocket();
         if (socket && socket.connected) {
@@ -140,14 +144,19 @@ export const SocketProvider = ({ children }) => {
 
     // Kiểm tra kết nối khi tab trở nên active
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && isAuthenticated && user) {
+      if (
+        document.visibilityState === "visible" &&
+        isAuthenticated &&
+        user &&
+        isOnMessagePage()
+      ) {
         checkConnection(true); // Force check and reconnect if needed
       }
     };
 
     // Kiểm tra khi có thay đổi về network
     const handleNetworkChange = () => {
-      if (navigator.onLine && isAuthenticated && user) {
+      if (navigator.onLine && isAuthenticated && user && isOnMessagePage()) {
         console.log("Network status change detected, checking connection");
         setTimeout(() => {
           // Delay để đảm bảo network ổn định
@@ -183,6 +192,8 @@ export const SocketProvider = ({ children }) => {
   // Function to check connection and update state
   const checkConnection = useCallback(
     (forceReconnect = false) => {
+      if (!isOnMessagePage()) return false;
+
       const isSocketActive = socketService.isSocketConnected();
 
       // Update state if there's a difference
@@ -208,6 +219,8 @@ export const SocketProvider = ({ children }) => {
 
   // Schedule reconnection with backoff
   const scheduleReconnect = (immediate = false) => {
+    if (!isOnMessagePage()) return;
+
     // Clear old timer if exists
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
@@ -229,7 +242,7 @@ export const SocketProvider = ({ children }) => {
     const delay = calculateDelay();
 
     reconnectTimerRef.current = setTimeout(() => {
-      if (isAuthenticated && user) {
+      if (isAuthenticated && user && isOnMessagePage()) {
         console.log(
           `[SocketContext] Attempting to reconnect after ${delay}ms...`
         );
@@ -249,6 +262,8 @@ export const SocketProvider = ({ children }) => {
 
   // Connect socket
   const connect = useCallback(async () => {
+    if (!isOnMessagePage()) return false;
+
     try {
       if (!isConnected) {
         await socketService.checkAndRestoreConnection();
@@ -277,6 +292,8 @@ export const SocketProvider = ({ children }) => {
 
   // Force reconnection (mandatory reinitialization)
   const forceReconnect = useCallback(() => {
+    if (!isOnMessagePage()) return false;
+
     console.log("[SocketContext] Force reconnect requested");
 
     try {
@@ -293,7 +310,8 @@ export const SocketProvider = ({ children }) => {
   // Join chat
   const joinChat = useCallback(
     (userId) => {
-      if (!userId) return false;
+      if (!userId || !isOnMessagePage()) return false;
+
       try {
         connect().then(() => {
           socketService.joinChatRoom(userId);
@@ -322,7 +340,8 @@ export const SocketProvider = ({ children }) => {
   // Subscribe to messages
   const subscribeToMessages = useCallback(
     (userId, callbacks) => {
-      if (!userId) return () => {};
+      if (!userId || !isOnMessagePage()) return () => {};
+
       try {
         connect();
 

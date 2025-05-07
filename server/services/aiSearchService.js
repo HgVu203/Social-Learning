@@ -1,5 +1,4 @@
 import axios from "axios";
-import { env } from "../config/environment.js";
 import logger from "../utils/logger.js";
 
 /**
@@ -7,10 +6,10 @@ import logger from "../utils/logger.js";
  */
 class AISearchService {
   constructor() {
-    this.apiEndpoint = env.AI_API_ENDPOINT;
-    this.apiKey = env.AI_API_KEY;
-    this.modelName = env.AI_MODEL_NAME;
-    this.useLocalFallback = env.USE_LOCAL_FALLBACK === "true";
+    this.apiEndpoint = process.env.AI_API_ENDPOINT || "";
+    this.apiKey = process.env.AI_API_KEY || "";
+    this.modelName = process.env.AI_MODEL_NAME || "text-embedding-ada-002";
+    this.useLocalFallback = process.env.USE_LOCAL_FALLBACK === "true";
   }
 
   /**
@@ -21,7 +20,7 @@ class AISearchService {
   async enhanceSearchQuery(query) {
     try {
       // Check if AI search is enabled
-      if (!env.ENABLE_AI_SEARCH) {
+      if (process.env.ENABLE_AI_SEARCH !== "true") {
         return { enhancedQuery: query, semanticTokens: [] };
       }
 

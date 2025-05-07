@@ -1,5 +1,6 @@
 /**
- * Socket.io connection utilities
+ * Socket.io connection utilities - Optimized version
+ * This version only connects socket when on message pages
  */
 
 // Uncomment these imports for socket connection
@@ -8,18 +9,15 @@ import tokenService from "./services/tokenService";
 
 // Socket state management
 let socket = null;
-let commentListeners = new Map();
 let messageListeners = new Map();
 let userStatusListeners = new Map();
 let disconnectReason = null;
 let lastConnectionTime = 0;
 let socketConnected = false;
 let connectionAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 100; // Tăng số lần thử kết nối tối đa
+const MAX_RECONNECT_ATTEMPTS = 30;
 let heartbeatInterval = null;
-let autoReconnectTimeout = null;
 let lastPingResponse = 0;
-let serverProbeTimeout = null;
 let manuallyDisconnected = false;
 
 // Cấu hình Socket.io
@@ -28,10 +26,27 @@ const baseUrl =
     ? import.meta.env.VITE_API_URL || "/"
     : "http://localhost:3000";
 
-// Thời gian chờ giữa các lần thử kết nối (ms)
+/**
+ * Check if the current page is a message-related page
+ * @returns {boolean} - True if on a message page
+ */
+export const isOnMessagePage = () => {
+  const currentPath = window.location.pathname;
+  return (
+    currentPath.includes("/message") ||
+    currentPath.includes("/messages") ||
+    currentPath.includes("/chat")
+  );
+};
+
+/**
+ * Get backoff time for reconnection attempts
+ * @param {number} attempt - The current attempt number
+ * @returns {number} - Milliseconds to wait before next attempt
+ */
 const getBackoffTime = (attempt) => {
-  // Exponential backoff: 1s, 2s, 4s, 8s... tối đa 60s
-  return Math.min(1000 * Math.pow(2, Math.min(attempt, 6)), 60000);
+  // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
+  return Math.min(1000 * Math.pow(2, Math.min(attempt, 5)), 30000);
 };
 
 /**
@@ -83,11 +98,6 @@ const resetConnectionState = () => {
     heartbeatInterval = null;
   }
 
-  if (autoReconnectTimeout) {
-    clearTimeout(autoReconnectTimeout);
-    autoReconnectTimeout = null;
-  }
-
   disconnectReason = null;
   socketConnected = false;
   connectionAttempts = 0;
@@ -95,26 +105,30 @@ const resetConnectionState = () => {
 
 /**
  * Setup heartbeat mechanism to keep connection alive
- * This is the only heartbeat mechanism we should use
  */
 const setupHeartbeat = () => {
+  if (!isOnMessagePage()) return;
+
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
   }
 
-  // Cập nhật thời gian phản hồi cuối cùng
+  // Update last ping response time
   lastPingResponse = Date.now();
 
   heartbeatInterval = setInterval(() => {
+    // Only process heartbeat if on message page
+    if (!isOnMessagePage()) return;
+
     if (socket && socket.connected) {
       // Check time since last ping response
       const now = Date.now();
       const timeSinceLastResponse = now - lastPingResponse;
 
-      // If no response for more than 50 seconds, connection might be stale
-      if (timeSinceLastResponse > 50000) {
+      // If no response for more than 45 seconds, connection might be stale
+      if (timeSinceLastResponse > 45000) {
         console.warn(
-          "No ping response for 50+ seconds, connection may be stale"
+          "No ping response for 45+ seconds, connection may be stale"
         );
 
         // Try to reconnect
@@ -125,61 +139,15 @@ const setupHeartbeat = () => {
 
       // Send a ping to keep the connection alive
       try {
-        socket.emit("client_ping", { timestamp: now }, (response) => {
-          if (response && response.received) {
-            // Cập nhật thời gian phản hồi
-            lastPingResponse = Date.now();
-          } else {
-            console.warn("No/invalid response to ping");
-            // Không ngắt kết nối ngay, chỉ ghi log để theo dõi
-          }
-        });
+        socket.emit("client_ping", { timestamp: now });
       } catch (err) {
         console.error("Error sending heartbeat ping:", err);
-        // Không ngắt kết nối ngay, thử lại sau
       }
     } else if (socket && !manuallyDisconnected) {
       // Socket exists but not connected and not manually disconnected
       checkAndRestoreConnection();
     }
-  }, 25000); // Sync với server (25 seconds)
-
-  // Handle server probes (lắng nghe ping từ server)
-  if (socket) {
-    socket.on("server_probe", (data) => {
-      // Khi nhận được probe từ server, cập nhật thời gian phản hồi
-      lastPingResponse = Date.now();
-
-      // Respond to server probe
-      socket.emit("client_pong", {
-        timestamp: data.timestamp,
-        receivedAt: Date.now(),
-      });
-    });
-  }
-
-  // Set up timeout to detect server probe missing
-  if (serverProbeTimeout) {
-    clearTimeout(serverProbeTimeout);
-  }
-
-  // Kiểm tra mỗi 2.5 phút nếu không nhận được probe từ server
-  serverProbeTimeout = setInterval(() => {
-    const now = Date.now();
-
-    // Also send our own ping periodically to keep connection alive
-    if (socket && socket.connected) {
-      sendKeepAlive();
-    }
-
-    // Nếu không nhận probe trong 2.5 phút, kết nối có thể đã mất
-    if (now - lastPingResponse > 150000) {
-      console.warn(
-        "No server probe received for 2.5 minutes, checking connection"
-      );
-      checkAndRestoreConnection();
-    }
-  }, 150000);
+  }, 25000); // Sync with server (25 seconds)
 };
 
 /**
@@ -187,20 +155,11 @@ const setupHeartbeat = () => {
  */
 export const initSocket = () => {
   try {
-    // Kiểm tra xem có đang ở trang message hay không
-    const currentPath = window.location.pathname;
-    const isMessagePage =
-      currentPath.includes("/message") ||
-      currentPath.includes("/messages") ||
-      currentPath.includes("/chat");
-
-    // Nếu không phải trang message, không kết nối socket
-    if (!isMessagePage) {
+    // Check if on message page
+    if (!isOnMessagePage()) {
       console.log("Not on message page, skipping socket connection");
       return null;
     }
-
-    console.log("On message page, connecting socket");
 
     // Reset manually disconnected flag when initializing
     manuallyDisconnected = false;
@@ -221,7 +180,7 @@ export const initSocket = () => {
       return null;
     }
 
-    // Throttle reconnection attempts (sử dụng backoff thay vì thời gian cố định)
+    // Throttle reconnection attempts
     if (now - lastConnectionTime < getBackoffTime(connectionAttempts)) {
       return socket;
     }
@@ -256,7 +215,6 @@ export const initSocket = () => {
     if (socket) {
       try {
         socket.disconnect();
-        socket.close();
       } catch (err) {
         console.error("Error closing existing socket:", err);
       }
@@ -267,252 +225,325 @@ export const initSocket = () => {
       `Socket connecting to: ${baseUrl} (attempt ${connectionAttempts})`
     );
 
-    try {
-      // Create new socket with auth token
-      socket = io(baseUrl, {
-        auth: {
-          token,
-        },
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: 20,
-        reconnectionDelay: 1000,
-        timeout: 45000, // Tăng lên đồng bộ với server
-        forceNew: connectionAttempts > 10,
-        pingTimeout: 60000, // 60 seconds - đồng bộ với server
-        pingInterval: 25000, // 25 seconds - đồng bộ với server
-        autoConnect: true,
-        withCredentials: true,
-        path: "/socket.io",
-        upgrade: true,
-        rememberUpgrade: true,
-      });
+    // Create new socket with auth token
+    socket = io(baseUrl, {
+      auth: { token },
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      timeout: 30000,
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      autoConnect: true,
+      withCredentials: true,
+    });
 
-      // Tạo biến phòng tránh lỗi
-      window.socketState = { socket, connected: false };
+    // Create socket state tracking variable
+    window.socketState = { socket, connected: false };
 
-      // Socket event handlers
-      socket.on("connect", () => {
-        console.log("Socket connected successfully", socket.id);
-        disconnectReason = null;
-        socketConnected = true;
-        connectionAttempts = 0;
-        window.socketState.connected = true;
-        lastPingResponse = Date.now(); // Reset ping response time
+    // Socket event handlers
+    socket.on("connect", () => {
+      console.log("Socket connected successfully", socket.id);
+      disconnectReason = null;
+      socketConnected = true;
+      connectionAttempts = 0;
+      window.socketState.connected = true;
+      lastPingResponse = Date.now();
 
-        // Add user_status_change event listener
-        socket.on("user_status_change", (data) => {
-          try {
-            const { userId, isOnline } = data;
-            console.log(
-              `Received status update: User ${userId} is ${
-                isOnline ? "online" : "offline"
-              }`
-            );
+      // Handle user status changes
+      socket.on("user_status_change", (data) => {
+        if (!isOnMessagePage()) return;
 
-            // Notify all registered listeners about the status change
-            if (userStatusListeners.size > 0) {
-              userStatusListeners.forEach((callback) => {
-                if (typeof callback === "function") {
-                  callback(userId, isOnline);
-                }
-              });
-            }
+        try {
+          const { userId, isOnline } = data;
 
-            // Dispatch a global event for components that aren't directly subscribed
-            window.dispatchEvent(
-              new CustomEvent("user_status_updated", {
-                detail: { userId, isOnline },
-              })
-            );
-          } catch (error) {
-            console.error("Error handling user status change:", error);
-          }
-        });
-
-        // Setup heartbeat after connection - chỉ cài đặt một cơ chế duy nhất
-        setupHeartbeat();
-
-        // Setup server probe handler
-        setupServerProbeHandler();
-
-        // Send authentication immediately on connection
-        socket.emit("authenticate", token);
-
-        // Send user ID for easier server-side user tracking
-        socket.emit("identify_user", { userId });
-
-        // Dispatch event for reconnection
-        window.dispatchEvent(new CustomEvent("socket_reconnected"));
-
-        // Rejoin all active chat rooms
-        for (const userId of messageListeners.keys()) {
-          joinChatRoom(userId);
-        }
-      });
-
-      // Server response to heartbeat
-      socket.on("server_pong", (data) => {
-        // Connection is healthy
-        lastPingResponse = Date.now();
-        const latency = Date.now() - data.timestamp;
-        if (latency > 1000) {
-          console.warn(`Socket latency is high: ${latency}ms`);
-        }
-      });
-
-      // Thêm xử lý sự kiện connect_timeout
-      socket.on("connect_timeout", (timeout) => {
-        console.error("Socket connect timeout:", timeout);
-        socketConnected = false;
-        window.socketState.connected = false;
-
-        // Khởi tạo lại kết nối với delay tùy theo số lần thử
-        setTimeout(() => {
-          resetConnectionState();
-          initSocket();
-        }, getBackoffTime(connectionAttempts));
-      });
-
-      socket.on("connect_error", (error) => {
-        console.error("Socket connection error:", error.message);
-        socketConnected = false;
-        window.socketState.connected = false;
-
-        // Dispatch event for socket error
-        window.dispatchEvent(
-          new CustomEvent("socket_disconnect", {
-            detail: { reason: error.message },
-          })
-        );
-
-        // Retry connection with backoff delay unless authentication failed
-        if (
-          !error.message.includes("authentication") &&
-          connectionAttempts < MAX_RECONNECT_ATTEMPTS
-        ) {
-          setTimeout(() => {
-            try {
-              if (socket) socket.connect();
-            } catch (e) {
-              console.error("Error during reconnect:", e);
-              // Reset socket if connection attempt fails
-              if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                resetConnectionState();
-
-                // Try with a completely fresh connection after reset
-                setTimeout(() => {
-                  initSocket();
-                }, getBackoffTime(connectionAttempts));
+          // Notify all registered listeners about the status change
+          if (userStatusListeners.size > 0) {
+            userStatusListeners.forEach((callback) => {
+              if (typeof callback === "function") {
+                callback(userId, isOnline);
               }
-            }
-          }, getBackoffTime(connectionAttempts));
-        } else if (error.message.includes("authentication")) {
-          socket.disconnect();
-
-          // Try to refresh the token
-          setTimeout(() => {
-            const newToken = tokenService.getToken();
-            if (newToken) {
-              initSocket();
-            }
-          }, 3000);
-        }
-      });
-
-      socket.on("authentication_failed", (error) => {
-        console.error("Socket authentication failed:", error);
-        socketConnected = false;
-
-        // Try to reauthenticate after a delay
-        setTimeout(() => {
-          if (socket && socket.connected) {
-            const refreshedToken = tokenService.getToken();
-            if (refreshedToken) {
-              socket.emit("authenticate", refreshedToken);
-
-              // Also re-identify the user
-              const userId = getUserIdFromToken();
-              if (userId) {
-                socket.emit("identify_user", { userId });
-              }
-            }
+            });
           }
-        }, 2000);
-      });
 
-      socket.on("authentication_success", (data) => {
-        console.log("Socket authentication successful:", data);
-        socketConnected = true;
-        connectionAttempts = 0;
-      });
-
-      socket.on("disconnect", (reason) => {
-        console.log("Socket disconnected:", reason);
-        disconnectReason = reason;
-        socketConnected = false;
-        window.socketState.connected = false;
-
-        // If manually disconnected, don't automatically reconnect
-        if (manuallyDisconnected) {
-          console.log("Socket was manually disconnected, not reconnecting");
-          return;
-        }
-
-        // More intelligent handling of different disconnect reasons
-        if (
-          reason === "transport close" ||
-          reason === "ping timeout" ||
-          reason === "transport error"
-        ) {
-          const reconnectDelay = getBackoffTime(connectionAttempts);
-          console.log(
-            `Reconnecting in ${reconnectDelay}ms (attempt ${connectionAttempts})`
+          // Dispatch a global event for components that aren't directly subscribed
+          window.dispatchEvent(
+            new CustomEvent("user_status_updated", {
+              detail: { userId, isOnline },
+            })
           );
-
-          setTimeout(() => {
-            if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
-              if (socket) socket.connect();
-            } else {
-              // Reset and try with a fresh connection
-              resetConnectionState();
-              initSocket();
-            }
-          }, reconnectDelay);
-        } else if (reason === "io server disconnect") {
-          // Server forced disconnect, may need a completely new connection
-          console.log("Server forced disconnect, creating new connection");
-          setTimeout(() => {
-            resetConnectionState();
-            initSocket();
-          }, getBackoffTime(connectionAttempts));
+        } catch (error) {
+          console.error("Error handling user status change:", error);
         }
-
-        // Dispatch event for disconnect
-        window.dispatchEvent(
-          new CustomEvent("socket_disconnect", {
-            detail: { reason },
-          })
-        );
       });
 
-      // Handle socket errors
-      socket.on("error", (error) => {
-        console.error("Socket error:", error);
-        socketConnected = false;
-        window.socketState.connected = false;
-      });
+      // Setup heartbeat after connection
+      setupHeartbeat();
 
-      return socket;
-    } catch (socketError) {
-      console.error("Socket.io initialization error:", socketError);
-      return null;
-    }
+      // Authenticate with server
+      socket.emit("authenticate", token);
+      socket.emit("identify_user", { userId });
+
+      // Dispatch event for reconnection
+      window.dispatchEvent(new CustomEvent("socket_reconnected"));
+
+      // Rejoin all active chat rooms
+      for (const userId of messageListeners.keys()) {
+        joinChatRoom(userId);
+      }
+    });
+
+    // Server response to heartbeat
+    socket.on("server_pong", () => {
+      lastPingResponse = Date.now();
+    });
+
+    // Connection error handling
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error.message);
+      socketConnected = false;
+      window.socketState.connected = false;
+
+      // Dispatch event for socket error
+      window.dispatchEvent(
+        new CustomEvent("socket_disconnect", {
+          detail: { reason: error.message },
+        })
+      );
+
+      // Retry connection unless authentication failed
+      if (
+        !error.message.includes("authentication") &&
+        connectionAttempts < MAX_RECONNECT_ATTEMPTS
+      ) {
+        setTimeout(() => {
+          if (isOnMessagePage() && socket) socket.connect();
+        }, getBackoffTime(connectionAttempts));
+      }
+    });
+
+    // Authentication handling
+    socket.on("authentication_failed", (error) => {
+      console.error("Socket authentication failed:", error);
+      socketConnected = false;
+    });
+
+    socket.on("authentication_success", () => {
+      socketConnected = true;
+      connectionAttempts = 0;
+    });
+
+    // Disconnect handling
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+      disconnectReason = reason;
+      socketConnected = false;
+      window.socketState.connected = false;
+
+      // If manually disconnected, don't automatically reconnect
+      if (manuallyDisconnected) {
+        console.log("Socket was manually disconnected, not reconnecting");
+        return;
+      }
+
+      // Only attempt reconnection if on message page
+      if (!isOnMessagePage()) return;
+
+      // Handle disconnection based on reason
+      if (
+        ["transport close", "ping timeout", "transport error"].includes(reason)
+      ) {
+        const reconnectDelay = getBackoffTime(connectionAttempts);
+        setTimeout(() => {
+          if (
+            isOnMessagePage() &&
+            connectionAttempts < MAX_RECONNECT_ATTEMPTS
+          ) {
+            if (socket) socket.connect();
+          }
+        }, reconnectDelay);
+      }
+
+      // Dispatch event for disconnect
+      window.dispatchEvent(
+        new CustomEvent("socket_disconnect", { detail: { reason } })
+      );
+    });
+
+    // Error handling
+    socket.on("error", (error) => {
+      console.error("Socket error:", error);
+      socketConnected = false;
+      window.socketState.connected = false;
+    });
+
+    // Set up message event handlers
+    setupMessageHandlers();
+
+    return socket;
   } catch (error) {
     console.error("Fatal error in socket initialization:", error);
-    // Return null instead of throwing to prevent UI crashes
     return null;
   }
+};
+
+/**
+ * Set up handlers for message-related events
+ */
+const setupMessageHandlers = () => {
+  if (!socket || socket._hasMessageHandlers) return;
+
+  // New direct message handler
+  socket.on("new_message_received", (data) => {
+    if (!isOnMessagePage()) return;
+
+    try {
+      const { message, fromId } = data;
+      if (!message || !fromId) return;
+
+      // Find appropriate listener
+      const listener = messageListeners.get(fromId.toString());
+      if (listener && listener.onMessageReceived) {
+        listener.onMessageReceived(message);
+
+        // Dispatch event
+        window.dispatchEvent(
+          new CustomEvent("urgent_new_message", {
+            detail: {
+              message,
+              partnerId: fromId,
+              timestamp: Date.now(),
+            },
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Error handling new message event:", error);
+    }
+  });
+
+  // Message sent handler
+  socket.on("message_sent", (data) => {
+    if (!isOnMessagePage()) return;
+
+    try {
+      // Extract IDs
+      const senderId = data.senderId && (data.senderId._id || data.senderId);
+      const receiverId =
+        data.receiverId && (data.receiverId._id || data.receiverId);
+      if (!senderId || !receiverId) return;
+
+      // Get current user ID
+      const currentUserId = getUserIdFromToken();
+      if (!currentUserId) return;
+
+      // Determine conversation partner
+      const partnerId =
+        senderId.toString() === currentUserId.toString()
+          ? receiverId
+          : senderId;
+      const listener = messageListeners.get(partnerId.toString());
+
+      // Notify listener
+      if (listener && listener.onMessageReceived) {
+        listener.onMessageReceived(data);
+
+        // Dispatch event
+        window.dispatchEvent(
+          new CustomEvent("conversation_updated", {
+            detail: {
+              message: data,
+              partnerId: partnerId,
+              timestamp: Date.now(),
+            },
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Error handling message_sent event:", error);
+    }
+  });
+
+  // Message read handler
+  socket.on("message_read", (data) => {
+    if (!isOnMessagePage()) return;
+
+    try {
+      const senderId = data.senderId && (data.senderId._id || data.senderId);
+      if (!senderId) return;
+
+      const listener = messageListeners.get(senderId.toString());
+      if (listener && listener.onMessageRead) {
+        listener.onMessageRead(data);
+      }
+    } catch (error) {
+      console.error("Error handling message_read event:", error);
+    }
+  });
+
+  // Message deleted handler
+  socket.on("message_deleted", (data) => {
+    if (!isOnMessagePage()) return;
+
+    try {
+      // Extract IDs
+      const senderId = data.senderId && (data.senderId._id || data.senderId);
+      const receiverId =
+        data.receiverId && (data.receiverId._id || data.receiverId);
+      if (!senderId || !receiverId) return;
+
+      // Get current user ID
+      const currentUserId = getUserIdFromToken();
+      if (!currentUserId) return;
+
+      // Determine conversation partner
+      const partnerId =
+        senderId.toString() === currentUserId.toString()
+          ? receiverId
+          : senderId;
+      const listener = messageListeners.get(partnerId.toString());
+
+      if (listener && listener.onMessageDeleted) {
+        listener.onMessageDeleted(data);
+      }
+    } catch (error) {
+      console.error("Error handling message_deleted event:", error);
+    }
+  });
+
+  // Conversation updated handler
+  socket.on("conversation_updated", (data) => {
+    if (!isOnMessagePage()) return;
+
+    try {
+      const { partnerId } = data;
+      if (!partnerId) return;
+
+      const listener = messageListeners.get(partnerId.toString());
+      if (listener && listener.onConversationUpdated) {
+        listener.onConversationUpdated(partnerId);
+      }
+
+      // Dispatch event
+      window.dispatchEvent(new CustomEvent("conversation_updated"));
+    } catch (error) {
+      console.error("Error handling conversation_updated event:", error);
+    }
+  });
+
+  // Reconnection handler
+  socket.on("reconnect", () => {
+    if (!isOnMessagePage()) return;
+
+    // Rejoin all active chat rooms
+    for (const userId of messageListeners.keys()) {
+      joinChatRoom(userId);
+    }
+  });
+
+  // Mark as having handlers installed
+  socket._hasMessageHandlers = true;
 };
 
 /**
@@ -530,33 +561,23 @@ export const closeSocket = (isNavigation = false) => {
         // Set the flag to prevent auto-reconnect
         manuallyDisconnected = true;
 
-        // Thông báo cho server về việc client đang disconnect
+        // Notify server about client disconnect
         if (socket.connected) {
           socket.emit("client_disconnect");
         }
+
         socket.disconnect();
         socket = null;
         disconnectReason = null;
-        commentListeners.clear();
         messageListeners.clear();
         userStatusListeners.clear();
         socketConnected = false;
         console.log("Socket connection closed completely");
 
-        // Clear any intervals
+        // Clear heartbeat interval
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null;
-        }
-
-        if (autoReconnectTimeout) {
-          clearTimeout(autoReconnectTimeout);
-          autoReconnectTimeout = null;
-        }
-
-        if (serverProbeTimeout) {
-          clearTimeout(serverProbeTimeout);
-          serverProbeTimeout = null;
         }
       } catch (error) {
         console.error("Error during socket close:", error);
@@ -569,20 +590,15 @@ export const closeSocket = (isNavigation = false) => {
  * Get socket instance
  */
 export const getSocket = () => {
-  // Kiểm tra xem có đang ở trang message không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/messages") || currentPath.includes("/chat");
-
-  if (!isMessagePage) {
-    // Không tự động kết nối socket nếu không phải trong message
+  // Only connect socket when on message page
+  if (!isOnMessagePage()) {
     console.log(
       "getSocket called outside of message page - avoiding automatic connection"
     );
     return null;
   }
 
-  // Chỉ thực hiện kết nối khi đang ở trang message
+  // Create socket if it doesn't exist
   if (!socket) {
     return initSocket();
   }
@@ -600,6 +616,8 @@ export const isSocketConnected = () => {
  * Join a chat room to receive message events
  */
 export const joinChatRoom = (userId) => {
+  if (!isOnMessagePage()) return;
+
   const socket = getSocket();
   if (!socket) return;
 
@@ -610,6 +628,8 @@ export const joinChatRoom = (userId) => {
  * Leave a chat room
  */
 export const leaveChatRoom = (userId) => {
+  if (!isOnMessagePage()) return;
+
   const socket = getSocket();
   if (!socket) return;
 
@@ -620,10 +640,14 @@ export const leaveChatRoom = (userId) => {
  * Subscribe to message events for a specific user
  */
 export const subscribeToMessages = (userId, callbacks) => {
+  if (!isOnMessagePage()) {
+    return () => {}; // Return empty unsubscribe function
+  }
+
   const socket = getSocket();
   if (!socket) {
     console.error("No socket connection available");
-    return () => {}; // Return empty function instead of null
+    return () => {};
   }
 
   // Join the chat room
@@ -632,211 +656,8 @@ export const subscribeToMessages = (userId, callbacks) => {
   // Store callbacks for this userId
   messageListeners.set(userId, callbacks);
 
-  // Set up the event handlers if they don't exist
-  if (!socket._hasMessageHandlers) {
-    // CRITICAL FIX: Add direct new message handler for immediate updates
-    socket.on("new_message_received", (data) => {
-      try {
-        const { message, fromId } = data;
-
-        if (!message || !fromId) {
-          console.error("Invalid direct message data received:", data);
-          return;
-        }
-
-        // Find appropriate listener
-        const listener = messageListeners.get(fromId.toString());
-
-        // Call the onMessageReceived callback immediately
-        if (listener && listener.onMessageReceived) {
-          listener.onMessageReceived(message);
-
-          // Dispatch high-priority global event with data
-          window.dispatchEvent(
-            new CustomEvent("urgent_new_message", {
-              detail: {
-                message,
-                partnerId: fromId,
-                timestamp: Date.now(),
-              },
-            })
-          );
-        }
-      } catch (error) {
-        console.error("Error handling direct new message event:", error);
-      }
-    });
-
-    socket.on("message_sent", (data) => {
-      try {
-        // Safely extract IDs
-        const senderId = data.senderId && (data.senderId._id || data.senderId);
-        const receiverId =
-          data.receiverId && (data.receiverId._id || data.receiverId);
-
-        if (!senderId || !receiverId) {
-          console.error("Invalid message data received:", data);
-          return;
-        }
-
-        // Get user ID from decoded token instead of relying on socket.userId
-        let currentUserId = null;
-        try {
-          const token = tokenService.getToken();
-          if (token) {
-            const tokenData = JSON.parse(atob(token.split(".")[1]));
-            currentUserId = tokenData.id;
-          }
-        } catch (err) {
-          console.error("Error extracting user ID from token:", err);
-        }
-
-        // Fallback: If we couldn't get user ID from token, try socket
-        if (!currentUserId) {
-          currentUserId = socket.auth?.userId || socket.userId;
-        }
-
-        // Log and handle the case when we still don't have user ID
-        if (!currentUserId) {
-          console.error(
-            "Cannot determine current user ID from token or socket"
-          );
-          // Just use senderId as backup - will at least show messages in some cases
-          // We'll still continue processing since this shouldn't break functionality
-          currentUserId = senderId; // This is a fallback that might not be correct
-        }
-
-        // Find the listener for the conversation partner
-        const partnerId =
-          senderId.toString() === currentUserId.toString()
-            ? receiverId
-            : senderId;
-        const listener = messageListeners.get(partnerId.toString());
-
-        // Call the onMessageReceived callback if it exists
-        if (listener && listener.onMessageReceived) {
-          listener.onMessageReceived(data);
-
-          // Dispatch standard conversation update event
-          window.dispatchEvent(
-            new CustomEvent("conversation_updated", {
-              detail: {
-                message: data,
-                partnerId: partnerId,
-                timestamp: Date.now(),
-              },
-            })
-          );
-        }
-      } catch (error) {
-        console.error("Error handling message_sent event:", error);
-      }
-    });
-
-    socket.on("message_read", (data) => {
-      try {
-        // Safely extract sender ID
-        const senderId = data.senderId && (data.senderId._id || data.senderId);
-
-        if (!senderId) {
-          console.error("Invalid message data received:", data);
-          return;
-        }
-
-        const listener = messageListeners.get(senderId.toString());
-
-        if (listener && listener.onMessageRead) {
-          listener.onMessageRead(data);
-        }
-      } catch (error) {
-        console.error("Error handling message_read event:", error);
-      }
-    });
-
-    socket.on("message_deleted", (data) => {
-      try {
-        // Safely extract IDs
-        const senderId = data.senderId && (data.senderId._id || data.senderId);
-        const receiverId =
-          data.receiverId && (data.receiverId._id || data.receiverId);
-
-        if (!senderId || !receiverId) {
-          console.error("Invalid message data received:", data);
-          return;
-        }
-
-        // Get user ID from decoded token instead of relying on socket.userId
-        let currentUserId = null;
-        try {
-          const token = tokenService.getToken();
-          if (token) {
-            const tokenData = JSON.parse(atob(token.split(".")[1]));
-            currentUserId = tokenData.id;
-          }
-        } catch (err) {
-          console.error("Error extracting user ID from token:", err);
-        }
-
-        // Fallback: If we couldn't get user ID from token, try socket
-        if (!currentUserId) {
-          currentUserId = socket.auth?.userId || socket.userId;
-        }
-
-        // Log and handle the case when we still don't have user ID
-        if (!currentUserId) {
-          console.error(
-            "Cannot determine current user ID from token or socket"
-          );
-          // Just use senderId as backup - will at least show messages in some cases
-          currentUserId = senderId; // This is a fallback that might not be correct
-        }
-
-        // Find the listener for the conversation partner
-        const partnerId =
-          senderId.toString() === currentUserId.toString()
-            ? receiverId
-            : senderId;
-        const listener = messageListeners.get(partnerId.toString());
-
-        if (listener && listener.onMessageDeleted) {
-          listener.onMessageDeleted(data);
-        }
-      } catch (error) {
-        console.error("Error handling message_deleted event:", error);
-      }
-    });
-
-    socket.on("conversation_updated", (data) => {
-      try {
-        const { partnerId } = data;
-        if (!partnerId) {
-          console.error("Invalid conversation data received:", data);
-          return;
-        }
-
-        const listener = messageListeners.get(partnerId.toString());
-
-        if (listener && listener.onConversationUpdated) {
-          listener.onConversationUpdated(partnerId);
-        }
-
-        // Dispatch a global event for other components to react
-        window.dispatchEvent(new CustomEvent("conversation_updated"));
-      } catch (error) {
-        console.error("Error handling conversation_updated event:", error);
-      }
-    });
-
-    // Add reconnection logic for message rooms
-    socket.on("reconnect", () => {
-      // Rejoin all active chat rooms
-      for (const userId of messageListeners.keys()) {
-        joinChatRoom(userId);
-      }
-    });
-
-    socket._hasMessageHandlers = true;
-  }
+  // Make sure message handlers are set up
+  setupMessageHandlers();
 
   // Return an unsubscribe function
   return () => {
@@ -850,26 +671,14 @@ export const subscribeToMessages = (userId, callbacks) => {
  * @returns {boolean} Whether connection is now active or being restored
  */
 export const checkAndRestoreConnection = () => {
-  // Kiểm tra xem có đang ở trang message hay không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/message") ||
-    currentPath.includes("/messages") ||
-    currentPath.includes("/chat");
-
-  // Nếu không phải trang message, không kết nối socket
-  if (!isMessagePage) {
+  // Only attempt to restore connection on message pages
+  if (!isOnMessagePage()) {
     console.log("Not on message page, skipping socket reconnection");
     return false;
   }
 
-  console.log("On message page, checking socket connection");
-
   // If manually disconnected, don't auto reconnect
   if (manuallyDisconnected) {
-    console.log(
-      "Socket was manually disconnected, not attempting to reconnect"
-    );
     return false;
   }
 
@@ -885,53 +694,22 @@ export const checkAndRestoreConnection = () => {
     connectionAttempts < MAX_RECONNECT_ATTEMPTS
   ) {
     try {
-      // Reset token before reconnecting to ensure fresh authentication
+      // Update token before reconnecting
       const token = tokenService.getToken();
       if (token) {
         socket.auth = { token };
       }
 
-      // Try to reconnect existing socket
+      // Try to reconnect
       socket.connect();
 
       // Dispatch reconnecting event
       window.dispatchEvent(new CustomEvent("socket_reconnecting"));
 
-      // Setup fresh heartbeat when reconnecting
-      setupHeartbeat();
-
       return true;
     } catch (error) {
       console.error("Error reconnecting socket:", error);
-
-      // If reconnection fails, try to initialize a fresh connection after a delay
-      setTimeout(() => {
-        resetConnectionState();
-        initSocket();
-      }, getBackoffTime(connectionAttempts));
-
       return false;
-    }
-  }
-
-  // If socket isn't active for more than 45 seconds, force a refresh
-  if (socket && socket.connected && Date.now() - lastPingResponse > 45000) {
-    try {
-      // Send a test ping to verify connection
-      socket.emit("client_ping", { timestamp: Date.now() }, (response) => {
-        if (!response || !response.received) {
-          console.log("No ping response, force reconnecting");
-          resetConnectionState();
-          initSocket();
-        } else {
-          lastPingResponse = Date.now();
-        }
-      });
-    } catch (error) {
-      console.error("Error sending ping:", error);
-      // Force reconnect on error
-      resetConnectionState();
-      initSocket();
     }
   }
 
@@ -939,100 +717,19 @@ export const checkAndRestoreConnection = () => {
   return socket && socket.connected;
 };
 
-// Cách khác để khôi phục kết nối
+/**
+ * Force reconnection
+ */
 export const forceReconnect = () => {
-  // Kiểm tra xem có đang ở trang message hay không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/message") ||
-    currentPath.includes("/messages") ||
-    currentPath.includes("/chat");
-
-  // Nếu không phải trang message, không kết nối socket
-  if (!isMessagePage) {
+  if (!isOnMessagePage()) {
     console.log("Not on message page, skipping socket force reconnect");
     return false;
   }
 
-  console.log("On message page, force reconnecting socket");
-
-  manuallyDisconnected = false; // Reset flag
+  manuallyDisconnected = false;
   resetConnectionState();
   return initSocket();
 };
-
-// Handle unload/beforeunload to clean up connections
-window.addEventListener("beforeunload", () => {
-  try {
-    // Clean shutdown of socket connections
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-    }
-
-    if (autoReconnectTimeout) {
-      clearTimeout(autoReconnectTimeout);
-    }
-
-    if (socket && socket.connected) {
-      socket.emit("client_disconnect");
-      socket.disconnect();
-    }
-  } catch (err) {
-    console.error("Error during page unload cleanup:", err);
-  }
-});
-
-// Check connection when page becomes visible again
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    // Kiểm tra xem có đang ở trang message hay không
-    const currentPath = window.location.pathname;
-    const isMessagePage =
-      currentPath.includes("/message") ||
-      currentPath.includes("/messages") ||
-      currentPath.includes("/chat");
-
-    if (isMessagePage) {
-      console.log("Tab visible on message page, checking connection");
-      // Immediately check connection when tab becomes visible
-      checkAndRestoreConnection();
-    }
-  }
-});
-
-// Add network status checking to detect connection changes
-window.addEventListener("online", () => {
-  // Kiểm tra xem có đang ở trang message hay không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/message") ||
-    currentPath.includes("/messages") ||
-    currentPath.includes("/chat");
-
-  if (isMessagePage) {
-    console.log("Network back online on message page, checking connection");
-    checkAndRestoreConnection();
-  }
-});
-
-window.addEventListener("offline", () => {
-  console.warn("Network offline, socket will reconnect when back online");
-});
-
-// Thêm kiểm tra khi tab nhận focus
-window.addEventListener("focus", () => {
-  // Kiểm tra xem có đang ở trang message hay không
-  const currentPath = window.location.pathname;
-  const isMessagePage =
-    currentPath.includes("/message") ||
-    currentPath.includes("/messages") ||
-    currentPath.includes("/chat");
-
-  if (isMessagePage) {
-    console.log("Tab focused on message page, checking connection");
-    checkAndRestoreConnection();
-  }
-});
 
 /**
  * Subscribe to user status changes
@@ -1040,8 +737,7 @@ window.addEventListener("focus", () => {
  * @returns {Function} - Function to unsubscribe
  */
 export const subscribeToUserStatus = (callback) => {
-  if (typeof callback !== "function") {
-    console.error("Invalid callback provided to subscribeToUserStatus");
+  if (!isOnMessagePage() || typeof callback !== "function") {
     return () => {};
   }
 
@@ -1058,51 +754,46 @@ export const subscribeToUserStatus = (callback) => {
   };
 };
 
-// Thêm cơ chế keep-alive chủ động cho socket đã kết nối
-export const sendKeepAlive = () => {
+// Handle unload to clean up connections
+window.addEventListener("beforeunload", () => {
   try {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+
     if (socket && socket.connected) {
-      socket.emit("client_ping", {
-        timestamp: Date.now(),
-        isKeepAlive: true,
-      });
-      return true;
+      socket.emit("client_disconnect");
+      socket.disconnect();
     }
-    return false;
-  } catch (error) {
-    console.error("Error sending keep-alive ping:", error);
-    return false;
+  } catch (err) {
+    console.error("Error during page unload cleanup:", err);
   }
-};
+});
 
-// Handle server probes separately from heartbeat
-const setupServerProbeHandler = () => {
-  if (!socket) return;
+// Check connection when page becomes visible again
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && isOnMessagePage()) {
+    checkAndRestoreConnection();
+  }
+});
 
-  // Remove existing handler if any
-  socket.off("server_probe");
+// Add network status checking to detect connection changes
+window.addEventListener("online", () => {
+  if (isOnMessagePage()) {
+    console.log("Network back online on message page, checking connection");
+    checkAndRestoreConnection();
+  }
+});
 
-  // Add handler for server probes
-  socket.on("server_probe", (data) => {
-    // Update ping response time
-    lastPingResponse = Date.now();
+window.addEventListener("offline", () => {
+  console.warn("Network offline, socket will reconnect when back online");
+});
 
-    // Send an immediate response
-    socket.emit("client_pong", {
-      timestamp: data.timestamp,
-      receivedAt: Date.now(),
-      userId: getUserIdFromToken(),
-    });
-
-    // Also ensure connection state is up to date
-    socketConnected = true;
-
-    // Ensure socketState is updated
-    if (window.socketState) {
-      window.socketState.connected = true;
-    }
-  });
-};
+window.addEventListener("focus", () => {
+  if (isOnMessagePage()) {
+    checkAndRestoreConnection();
+  }
+});
 
 export default {
   initSocket,
@@ -1115,6 +806,5 @@ export default {
   checkAndRestoreConnection,
   forceReconnect,
   subscribeToUserStatus,
-  sendKeepAlive,
-  setupServerProbeHandler,
+  isOnMessagePage,
 };

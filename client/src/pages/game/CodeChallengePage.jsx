@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   generateCodeChallenges,
-  checkApiKeyStatus,
-} from "../../services/gptService.js";
+  checkOllamaStatus,
+} from "../../services/ollamaService.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { userService } from "../../services/userService";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -151,27 +151,27 @@ const CodeChallengePage = () => {
 
   useEffect(() => {
     // Check API key status
-    const checkApi = () => {
+    const checkApi = async () => {
       try {
-        const status = checkApiKeyStatus();
+        const status = await checkOllamaStatus();
         setApiStatus(status);
       } catch (error) {
         console.error("Error checking API status:", error);
         setApiStatus({
           available: false,
-          message: "❌ Cannot connect to OpenAI API",
+          message: "❌ Cannot connect to Ollama API",
         });
       }
     };
 
-    // Get default user data and check API status (no API call needed)
-    const fetchUserData = () => {
+    // Get default user data and check API status
+    const fetchUserData = async () => {
       // Use default values instead of API call
       setUserData({
         rank: "Rookie",
         points: 0,
       });
-      checkApi();
+      await checkApi();
     };
 
     fetchUserData();

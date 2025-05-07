@@ -39,7 +39,7 @@ const Header = () => {
             <Link to="/" className="flex-shrink-0 flex items-center">
               <img className="h-8 w-auto" src="/logo.png" alt="Logo" />
               <span className="ml-2 text-xl font-bold text-gray-900">
-                DevConnect
+                Pin Leaning
               </span>
             </Link>
 

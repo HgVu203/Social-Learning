@@ -1,5 +1,4 @@
 import axios from "axios";
-import { env } from "../config/environment.js";
 import Post from "../models/post.model.js";
 import User from "../models/user.model.js";
 
@@ -14,10 +13,11 @@ export class AISearchService {
   constructor() {
     // Free tier AI API endpoint (replace with actual free AI API when implementing)
     this.apiEndpoint =
-      env.AI_API_ENDPOINT || "https://api.openai.com/v1/embeddings";
-    this.apiKey = env.AI_API_KEY || "";
-    this.modelName = env.AI_MODEL_NAME || "text-embedding-ada-002";
-    this.useLocalFallback = !this.apiKey || env.USE_LOCAL_FALLBACK === "true";
+      process.env.AI_API_ENDPOINT || "https://api.openai.com/v1/embeddings";
+    this.apiKey = process.env.AI_API_KEY || "";
+    this.modelName = process.env.AI_MODEL_NAME || "text-embedding-ada-002";
+    this.useLocalFallback =
+      !this.apiKey || process.env.USE_LOCAL_FALLBACK === "true";
   }
 
   /**

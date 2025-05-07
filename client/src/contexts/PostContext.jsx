@@ -6,18 +6,48 @@ import { useAuth } from "./AuthContext";
 
 // Utility function to deduplicate posts by ID
 const deduplicatePosts = (posts) => {
-  if (!posts || !posts.length) return [];
+  if (!posts) {
+    console.warn("deduplicatePosts: posts array is null or undefined");
+    return [];
+  }
+
+  if (!Array.isArray(posts)) {
+    console.warn("deduplicatePosts: posts is not an array:", typeof posts);
+    return [];
+  }
+
+  if (posts.length === 0) {
+    return [];
+  }
 
   const uniquePosts = [];
   const seenIds = new Set();
+  const invalidPosts = [];
 
   for (const post of posts) {
-    if (!post._id) continue;
+    // Skip undefined, null posts, or posts without _id
+    if (!post) {
+      invalidPosts.push("null or undefined post");
+      continue;
+    }
+
+    if (!post._id) {
+      invalidPosts.push(JSON.stringify(post).substring(0, 100) + "...");
+      continue;
+    }
 
     if (!seenIds.has(post._id)) {
       seenIds.add(post._id);
       uniquePosts.push(post);
     }
+  }
+
+  // Log if we found invalid posts
+  if (invalidPosts.length > 0) {
+    console.warn(
+      `deduplicatePosts: Found ${invalidPosts.length} invalid posts`,
+      invalidPosts.length <= 3 ? invalidPosts : invalidPosts.slice(0, 3)
+    );
   }
 
   return uniquePosts;
@@ -91,6 +121,39 @@ export const PostProvider = ({ children }) => {
     error: searchError,
   } = usePostQueries.useSearchPosts(searchQuery);
 
+  // Add error logging and debugging
+  useEffect(() => {
+    // Debug logging function
+    const logDebugInfo = () => {
+      try {
+        console.log("PostContext Debug Info:", {
+          user: user ? { id: user._id, username: user.username } : null,
+          filter,
+          page,
+          limit,
+          groupId,
+          postsDataStatus: {
+            hasPages: !!postsData?.pages,
+            pageCount: postsData?.pages?.length,
+            firstPageData: postsData?.pages?.[0]?.data?.length,
+            error: postsError ? postsError.message : null,
+          },
+          groupPostsDataStatus: {
+            hasPages: !!groupPostsData?.pages,
+            pageCount: groupPostsData?.pages?.length,
+            firstPageData: groupPostsData?.pages?.[0]?.data?.length,
+            error: groupPostsError ? groupPostsError.message : null,
+          },
+        });
+      } catch (err) {
+        console.error("Error in PostContext debug logging:", err);
+      }
+    };
+
+    // Log when data changes
+    logDebugInfo();
+  }, [user, filter, postsData, groupPostsData, postsError, groupPostsError]);
+
   const {
     createPost,
     updatePost,
@@ -109,7 +172,9 @@ export const PostProvider = ({ children }) => {
 
   // Derived state
   const posts = deduplicatePosts(
-    postsData?.pages?.flatMap((page) => page.data) || []
+    postsData?.pages && Array.isArray(postsData.pages)
+      ? postsData.pages.flatMap((page) => page?.data || [])
+      : []
   );
   const totalPosts = postsData?.pages?.[0]?.pagination?.total || 0;
   const hasMore = hasNextPage;
@@ -144,7 +209,9 @@ export const PostProvider = ({ children }) => {
   // Get the appropriate posts data based on whether we're viewing group posts
   const currentPosts = groupId
     ? deduplicatePosts(
-        groupPostsData?.pages?.flatMap((page) => page.data) || []
+        groupPostsData?.pages && Array.isArray(groupPostsData.pages)
+          ? groupPostsData.pages.flatMap((page) => page?.data || [])
+          : []
       )
     : posts;
 

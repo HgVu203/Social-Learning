@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { generateQuizQuestions } from "../../services/gptService.js";
+import { generateQuizQuestions } from "../../services/ollamaService.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { userService } from "../../services/userService";
 import {

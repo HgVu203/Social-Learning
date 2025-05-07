@@ -111,7 +111,7 @@ const Sidebar = ({ onClose }) => {
             transition={{ duration: 0.5 }}
             className="text-2xl font-bold bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] bg-clip-text text-transparent"
           >
-            DevConnect
+            Pin Leaning
           </motion.span>
         </Link>
 

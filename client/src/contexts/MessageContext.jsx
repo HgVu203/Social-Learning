@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MESSAGE_QUERY_KEYS } from "../hooks/queries/useMessageQueries.js";
-import { getSocket, isSocketConnected } from "../socket";
+import { getSocket, isSocketConnected, isOnMessagePage } from "../socket";
 
 const MessageContext = createContext({
   currentConversation: null,
@@ -30,6 +30,9 @@ export const MessageProvider = ({ children }) => {
   // Track socket connection status
   useEffect(() => {
     const checkSocketConnection = () => {
+      // Only check connection if on a message page
+      if (!isOnMessagePage()) return;
+
       const connected = isSocketConnected();
       setSocketConnected(connected);
     };
@@ -45,7 +48,7 @@ export const MessageProvider = ({ children }) => {
         checkSocketConnection();
 
         // When page becomes visible again, refresh messages for active conversation
-        if (currentConversation?._id) {
+        if (currentConversation?._id && isOnMessagePage()) {
           queryClient.invalidateQueries({
             queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(
               currentConversation._id
@@ -59,6 +62,8 @@ export const MessageProvider = ({ children }) => {
 
     // Listen for socket reconnections
     const handleSocketReconnect = () => {
+      if (!isOnMessagePage()) return;
+
       setSocketConnected(true);
 
       // When socket reconnects, refresh data
@@ -75,6 +80,7 @@ export const MessageProvider = ({ children }) => {
 
     // Listen for message events to update the timestamp
     const handleConversationUpdated = () => {
+      if (!isOnMessagePage()) return;
       setLastMessageTimestamp(Date.now());
     };
 
@@ -93,6 +99,8 @@ export const MessageProvider = ({ children }) => {
 
   // Manually reconnect socket if needed
   const reconnectSocket = useCallback(() => {
+    if (!isOnMessagePage()) return false;
+
     if (!isSocketConnected()) {
       const socket = getSocket();
       if (socket) {
@@ -116,8 +124,10 @@ export const MessageProvider = ({ children }) => {
           : conversation;
       });
 
-      // When changing conversation, make sure socket is connected
-      reconnectSocket();
+      // When changing conversation, make sure socket is connected (only if on message page)
+      if (isOnMessagePage()) {
+        reconnectSocket();
+      }
     },
     [reconnectSocket]
   );
@@ -172,6 +182,9 @@ export const MessageProvider = ({ children }) => {
   // Listen for global message events to ensure real-time updates
   useEffect(() => {
     const handleNewMessage = (event) => {
+      // Skip if not on message page
+      if (!isOnMessagePage()) return;
+
       const { message, partnerId } = event?.detail || {};
 
       // Skip if no valid data
