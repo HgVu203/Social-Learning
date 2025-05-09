@@ -10,7 +10,8 @@ const MessagesPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { userId } = useParams(); // Get userId from URL params
-  const { forceReconnect, isConnected } = useSocket();
+  const socket = useSocket();
+  const isConnected = socket?.isConnected;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -29,7 +30,12 @@ const MessagesPage = () => {
     if (!isConnected) {
       setTimeout(() => {
         console.log("Initial socket connect failed, trying again");
-        forceReconnect();
+        if (socket && typeof socket.forceReconnect === "function") {
+          socket.forceReconnect();
+        } else {
+          console.log("forceReconnect not available, using direct reconnect");
+          connectSocket();
+        }
       }, 1000);
     }
 
@@ -37,7 +43,7 @@ const MessagesPage = () => {
     return () => {
       console.log("MessagesPage unmounted");
     };
-  }, [isConnected, forceReconnect]);
+  }, [isConnected, socket]);
 
   return (
     <div className="max-w-7xl mx-auto py-1 sm:py-3 md:py-4 px-2 sm:px-3 md:px-4">

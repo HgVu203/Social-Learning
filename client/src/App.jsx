@@ -327,8 +327,8 @@ function App() {
             }
           />
           <Route
-            path="/game"
-            element={<RedirectWrapper targetPath="/games" />}
+            path="/games"
+            element={<RedirectWrapper targetPath="/game" />}
           />
 
           {/* Protected Routes */}

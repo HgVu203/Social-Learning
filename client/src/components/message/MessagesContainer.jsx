@@ -17,7 +17,8 @@ const MessagesContainer = ({ userId }) => {
   const { data: friendsData } = useFriends();
   const { friends: contextFriends } = useFriend();
   const [previousUserId, setPreviousUserId] = useState(null);
-  const { isConnected, forceReconnect } = useSocket();
+  const socket = useSocket();
+  const isConnected = socket?.isConnected || false;
 
   // Combine friend sources to ensure we have data
   const allFriends = useMemo(() => {
@@ -45,7 +46,11 @@ const MessagesContainer = ({ userId }) => {
     if (!isConnected) {
       console.log("Socket not connected yet, forcing immediate reconnect");
       // Thử kết nối lại ngay lập tức
-      forceReconnect();
+      if (socket && typeof socket.forceReconnect === "function") {
+        socket.forceReconnect();
+      } else {
+        connectSocket(); // Fallback nếu không có forceReconnect
+      }
 
       // Thử kết nối lại nhiều lần trong 10 giây đầu tiên
       const quickReconnectAttempts = [1000, 3000, 6000, 10000];
@@ -53,7 +58,11 @@ const MessagesContainer = ({ userId }) => {
         setTimeout(() => {
           if (!isConnected) {
             console.log(`Retry connection after ${delay}ms`);
-            forceReconnect();
+            if (socket && typeof socket.forceReconnect === "function") {
+              socket.forceReconnect();
+            } else {
+              connectSocket();
+            }
           }
         }, delay);
       });
@@ -64,7 +73,11 @@ const MessagesContainer = ({ userId }) => {
       if (!isConnected && currentConversation?._id) {
         console.log("Connection lost, attempting to reconnect...");
         // Thử kết nối lại socket
-        forceReconnect();
+        if (socket && typeof socket.forceReconnect === "function") {
+          socket.forceReconnect();
+        } else {
+          connectSocket();
+        }
 
         // Kích hoạt refresh tin nhắn (sẽ dùng API nếu socket không hoạt động)
         setTimeout(() => {
@@ -86,7 +99,7 @@ const MessagesContainer = ({ userId }) => {
         disconnectSocket(true);
       }
     };
-  }, [location.pathname, isConnected, currentConversation, forceReconnect]);
+  }, [location.pathname, isConnected, currentConversation, socket]);
 
   // Memoize the select conversation function to avoid recreation on every render
   const selectConversation = useCallback(
@@ -216,7 +229,11 @@ const MessagesContainer = ({ userId }) => {
           </span>
           <button
             onClick={() => {
-              forceReconnect();
+              if (socket && typeof socket.forceReconnect === "function") {
+                socket.forceReconnect();
+              } else {
+                connectSocket();
+              }
               handleRefreshConversation();
             }}
             className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-medium ml-2 sm:ml-4 py-0.5 px-2 text-xs rounded bg-amber-100 dark:bg-amber-900 hover:bg-amber-200 dark:hover:bg-amber-800 whitespace-nowrap"

@@ -152,40 +152,29 @@ export const forceReconnect = () => {
     // Ngắt kết nối hiện tại trước
     socketManager.disconnect();
 
-    // Tạm dừng một chút để đảm bảo kết nối cũ đã đóng hoàn toàn
-    setTimeout(() => {
-      try {
-        // Khởi tạo kết nối mới
-        const socket = socketManager.initSocket();
+    // Khởi tạo kết nối mới ngay lập tức
+    const socket = socketManager.initSocket();
 
-        if (socket) {
-          console.log("Socket reconnection successful:", socket.id);
+    if (socket) {
+      console.log("Socket reconnection successful:", socket.id);
 
-          // Phát sự kiện kết nối thành công nếu chưa được phát từ socket.js
-          if (socket.connected) {
-            window.dispatchEvent(new CustomEvent("socket_connected"));
-          }
-
-          return true;
-        } else {
-          console.error("Socket reconnection failed - initialization error");
-
-          // Thử lại lần nữa sau 2 giây
-          setTimeout(() => {
-            console.log("Trying one final connection attempt...");
-            socketManager.initSocket();
-          }, 2000);
-
-          return false;
-        }
-      } catch (innerError) {
-        console.error("Error during socket reinitialization:", innerError);
-        return false;
+      // Phát sự kiện kết nối thành công
+      if (socket.connected) {
+        window.dispatchEvent(new CustomEvent("socket_connected"));
       }
-    }, 500);
 
-    // Trả về true vì đã bắt đầu quá trình kết nối lại
-    return true;
+      return true;
+    } else {
+      console.error("Socket reconnection failed - will retry again");
+
+      // Thử lại lần nữa sau 1 giây
+      setTimeout(() => {
+        console.log("Trying one final connection attempt...");
+        socketManager.initSocket();
+      }, 1000);
+
+      return false;
+    }
   } catch (error) {
     console.error("Error forcing socket reconnection:", error);
     return false;

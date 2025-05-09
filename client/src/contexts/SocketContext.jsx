@@ -267,6 +267,7 @@ export const SocketProvider = ({ children }) => {
     subscribeToTyping,
     subscribeToUserStatus,
     checkConnection,
+    forceReconnect: () => socketService.forceReconnect(),
   };
 
   return (
