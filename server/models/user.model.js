@@ -51,21 +51,31 @@ const UserSchema = new mongoose.Schema(
         "Platinum",
         "Diamond",
         "Master",
+        "Grandmaster",
+        "Legend",
       ],
       default: "Rookie",
     },
-    badges: [
-      {
-        name: {
-          type: String,
-          required: true,
-        },
-        earnedAt: {
-          type: Date,
-          default: Date.now,
-        },
+    badge: {
+      name: {
+        type: String,
+        enum: [
+          "gold",
+          "silver",
+          "bronze",
+          "star",
+          "expert",
+          "contributor",
+          "influencer",
+          "teacher",
+          "innovator",
+          "veteran",
+        ],
       },
-    ],
+      earnedAt: {
+        type: Date,
+      },
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
@@ -162,6 +172,28 @@ UserSchema.virtual("followingCount", {
   foreignField: "follower",
   count: true,
 });
+
+// Add indexes for fields often used in queries and sorting
+// UserSchema.index({ username: 1 }, { unique: true, background: true });
+// UserSchema.index({ email: 1 }, { unique: true, background: true });
+UserSchema.index({ status: 1 }, { background: true, name: "idx_status" });
+UserSchema.index({ rank: 1 }, { background: true, name: "idx_rank" });
+UserSchema.index(
+  { createdAt: -1 },
+  { background: true, name: "idx_createdAt" }
+);
+UserSchema.index(
+  { lastLogin: -1 },
+  { background: true, name: "idx_lastLogin" }
+);
+UserSchema.index(
+  { fullname: "text", username: "text", bio: "text" },
+  {
+    name: "idx_user_search",
+    background: true,
+    weights: { fullname: 3, username: 2, bio: 1 },
+  }
+);
 
 const User = mongoose.model("User", UserSchema);
 export default User;

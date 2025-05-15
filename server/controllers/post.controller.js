@@ -213,7 +213,7 @@ export const PostController = {
 
   getPosts: async (req, res) => {
     try {
-      const { page = 1, limit = 20, filter = "latest", groupId } = req.query;
+      const { page = 1, limit = 10, filter = "latest", groupId } = req.query;
       let query = { deleted: false };
 
       // Thêm điều kiện lọc theo groupId nếu có
@@ -267,80 +267,87 @@ export const PostController = {
         // Nếu không có bài đề xuất, tiếp tục xử lý bình thường
       }
 
-      const posts = await Post.find(query)
-        .populate("author", "username email avatar fullname")
-        .sort({ createdAt: -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      // Dùng aggregate để lấy likesCount, commentsCount cho tất cả post
+      const postsAgg = await Post.aggregate([
+        { $match: query },
+        { $sort: { createdAt: -1 } },
+        { $skip: (parseInt(page) - 1) * parseInt(limit) },
+        { $limit: parseInt(limit) },
+        {
+          $lookup: {
+            from: "feedbacks",
+            let: { postId: "$_id" },
+            pipeline: [
+              {
+                $match: { $expr: { $and: [{ $eq: ["$postId", "$$postId"] }] } },
+              },
+              {
+                $group: {
+                  _id: "$type",
+                  count: { $sum: 1 },
+                },
+              },
+            ],
+            as: "feedbackCounts",
+          },
+        },
+        {
+          $addFields: {
+            likesCount: {
+              $ifNull: [
+                {
+                  $first: {
+                    $filter: {
+                      input: "$feedbackCounts",
+                      as: "fc",
+                      cond: { $eq: ["$$fc._id", "like"] },
+                    },
+                  },
+                },
+                { count: 0 },
+              ],
+            },
+            commentsCount: {
+              $ifNull: [
+                {
+                  $first: {
+                    $filter: {
+                      input: "$feedbackCounts",
+                      as: "fc",
+                      cond: { $eq: ["$$fc._id", "comment"] },
+                    },
+                  },
+                },
+                { count: 0 },
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            content: 1,
+            createdAt: 1,
+            author: 1,
+            likesCount: "$likesCount.count",
+            commentsCount: "$commentsCount.count",
+            groupId: 1,
+          },
+        },
+      ]);
 
-      // Get likes and comments for each post
-      const postsWithCounts = await Promise.all(
-        posts.map(async (post) => {
-          const [likes, comments] = await Promise.all([
-            Feedback.find({
-              postId: post._id,
-              type: "like",
-            }).populate("userId", "username email avatar fullname"),
-            Feedback.find({
-              postId: post._id,
-              type: "comment",
-            })
-              .populate("userId", "username email avatar fullname")
-              .sort({ createdAt: -1 }),
-          ]);
-
-          // Xác định trạng thái isLiked cho người dùng hiện tại
-          let isLiked = false;
-          if (req.user) {
-            const userId = req.user._id.toString();
-            isLiked = likes.some((like) => {
-              // Kiểm tra tất cả các trường hợp
-              if (!like.userId) return false;
-
-              // Trường hợp userId là object có _id
-              if (like.userId._id) {
-                return like.userId._id.toString() === userId;
-              }
-
-              // Trường hợp userId là string hoặc ObjectId
-              return like.userId.toString() === userId;
-            });
-          }
-
-          return {
-            ...post.toJSON(),
-            likes: likes.map((like) => ({
-              _id: like._id,
-              userId: like.userId._id || like.userId,
-              username: like.userId.username,
-              fullname: like.userId.fullname,
-              avatar: like.userId.avatar,
-            })),
-            comments: comments,
-            likesCount: likes.length,
-            commentsCount: comments.length,
-            isLiked,
-          };
-        })
-      );
-
-      // Sort by popularity if needed
-      if (filter === "popular") {
-        postsWithCounts.sort((a, b) => {
-          const aScore = a.likesCount * 2 + a.commentsCount;
-          const bScore = b.likesCount * 2 + b.commentsCount;
-          if (bScore !== aScore) {
-            return bScore - aScore;
-          }
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
-      }
+      // Populate author cho tất cả post
+      await Post.populate(postsAgg, {
+        path: "author",
+        select: "username email avatar fullname",
+      });
 
       const total = await Post.countDocuments(query);
 
       return res.status(200).json({
         success: true,
-        data: postsWithCounts,
+        data: postsAgg,
         pagination: {
           total,
           page: parseInt(page),

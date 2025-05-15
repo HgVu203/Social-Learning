@@ -84,5 +84,32 @@ PostSchema.virtual("commentCount", {
   count: true,
 });
 
+// Add indexes for fields often used in queries and sorting
+PostSchema.index({ author: 1 }, { background: true, name: "idx_author" });
+PostSchema.index({ status: 1 }, { background: true, name: "idx_status" });
+PostSchema.index(
+  { createdAt: -1 },
+  { background: true, name: "idx_createdAt" }
+);
+PostSchema.index({ deleted: 1 }, { background: true, name: "idx_deleted" });
+PostSchema.index({ groupId: 1 }, { background: true, name: "idx_groupId" });
+PostSchema.index({ tags: 1 }, { background: true, name: "idx_tags" });
+PostSchema.index(
+  { title: "text", content: "text", tags: "text" },
+  {
+    name: "idx_post_search",
+    background: true,
+    weights: { title: 3, content: 2, tags: 1 },
+  }
+);
+PostSchema.index(
+  { author: 1, createdAt: -1 },
+  { background: true, name: "idx_author_createdAt" }
+);
+PostSchema.index(
+  { deleted: 1, status: 1 },
+  { background: true, name: "idx_deleted_status" }
+);
+
 const Post = mongoose.model("Post", PostSchema);
 export default Post;

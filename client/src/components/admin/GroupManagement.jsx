@@ -15,10 +15,13 @@ import { toast } from "react-toastify";
 import {
   useAdminGroups,
   useAdminGroupMutations,
+  ADMIN_QUERY_KEYS,
 } from "../../hooks/queries/useAdminQueries";
+import { useQueryClient } from "@tanstack/react-query";
 import Select from "../ui/Select";
 import Button from "../ui/Button";
 import { SkeletonGroupManagement } from "../skeleton";
+import { adminService } from "../../services/adminService";
 
 const GroupManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,15 +29,24 @@ const GroupManagement = () => {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingGroupId, setProcessingGroupId] = useState(null);
-  const groupsPerPage = 8;
+  const groupsPerPage = 5;
+  const queryClient = useQueryClient();
 
   // Sử dụng React Query để lấy dữ liệu
   const {
     data: groupsData,
     isLoading,
     refetch,
+    error,
   } = useAdminGroups(currentPage, groupsPerPage);
 
+  // Debug data
+  useEffect(() => {
+    console.log("GroupsData received:", groupsData);
+    console.log("Error:", error);
+  }, [groupsData, error]);
+
+  // Sửa lại để đảm bảo dữ liệu được xử lý đúng
   const filteredGroups = groupsData?.data || [];
   const totalPages = groupsData?.pagination?.totalPages || 1;
 
@@ -56,9 +68,42 @@ const GroupManagement = () => {
     }
   }, [searchTerm]);
 
+  // Prefetch data for next page
+  useEffect(() => {
+    // Prefetch dữ liệu trang tiếp theo để tăng tốc độ chuyển trang
+    if (currentPage < totalPages) {
+      const nextPage = currentPage + 1;
+      queryClient.prefetchQuery({
+        queryKey: ADMIN_QUERY_KEYS.groupsList({
+          page: nextPage,
+          limit: groupsPerPage,
+        }),
+        queryFn: async () => {
+          return await adminService.getAllGroups(nextPage, groupsPerPage);
+        },
+      });
+    }
+  }, [currentPage, groupsPerPage, totalPages, queryClient]);
+
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
       setCurrentPage(pageNumber);
+
+      // Tải trước dữ liệu trang kế tiếp khi người dùng chuyển trang
+      if (pageNumber < totalPages) {
+        queryClient.prefetchQuery({
+          queryKey: ADMIN_QUERY_KEYS.groupsList({
+            page: pageNumber + 1,
+            limit: groupsPerPage,
+          }),
+          queryFn: async () => {
+            return await adminService.getAllGroups(
+              pageNumber + 1,
+              groupsPerPage
+            );
+          },
+        });
+      }
     }
   };
 
@@ -120,6 +165,16 @@ const GroupManagement = () => {
     return <SkeletonGroupManagement />;
   }
 
+  // Hiển thị thông báo lỗi nếu có
+  if (error) {
+    return (
+      <div className="p-4 text-center">
+        <div className="text-red-500 mb-4">Failed to load groups</div>
+        <Button onClick={() => refetch()}>Try Again</Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
@@ -167,7 +222,7 @@ const GroupManagement = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {filteredGroups.length > 0 ? (
+            {filteredGroups && filteredGroups.length > 0 ? (
               filteredGroups.map((group) => (
                 <tr
                   key={group._id}

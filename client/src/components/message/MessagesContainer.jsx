@@ -149,28 +149,6 @@ const MessagesContainer = ({ userId }) => {
     [setCurrentConversation, currentConversation]
   );
 
-  // Cải thiện xử lý khi thay đổi người chat
-  const handleRefreshConversation = useCallback(() => {
-    if (!currentConversation?._id) return;
-
-    // Prevent simultaneous refreshes by using a timeout
-    if (window.refreshTimeout) {
-      clearTimeout(window.refreshTimeout);
-    }
-
-    // Kích hoạt refresh tin nhắn
-    window.dispatchEvent(
-      new CustomEvent("force_message_refresh", {
-        detail: { conversationId: currentConversation._id },
-      })
-    );
-
-    // Đặt lại trạng thái sau 2 giây
-    window.refreshTimeout = setTimeout(() => {
-      // Cleanup timeout
-    }, 2000);
-  }, [currentConversation]);
-
   // Effect to handle conversation changes
   useEffect(() => {
     if (
@@ -222,6 +200,8 @@ const MessagesContainer = ({ userId }) => {
       className="h-full card shadow-md overflow-hidden border border-[var(--color-border)] bg-[var(--color-card-bg)] rounded-lg"
     >
       {/* Alert for disconnected socket */}
+      {/* Ẩn banner mất kết nối socket */}
+      {/*
       {!isConnected && (
         <div className="w-full bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200 py-1 px-3 sm:px-4 text-xs sm:text-sm flex justify-between items-center">
           <span className="line-clamp-1">
@@ -242,6 +222,7 @@ const MessagesContainer = ({ userId }) => {
           </button>
         </div>
       )}
+      */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 h-full">
         {/* Contact list - hidden on mobile when chat is active */}

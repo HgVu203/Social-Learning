@@ -9,15 +9,26 @@ import {
   FaUser,
   FaChevronLeft,
   FaChevronRight,
+  FaTrophy,
+  FaMedal,
+  FaStar,
+  FaAward,
+  FaLightbulb,
+  FaHandHoldingHeart,
+  FaBullhorn,
+  FaChalkboardTeacher,
 } from "react-icons/fa";
 import { toast } from "react-toastify";
 import {
   useAdminUsers,
   useAdminUserMutations,
+  ADMIN_QUERY_KEYS,
 } from "../../hooks/queries/useAdminQueries";
+import { useQueryClient } from "@tanstack/react-query";
 import Select from "../ui/Select";
 import Button from "../ui/Button";
 import { SkeletonUserManagement } from "../skeleton";
+import { adminService } from "../../services/adminService";
 
 const UserManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,14 +36,28 @@ const UserManagement = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingUserId, setProcessingUserId] = useState(null);
-  const usersPerPage = 8;
+  const usersPerPage = 5;
+  const queryClient = useQueryClient();
 
   // Sử dụng React Query hook để lấy dữ liệu người dùng
-  const { data: userData, isLoading } = useAdminUsers(
-    currentPage,
-    usersPerPage,
-    searchTerm
-  );
+  const {
+    data: userData,
+    isLoading,
+    refetch,
+  } = useAdminUsers(currentPage, usersPerPage, searchTerm);
+
+  // Xử lý tìm kiếm
+  const searchUsers = () => {
+    setCurrentPage(1);
+    refetch();
+  };
+
+  useEffect(() => {
+    // Nếu xóa hết từ khóa, tự động search lại
+    if (searchTerm === "") {
+      searchUsers();
+    }
+  }, [searchTerm]);
 
   const filteredUsers = userData?.data || [];
   const totalPages = userData?.pagination?.totalPages || 1;
@@ -47,9 +72,67 @@ const UserManagement = () => {
     }
   }, [searchTerm]);
 
+  // Helper function to ensure badge format is consistent for display
+  const normalizeBadge = (badge) => {
+    if (!badge) return null;
+
+    // Convert string badge to object format if needed
+    if (typeof badge === "string") {
+      return { name: badge, earnedAt: new Date().toISOString() };
+    }
+
+    // If it's already an object with name, return it
+    if (badge.name) {
+      return badge;
+    }
+
+    // Otherwise return null
+    return null;
+  };
+
+  // Prefetch data for next page
+  useEffect(() => {
+    // Prefetch dữ liệu trang tiếp theo để tăng tốc độ chuyển trang
+    if (currentPage < totalPages) {
+      const nextPage = currentPage + 1;
+      queryClient.prefetchQuery({
+        queryKey: ADMIN_QUERY_KEYS.usersList({
+          page: nextPage,
+          limit: usersPerPage,
+          searchTerm,
+        }),
+        queryFn: async () => {
+          return await adminService.getAllUsers(
+            nextPage,
+            usersPerPage,
+            searchTerm
+          );
+        },
+      });
+    }
+  }, [currentPage, searchTerm, usersPerPage, totalPages, queryClient]);
+
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
       setCurrentPage(pageNumber);
+
+      // Tải trước dữ liệu trang kế tiếp khi người dùng chuyển trang
+      if (pageNumber < totalPages) {
+        queryClient.prefetchQuery({
+          queryKey: ADMIN_QUERY_KEYS.usersList({
+            page: pageNumber + 1,
+            limit: usersPerPage,
+            searchTerm,
+          }),
+          queryFn: async () => {
+            return await adminService.getAllUsers(
+              pageNumber + 1,
+              usersPerPage,
+              searchTerm
+            );
+          },
+        });
+      }
     }
   };
 
@@ -133,6 +216,41 @@ const UserManagement = () => {
     }
   };
 
+  // hàm getBadgeIcon
+  const getBadgeIcon = (badge) => {
+    if (!badge) return null;
+
+    // Get badge name from either string or object
+    const badgeName = typeof badge === "string" ? badge : badge.name;
+
+    if (!badgeName) return null;
+
+    switch (badgeName) {
+      case "gold":
+        return <FaTrophy className="text-yellow-500" />;
+      case "silver":
+        return <FaMedal className="text-gray-400" />;
+      case "bronze":
+        return <FaMedal className="text-amber-700" />;
+      case "star":
+        return <FaStar className="text-blue-500" />;
+      case "expert":
+        return <FaUserShield className="text-indigo-500" />;
+      case "contributor":
+        return <FaHandHoldingHeart className="text-pink-500" />;
+      case "influencer":
+        return <FaBullhorn className="text-orange-500" />;
+      case "teacher":
+        return <FaChalkboardTeacher className="text-teal-500" />;
+      case "innovator":
+        return <FaLightbulb className="text-yellow-400" />;
+      case "veteran":
+        return <FaAward className="text-purple-500" />;
+      default:
+        return null;
+    }
+  };
+
   if (isLoading) {
     return <SkeletonUserManagement />;
   }
@@ -172,6 +290,9 @@ const UserManagement = () => {
                 Role
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
+                Badge
+              </th>
+              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
                 Status
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
@@ -206,6 +327,22 @@ const UserManagement = () => {
                       {getRoleIcon(user.role)}
                       {user.role}
                     </span>
+                  </td>
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    {normalizeBadge(user.badge) ? (
+                      <div className="flex items-center space-x-2">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[var(--color-bg-hover)]">
+                          {getBadgeIcon(normalizeBadge(user.badge))}
+                        </span>
+                        <span className="text-xs text-[var(--color-text-primary)] capitalize">
+                          {normalizeBadge(user.badge).name}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-[var(--color-text-tertiary)]">
+                        No badge
+                      </span>
+                    )}
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span

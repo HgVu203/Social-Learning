@@ -7,7 +7,12 @@ import {
   FaChartBar,
   FaExclamationTriangle,
 } from "react-icons/fa";
-import { useAdminDashboardStats } from "../../hooks/queries/useAdminQueries";
+import {
+  useAdminDashboardBasicStats,
+  useAdminUserGrowthData,
+  useAdminPostGrowthData,
+  useAdminRecentActivity,
+} from "../../hooks/queries/useAdminQueries";
 import { useEffect } from "react";
 import Button from "../ui/Button";
 import { SkeletonDashboard } from "../skeleton";
@@ -84,46 +89,89 @@ const Card = ({ title, value, icon, color, increase }) => {
 };
 
 const DashboardOverview = () => {
-  const { data: stats, isLoading, error, refetch } = useAdminDashboardStats();
+  // Sử dụng các query tách biệt thay vì một query lớn
+  const {
+    data: basicStats,
+    isLoading: isLoadingBasic,
+    error: basicError,
+    refetch: refetchBasic,
+  } = useAdminDashboardBasicStats();
 
+  // Tải user growth chart chỉ khi cần
+  const {
+    data: userGrowthData,
+    isLoading: isLoadingUserGrowth,
+    error: userGrowthError,
+    refetch: refetchUserGrowth,
+  } = useAdminUserGrowthData({
+    enabled: !isLoadingBasic, // Chỉ tải khi dữ liệu cơ bản đã sẵn sàng
+  });
+
+  // Tải post growth chart chỉ khi cần
+  const {
+    data: postGrowthData,
+    isLoading: isLoadingPostGrowth,
+    error: postGrowthError,
+    refetch: refetchPostGrowth,
+  } = useAdminPostGrowthData({
+    enabled: !isLoadingBasic, // Chỉ tải khi dữ liệu cơ bản đã sẵn sàng
+  });
+
+  // Tải recent activity riêng biệt và cuối cùng
+  const { data: recentActivity } = useAdminRecentActivity({
+    enabled: !isLoadingBasic && !isLoadingUserGrowth && !isLoadingPostGrowth,
+  });
+
+  // Xử lý khi có lỗi
   useEffect(() => {
-    console.log("Dashboard stats data:", stats);
-    if (error || !stats) {
-      console.log("Retrying dashboard stats fetch...");
-      setTimeout(() => refetch(), 2000);
+    if (basicError) {
+      console.log("Retrying basic stats fetch...");
+      setTimeout(() => refetchBasic(), 2000);
     }
-  }, [stats, error, refetch]);
 
+    if (userGrowthError) {
+      console.log("Retrying user growth data fetch...");
+      setTimeout(() => refetchUserGrowth(), 2000);
+    }
+
+    if (postGrowthError) {
+      console.log("Retrying post growth data fetch...");
+      setTimeout(() => refetchPostGrowth(), 2000);
+    }
+  }, [basicError, userGrowthError, postGrowthError]);
+
+  const statsData = basicStats?.data;
+  const isLoading = isLoadingBasic;
+
+  // Tạo mảng cho card stats
   const statCards = [
     {
       title: "Total Users",
       key: "totalUsers",
-      value: stats?.data?.userStats?.totalUsers || 0,
-      increase: stats?.data?.userStats?.percentChange,
+      value: statsData?.userStats?.totalUsers || 0,
+      increase: statsData?.userStats?.percentChange || 0,
       icon: <FaUsers className="text-xl" />,
       color: "blue",
     },
     {
       title: "Active Users",
       key: "activeUsers",
-      value: stats?.data?.userStats?.activeUsersToday || 0,
-      increase: stats?.data?.userStats?.activePercentChange,
+      value: statsData?.userStats?.activeStatusCount || 0,
       icon: <FaUsersCog className="text-xl" />,
       color: "green",
     },
     {
       title: "Total Posts",
       key: "totalPosts",
-      value: stats?.data?.postStats?.totalPosts || 0,
-      increase: stats?.data?.postStats?.percentChange,
+      value: statsData?.postStats?.totalPosts || 0,
+      increase: statsData?.postStats?.percentChange || 0,
       icon: <FaNewspaper className="text-xl" />,
       color: "purple",
     },
     {
       title: "Total Groups",
       key: "totalGroups",
-      value: stats?.data?.groupStats?.totalGroups || 0,
-      increase: stats?.data?.groupStats?.percentChange,
+      value: statsData?.groupStats?.totalGroups || 0,
       icon: <FaUserFriends className="text-xl" />,
       color: "orange",
     },
@@ -136,13 +184,13 @@ const DashboardOverview = () => {
     return date.toLocaleDateString("en-US", { weekday: "short" });
   });
 
-  // Cấu hình cho biểu đồ User Growth
+  // Cấu hình cho biểu đồ User Growth từ API riêng
   const userGrowthConfig = {
-    labels: last7Days,
+    labels: userGrowthData?.data?.labels || last7Days,
     datasets: [
       {
         label: "New Users",
-        data: stats?.data?.userStats?.recentGrowth || Array(7).fill(0),
+        data: userGrowthData?.data?.growth || Array(7).fill(0),
         fill: false,
         borderColor: "rgb(59, 130, 246)",
         backgroundColor: "rgba(59, 130, 246, 0.5)",
@@ -151,73 +199,13 @@ const DashboardOverview = () => {
     ],
   };
 
-  const userGrowthOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: true,
-        position: "top",
-        labels: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 12,
-          },
-        },
-      },
-      tooltip: {
-        mode: "index",
-        intersect: false,
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-        titleColor: "rgb(255, 255, 255)",
-        bodyColor: "rgb(255, 255, 255)",
-        padding: 12,
-        callbacks: {
-          label: function (context) {
-            return `New Users: ${context.parsed.y}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(156, 163, 175, 0.1)",
-        },
-        ticks: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 11,
-          },
-          stepSize: 1,
-        },
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 11,
-          },
-        },
-      },
-    },
-    interaction: {
-      intersect: false,
-      mode: "index",
-    },
-  };
-
-  // Cấu hình cho biểu đồ Content Growth
+  // Cấu hình cho biểu đồ Content Growth từ API riêng
   const contentGrowthConfig = {
-    labels: last7Days,
+    labels: postGrowthData?.data?.labels || last7Days,
     datasets: [
       {
         label: "New Posts",
-        data: stats?.data?.postStats?.recentGrowth || Array(7).fill(0),
+        data: postGrowthData?.data?.growth || Array(7).fill(0),
         fill: false,
         borderColor: "rgb(147, 51, 234)",
         backgroundColor: "rgba(147, 51, 234, 0.5)",
@@ -226,73 +214,13 @@ const DashboardOverview = () => {
     ],
   };
 
-  const contentGrowthOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: true,
-        position: "top",
-        labels: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 12,
-          },
-        },
-      },
-      tooltip: {
-        mode: "index",
-        intersect: false,
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-        titleColor: "rgb(255, 255, 255)",
-        bodyColor: "rgb(255, 255, 255)",
-        padding: 12,
-        callbacks: {
-          label: function (context) {
-            return `New Posts: ${context.parsed.y}`;
-          },
-        },
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(156, 163, 175, 0.1)",
-        },
-        ticks: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 11,
-          },
-          stepSize: 1,
-        },
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: "rgb(156, 163, 175)",
-          font: {
-            size: 11,
-          },
-        },
-      },
-    },
-    interaction: {
-      intersect: false,
-      mode: "index",
-    },
-  };
-
   // Hiển thị trạng thái loading
   if (isLoading) {
     return <SkeletonDashboard />;
   }
 
   // Hiển thị lỗi nếu có
-  if (error) {
+  if (basicError) {
     return (
       <div className="text-center p-6 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] my-4">
         <FaExclamationTriangle className="text-amber-500 text-4xl mx-auto mb-4" />
@@ -300,7 +228,7 @@ const DashboardOverview = () => {
           Error loading dashboard data
         </p>
         <p className="text-[var(--color-text-secondary)] mt-2">
-          {error.message || "Please try again later."}
+          {basicError.message || "Please try again later."}
         </p>
         <Button
           onClick={() => window.location.reload()}
@@ -343,8 +271,8 @@ const DashboardOverview = () => {
             </div>
           </div>
           <div className="h-64">
-            {stats?.data?.userStats?.recentGrowth ? (
-              <Line data={userGrowthConfig} options={userGrowthOptions} />
+            {userGrowthData?.data?.growth ? (
+              <Line data={userGrowthConfig} />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[var(--color-text-secondary)]">
@@ -365,8 +293,8 @@ const DashboardOverview = () => {
             </div>
           </div>
           <div className="h-64">
-            {stats?.data?.postStats?.recentGrowth ? (
-              <Line data={contentGrowthConfig} options={contentGrowthOptions} />
+            {postGrowthData?.data?.growth ? (
+              <Line data={contentGrowthConfig} />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[var(--color-text-secondary)]">
@@ -403,8 +331,8 @@ const DashboardOverview = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
-              {stats?.data?.recentActivity?.length > 0 ? (
-                stats.data.recentActivity.map((activity, index) => (
+              {recentActivity?.data?.length > 0 ? (
+                recentActivity.data.map((activity, index) => (
                   <tr key={index}>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-[var(--color-text-primary)]">
                       {activity.action}
@@ -476,7 +404,7 @@ const DashboardOverview = () => {
               Server Uptime
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
-              {stats?.data?.system?.uptime || "99.9%"}
+              {statsData?.system?.uptime || "99.9%"}
             </p>
           </div>
           <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg">
@@ -484,7 +412,7 @@ const DashboardOverview = () => {
               Memory Usage
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
-              {stats?.data?.system?.memory || "42%"}
+              {statsData?.system?.memory || "42%"}
             </p>
           </div>
           <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg">
@@ -492,7 +420,7 @@ const DashboardOverview = () => {
               API Response Time
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
-              {stats?.data?.system?.responseTime || "120ms"}
+              {statsData?.system?.responseTime || "120ms"}
             </p>
           </div>
         </div>

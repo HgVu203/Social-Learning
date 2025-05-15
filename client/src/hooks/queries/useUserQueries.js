@@ -10,7 +10,14 @@ export const USER_QUERY_KEYS = {
   searchResults: (query) => [...USER_QUERY_KEYS.search(), query],
 };
 
-export const useUserProfile = (userId) => {
+/**
+ * Lấy profile user, truyền thêm postPage, postLimit để phân trang bài viết của user.
+ * @param {string} userId
+ * @param {number} postPage
+ * @param {number} postLimit
+ * @returns react-query useQuery
+ */
+export const useUserProfile = (userId, postPage = 1, postLimit = 5) => {
   return useQuery({
     queryKey: USER_QUERY_KEYS.userProfile(userId),
     queryFn: async () => {
@@ -19,7 +26,9 @@ export const useUserProfile = (userId) => {
       }
 
       const apiPath = `/users/profile/${userId}`;
-      const response = await axiosService.get(apiPath);
+      const response = await axiosService.get(apiPath, {
+        params: { postPage, postLimit },
+      });
       return response.data;
     },
     enabled: !!userId,

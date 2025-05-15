@@ -22,7 +22,11 @@ export const UserController = {
       user.points += Number(points);
 
       // Update rank based on points thresholds
-      if (user.points >= 6000) {
+      if (user.points >= 9000) {
+        user.rank = "Legend"; // Huyền Thoại
+      } else if (user.points >= 7500) {
+        user.rank = "Grandmaster"; // Đại Cao Thủ
+      } else if (user.points >= 6000) {
         user.rank = "Master"; // Cao Thủ
       } else if (user.points >= 5000) {
         user.rank = "Diamond"; // Kim Cương
@@ -38,12 +42,28 @@ export const UserController = {
         user.rank = "Rookie"; // Tân Thủ
       }
 
-      // Add badge if provided and not already earned
-      if (badge && !user.badges.some((b) => b.name === badge)) {
-        user.badges.push({
-          name: badge,
-          earnedAt: new Date(),
-        });
+      // Gán badge mới nếu được cung cấp
+      if (badge) {
+        // Kiểm tra badge có hợp lệ không
+        const validBadges = [
+          "gold",
+          "silver",
+          "bronze",
+          "star",
+          "expert",
+          "contributor",
+          "influencer",
+          "teacher",
+          "innovator",
+          "veteran",
+        ];
+
+        if (validBadges.includes(badge)) {
+          user.badge = {
+            name: badge,
+            earnedAt: new Date(),
+          };
+        }
       }
 
       await user.save();
@@ -54,7 +74,7 @@ export const UserController = {
         data: {
           points: user.points,
           rank: user.rank,
-          badges: user.badges,
+          badge: user.badge,
         },
       });
     } catch (error) {

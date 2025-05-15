@@ -8,15 +8,24 @@ import {
   FaStar,
   FaChevronLeft,
   FaChevronRight,
+  FaUserShield,
+  FaHandHoldingHeart,
+  FaBullhorn,
+  FaChalkboardTeacher,
+  FaLightbulb,
+  FaAward,
 } from "react-icons/fa";
 import { toast } from "react-toastify";
 import {
   useAdminUsers,
   useUpdateUserPoints,
+  ADMIN_QUERY_KEYS,
 } from "../../hooks/queries/useAdminQueries";
+import { useQueryClient } from "@tanstack/react-query";
 import Button from "../ui/Button";
 import Select from "../ui/Select";
 import { SkeletonPointsManagement } from "../skeleton";
+import { adminService } from "../../services/adminService";
 
 const PointsManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,7 +35,8 @@ const PointsManagement = () => {
   const [badgeToAssign, setBadgeToAssign] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [operation, setOperation] = useState("add");
-  const usersPerPage = 8;
+  const usersPerPage = 5;
+  const queryClient = useQueryClient();
 
   // Sử dụng React Query để lấy dữ liệu người dùng
   const {
@@ -37,6 +47,41 @@ const PointsManagement = () => {
 
   const filteredUsers = userData?.data || [];
   const totalPages = userData?.pagination?.totalPages || 1;
+
+  // Helper function to ensure badge format is consistent for display
+  const normalizeBadge = (badge) => {
+    if (!badge) return null;
+
+    // Convert string badge to object format if needed
+    if (typeof badge === "string") {
+      return { name: badge, earnedAt: new Date().toISOString() };
+    }
+
+    // If it's already an object with name, return it
+    if (badge.name) {
+      return badge;
+    }
+
+    // Otherwise return null
+    return null;
+  };
+
+  // Debug badge data
+  useEffect(() => {
+    if (userData && userData.data) {
+      console.log("User data received:", userData.data);
+      // Log specific badge info for each user
+      userData.data.forEach((user) => {
+        const normalizedBadge = normalizeBadge(user.badge);
+        console.log(
+          `User ${user.username || user._id} badge:`,
+          user.badge,
+          "→ normalized:",
+          normalizedBadge
+        );
+      });
+    }
+  }, [userData]);
 
   // Sử dụng React Query mutation để cập nhật điểm
   const updateUserPoints = useUpdateUserPoints();
@@ -56,9 +101,49 @@ const PointsManagement = () => {
     }
   }, [searchTerm]);
 
+  // Prefetch data for next page
+  useEffect(() => {
+    // Prefetch dữ liệu trang tiếp theo để tăng tốc độ chuyển trang
+    if (currentPage < totalPages) {
+      const nextPage = currentPage + 1;
+      queryClient.prefetchQuery({
+        queryKey: ADMIN_QUERY_KEYS.usersList({
+          page: nextPage,
+          limit: usersPerPage,
+          searchTerm,
+        }),
+        queryFn: async () => {
+          return await adminService.getAllUsers(
+            nextPage,
+            usersPerPage,
+            searchTerm
+          );
+        },
+      });
+    }
+  }, [currentPage, totalPages, usersPerPage, searchTerm, queryClient]);
+
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
       setCurrentPage(pageNumber);
+
+      // Tải trước dữ liệu trang kế tiếp khi người dùng chuyển trang
+      if (pageNumber < totalPages) {
+        queryClient.prefetchQuery({
+          queryKey: ADMIN_QUERY_KEYS.usersList({
+            page: pageNumber + 1,
+            limit: usersPerPage,
+            searchTerm,
+          }),
+          queryFn: async () => {
+            return await adminService.getAllUsers(
+              pageNumber + 1,
+              usersPerPage,
+              searchTerm
+            );
+          },
+        });
+      }
     }
   };
 
@@ -95,11 +180,96 @@ const PointsManagement = () => {
         : 0; // Send 0 if no points to update but a badge is selected
 
     try {
-      await updateUserPoints.mutateAsync({
+      // Tính toán giá trị points mới cho optimistic update
+      const newPoints =
+        selectedUser.points !== undefined
+          ? selectedUser.points + calculatedPoints
+          : calculatedPoints > 0
+          ? calculatedPoints
+          : 0;
+
+      // Tạo badge mới nếu có chọn badge
+      const newBadge = badgeToAssign
+        ? {
+            name: badgeToAssign,
+            earnedAt: new Date().toISOString(),
+          }
+        : selectedUser.badge;
+
+      // Bắt đầu logging để theo dõi quá trình cập nhật
+      console.log("[Points Management] Current user data before update:", {
+        id: selectedUser._id,
+        points: selectedUser.points,
+        badge: selectedUser.badge,
+      });
+
+      console.log("[Points Management] Optimistic update with:", {
+        points: newPoints,
+        badge: newBadge,
+        calculatedPoints: calculatedPoints,
+        badgeToAssign: badgeToAssign,
+      });
+
+      // Cập nhật ngay giao diện người dùng trước khi server trả về kết quả
+      // Cập nhật selectedUser để modal hiển thị đúng
+      setSelectedUser((prev) => ({
+        ...prev,
+        points: newPoints,
+        badge: newBadge,
+      }));
+
+      // Cập nhật cache của React Query để danh sách hiển thị đúng ngay lập tức
+      queryClient.setQueryData(
+        ADMIN_QUERY_KEYS.usersList({
+          page: currentPage,
+          limit: usersPerPage,
+          searchTerm,
+        }),
+        (oldData) => {
+          if (!oldData) return oldData;
+          console.log("[Points Management] Updating React Query cache data");
+
+          const updatedData = {
+            ...oldData,
+            data: oldData.data.map((user) =>
+              user._id === selectedUser._id
+                ? {
+                    ...user,
+                    points: newPoints,
+                    badge: newBadge,
+                  }
+                : user
+            ),
+          };
+
+          console.log(
+            "[Points Management] Updated user in cache:",
+            updatedData.data.find((u) => u._id === selectedUser._id)
+          );
+
+          return updatedData;
+        }
+      );
+
+      // Gọi API cập nhật points và badge
+      console.log(
+        "[Points Management] Sending update with badge:",
+        badgeToAssign
+      );
+      const result = await updateUserPoints.mutateAsync({
         userId: selectedUser._id,
         points: calculatedPoints,
         badge: badgeToAssign || undefined,
       });
+
+      console.log("[Points Management] Server response:", result);
+
+      if (result?.data?.badge) {
+        console.log(
+          `[Points Management] Server confirmed badge:`,
+          result.data.badge
+        );
+      }
 
       // Only mention points in the success message if points were actually updated
       let successMessage = "";
@@ -109,26 +279,57 @@ const PointsManagement = () => {
         successMessage = `Successfully ${operationText} ${
           selectedUser.fullname || selectedUser.username
         }'s points`;
-      } else if (badgeToAssign) {
-        successMessage = `Successfully assigned badge to ${
+      }
+
+      if (badgeToAssign) {
+        const badgeText =
+          pointsToUpdate > 0
+            ? " and assigned badge"
+            : "Successfully assigned badge";
+        successMessage += `${badgeText} to ${
           selectedUser.fullname || selectedUser.username
         }`;
       }
 
       toast.success(successMessage);
+
+      // Force a complete cache invalidation and refetch
+      await queryClient.invalidateQueries({
+        queryKey: ADMIN_QUERY_KEYS.users(),
+        refetchActive: true,
+        refetchInactive: true,
+      });
+
+      // Force refetch with timeout to ensure UI updates
+      setTimeout(() => {
+        refetch();
+      }, 500);
+
       closeModal();
     } catch (error) {
-      console.error("Error updating points:", error);
+      console.error("[Points Management] Error updating points:", error);
       toast.error(
         error.response?.data?.error ||
           error.message ||
           "Failed to update points"
       );
+
+      // Revert optimistic updates if there's an error
+      queryClient.invalidateQueries({
+        queryKey: ADMIN_QUERY_KEYS.users(),
+      });
     }
   };
 
   const getBadgeIcon = (badge) => {
-    switch (badge) {
+    if (!badge) return null;
+
+    // Get badge name from either string or object
+    const badgeName = typeof badge === "string" ? badge : badge.name;
+
+    if (!badgeName) return null;
+
+    switch (badgeName) {
       case "gold":
         return <FaTrophy className="text-yellow-500" />;
       case "silver":
@@ -137,6 +338,18 @@ const PointsManagement = () => {
         return <FaMedal className="text-amber-700" />;
       case "star":
         return <FaStar className="text-blue-500" />;
+      case "expert":
+        return <FaUserShield className="text-indigo-500" />;
+      case "contributor":
+        return <FaHandHoldingHeart className="text-pink-500" />;
+      case "influencer":
+        return <FaBullhorn className="text-orange-500" />;
+      case "teacher":
+        return <FaChalkboardTeacher className="text-teal-500" />;
+      case "innovator":
+        return <FaLightbulb className="text-yellow-400" />;
+      case "veteran":
+        return <FaAward className="text-purple-500" />;
       default:
         return null;
     }
@@ -230,19 +443,21 @@ const PointsManagement = () => {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <div className="flex space-x-1">
-                      {user.badges && user.badges.length > 0 ? (
-                        user.badges.map((badge, index) => (
+                      {normalizeBadge(user.badge) ? (
+                        <div className="flex items-center space-x-1">
                           <span
-                            key={index}
                             className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[var(--color-bg-hover)]"
-                            title={badge}
+                            title={normalizeBadge(user.badge).name}
                           >
-                            {getBadgeIcon(badge)}
+                            {getBadgeIcon(normalizeBadge(user.badge))}
                           </span>
-                        ))
+                          <span className="text-sm text-[var(--color-text-primary)] capitalize">
+                            {normalizeBadge(user.badge).name}
+                          </span>
+                        </div>
                       ) : (
                         <span className="text-sm text-[var(--color-text-tertiary)]">
-                          No badges
+                          No badge
                         </span>
                       )}
                     </div>
@@ -412,9 +627,27 @@ const PointsManagement = () => {
                   <p className="text-sm text-[var(--color-text-secondary)]">
                     {selectedUser.email}
                   </p>
-                  <p className="text-sm font-semibold text-[var(--color-primary)]">
-                    Current points: {selectedUser.points || 0}
-                  </p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-sm font-semibold text-[var(--color-primary)]">
+                      Current points: {selectedUser.points || 0}
+                    </p>
+                    {selectedUser.badge && selectedUser.badge.name && (
+                      <div className="flex items-center">
+                        <span className="mx-1 text-[var(--color-text-tertiary)]">
+                          •
+                        </span>
+                        <span className="text-sm font-semibold text-[var(--color-text-secondary)] flex items-center">
+                          Badge:
+                          <span className="ml-1 inline-flex items-center justify-center w-5 h-5">
+                            {getBadgeIcon(selectedUser.badge)}
+                          </span>
+                          <span className="ml-1">
+                            {selectedUser.badge.name}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -487,6 +720,12 @@ const PointsManagement = () => {
                     { value: "silver", label: "Silver Medal" },
                     { value: "bronze", label: "Bronze Medal" },
                     { value: "star", label: "Star Badge" },
+                    { value: "expert", label: "Expert" },
+                    { value: "contributor", label: "Contributor" },
+                    { value: "influencer", label: "Influencer" },
+                    { value: "teacher", label: "Teacher" },
+                    { value: "innovator", label: "Innovator" },
+                    { value: "veteran", label: "Veteran" },
                   ]}
                   disabled={updateUserPoints.isPending}
                   className={

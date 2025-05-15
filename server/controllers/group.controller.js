@@ -311,7 +311,11 @@ export const GroupController = {
       // Standard query approach without aggregation
       const groups = await Group.find(queryObj)
         .populate("createdBy", "username email avatar")
-        .populate("members.user", "username email avatar")
+        .populate({
+          path: "members.user",
+          select: "username email avatar",
+          options: { limit: 10 },
+        })
         .sort(sortOption)
         .limit(parseInt(limit))
         .skip((parseInt(page) - 1) * parseInt(limit));
@@ -331,6 +335,7 @@ export const GroupController = {
         return {
           ...group.toObject(),
           isMember,
+          members: members.slice(0, 10), // chỉ trả về tối đa 10 thành viên đầu tiên
           membersCount: members.length || 0,
         };
       });

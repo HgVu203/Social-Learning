@@ -24,6 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Select from "../ui/Select";
 import Button from "../ui/Button";
 import { SkeletonContentManagement } from "../skeleton";
+import { adminService } from "../../services/adminService";
 
 const ContentManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,7 +34,7 @@ const ContentManagement = () => {
   const [processingPostId, setProcessingPostId] = useState(null);
   const queryClient = useQueryClient();
 
-  const postsPerPage = 10;
+  const postsPerPage = 5;
 
   // Sử dụng React Query để lấy dữ liệu
   const { data: postsData, isLoading } = useAdminPosts(
@@ -47,6 +48,14 @@ const ContentManagement = () => {
 
   // Sử dụng React Query mutations
   const { updatePostStatus, deletePost, restorePost } = useAdminPostMutations();
+
+  // Function to refresh data
+  const refreshData = () => {
+    // Invalidate tất cả các queries liên quan đến posts thay vì chỉ invalidate một query cụ thể
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_QUERY_KEYS.posts(),
+    });
+  };
 
   // Thêm useEffect để kiểm tra giá trị status thực tế
   useEffect(() => {
@@ -68,16 +77,23 @@ const ContentManagement = () => {
     }
   }, [filter]);
 
-  // Thêm useEffect mới để đảm bảo dữ liệu luôn được refresh khi cần
+  // Thêm useEffect mới để prefetch dữ liệu trang kế tiếp
   useEffect(() => {
-    // Force refresh data khi có thay đổi
-    const queryKey = ADMIN_QUERY_KEYS.postsList({
-      page: currentPage,
-      limit: postsPerPage,
-      status: filter,
-    });
-    queryClient.invalidateQueries({ queryKey });
-  }, [filter, currentPage, postsPerPage, queryClient]);
+    // Prefetch dữ liệu trang tiếp theo để tăng tốc độ chuyển trang
+    if (currentPage < totalPages) {
+      const nextPage = currentPage + 1;
+      queryClient.prefetchQuery({
+        queryKey: ADMIN_QUERY_KEYS.postsList({
+          page: nextPage,
+          limit: postsPerPage,
+          status: filter,
+        }),
+        queryFn: async () => {
+          return await adminService.getAllPosts(nextPage, postsPerPage, filter);
+        },
+      });
+    }
+  }, [currentPage, filter, postsPerPage, totalPages, queryClient]);
 
   // Hàm hiển thị status rõ ràng
   const getStatusDisplay = (status) => {
@@ -104,6 +120,24 @@ const ContentManagement = () => {
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
       setCurrentPage(pageNumber);
+
+      // Tải trước dữ liệu trang kế tiếp khi người dùng chuyển trang
+      if (pageNumber < totalPages) {
+        queryClient.prefetchQuery({
+          queryKey: ADMIN_QUERY_KEYS.postsList({
+            page: pageNumber + 1,
+            limit: postsPerPage,
+            status: filter,
+          }),
+          queryFn: async () => {
+            return await adminService.getAllPosts(
+              pageNumber + 1,
+              postsPerPage,
+              filter
+            );
+          },
+        });
+      }
     }
   };
 
@@ -123,6 +157,7 @@ const ContentManagement = () => {
         setProcessingPostId(postId);
         await deletePost.mutateAsync(postId);
         toast.success("Post deleted successfully");
+        refreshData();
 
         if (isModalOpen && selectedPost && selectedPost._id === postId) {
           closeModal();
@@ -141,6 +176,7 @@ const ContentManagement = () => {
       setProcessingPostId(postId);
       await restorePost.mutateAsync(postId);
       toast.success("Post restored successfully");
+      refreshData();
 
       if (isModalOpen && selectedPost && selectedPost._id === postId) {
         closeModal();
@@ -158,33 +194,17 @@ const ContentManagement = () => {
       setProcessingPostId(postId);
       console.log(`Attempting to update post ${postId} to status: ${status}`);
 
-      const response = await updatePostStatus.mutateAsync({
+      // Không cần truy cập dữ liệu từ response vì optimistic updates đã cập nhật dữ liệu UI
+      await updatePostStatus.mutateAsync({
         postId,
         status,
       });
 
-      console.log("Update response from server:", response);
-
-      // Cập nhật UI theo response thực từ server
-      if (response && response.data) {
-        const updatedPost = response.data;
-        console.log("Updated post data from server:", updatedPost);
-
-        // Cập nhật post trong modal nếu đang mở
-        if (isModalOpen && selectedPost && selectedPost._id === postId) {
-          setSelectedPost((prevPost) => ({
-            ...prevPost,
-            ...updatedPost,
-          }));
-        }
-
-        // Force refresh data
-        queryClient.invalidateQueries({
-          queryKey: ADMIN_QUERY_KEYS.postsList({
-            page: currentPage,
-            limit: postsPerPage,
-            status: filter,
-          }),
+      // Cập nhật post trong modal nếu đang mở
+      if (isModalOpen && selectedPost && selectedPost._id === postId) {
+        setSelectedPost({
+          ...selectedPost,
+          status,
         });
       }
 
@@ -197,10 +217,6 @@ const ContentManagement = () => {
             : "approved"
         } successfully`
       );
-
-      if (isModalOpen) {
-        closeModal();
-      }
     } catch (error) {
       console.error("Error updating post status:", error);
       toast.error(

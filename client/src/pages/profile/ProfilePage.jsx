@@ -78,6 +78,8 @@ const ProfilePage = () => {
   const prevUserId = useRef(null);
   const { sendFriendRequest } = useFriend();
   const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
+  const [postPage, setPostPage] = useState(1);
+  const postLimit = 5;
 
   // Nếu truy cập /profile mà không có userId, chuyển hướng đến profile của chính mình
   useEffect(() => {
@@ -113,7 +115,7 @@ const ProfilePage = () => {
     isLoading: loading,
     error,
     refetch,
-  } = useUserProfile(targetUserId);
+  } = useUserProfile(targetUserId, postPage, postLimit);
 
   console.log("Profile Data from query:", profileData);
 
@@ -262,6 +264,10 @@ const ProfilePage = () => {
       setSendingFriendRequest(false);
     }
   };
+
+  // Thêm nút Xem thêm bài viết nếu còn bài viết
+  const posts = profile?.posts || [];
+  const hasMorePosts = posts.length === postLimit;
 
   if (loading) {
     return (
@@ -602,9 +608,9 @@ const ProfilePage = () => {
 
       {/* Profile Content */}
       <div className="mt-4 sm:mt-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Stats Card */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6">
+          <div className="flex-1 bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6 flex flex-col justify-between">
             <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
               Stats
             </h2>
@@ -676,7 +682,7 @@ const ProfilePage = () => {
           </div>
 
           {/* About Card */}
-          <div className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6">
+          <div className="flex-1 bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6 flex flex-col justify-between">
             <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
               About
             </h2>
@@ -765,75 +771,6 @@ const ProfilePage = () => {
               )}
             </div>
           </div>
-
-          {/* Additional Info can go in this third column on larger screens */}
-          <div className="hidden lg:block bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6">
-            <h2 className="text-lg font-semibold mb-4 text-[var(--color-text-primary)]">
-              Activity
-            </h2>
-
-            <div className="space-y-4">
-              {/* Activity summary could go here */}
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-secondary)]">
-                  Posts
-                </span>
-                <span className="text-[var(--color-text-primary)] font-semibold">
-                  {profile.posts?.length || 0}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-secondary)]">
-                  Comments
-                </span>
-                <span className="text-[var(--color-text-primary)] font-semibold">
-                  {profile.commentsCount || 0}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-secondary)]">
-                  Following
-                </span>
-                <span className="text-[var(--color-text-primary)] font-semibold">
-                  {profile.followingCount || 0}
-                </span>
-              </div>
-
-              <div className="h-px bg-[var(--color-border)] my-2"></div>
-
-              <div className="text-center">
-                <Link
-                  to={`/messages/${profile._id}`}
-                  className={`inline-flex items-center justify-center px-4 py-1.5 text-sm font-medium rounded-md 
-                    ${
-                      isOwnProfile || !isFriend
-                        ? "bg-gray-600/50 text-gray-400 cursor-not-allowed opacity-60"
-                        : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white"
-                    }`}
-                  onClick={(e) => {
-                    if (isOwnProfile || !isFriend) e.preventDefault();
-                  }}
-                >
-                  <svg
-                    className="w-4 h-4 mr-1.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                  Message
-                </Link>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Posts Section - Full Width */}
@@ -898,6 +835,18 @@ const ProfilePage = () => {
                     Create Your First Post
                   </Link>
                 )}
+              </div>
+            )}
+
+            {/* Nút Xem thêm bài viết */}
+            {hasMorePosts && (
+              <div className="flex justify-center mt-4">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setPostPage((prev) => prev + 1)}
+                >
+                  Xem thêm bài viết
+                </button>
               </div>
             )}
           </div>
