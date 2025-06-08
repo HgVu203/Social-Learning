@@ -8,34 +8,64 @@ export const USER_QUERY_KEYS = {
   userProfile: (userId) => [...USER_QUERY_KEYS.profile(), userId],
   search: () => [...USER_QUERY_KEYS.all, "search"],
   searchResults: (query) => [...USER_QUERY_KEYS.search(), query],
+  detail: (userId) => [...USER_QUERY_KEYS.all, "detail", userId],
+  followers: (userId) => [...USER_QUERY_KEYS.detail(userId), "followers"],
+  following: (userId) => [...USER_QUERY_KEYS.detail(userId), "following"],
 };
 
 /**
- * Lấy profile user, truyền thêm postPage, postLimit để phân trang bài viết của user.
+ * Lấy profile user, truyền thêm page, limit để phân trang bài viết của user.
+ * Support cho lazy loading và placeholders với options
  * @param {string} userId
- * @param {number} postPage
- * @param {number} postLimit
+ * @param {Object} options Các tùy chọn cho query
  * @returns react-query useQuery
  */
-export const useUserProfile = (userId, postPage = 1, postLimit = 5) => {
+export const useUserProfile = (userId, options = {}) => {
+  const {
+    page = 1,
+    limit = 5,
+    includePosts = true,
+    placeholderData,
+    select,
+    onSuccess,
+    enabled = true,
+  } = options;
+
   return useQuery({
-    queryKey: USER_QUERY_KEYS.userProfile(userId),
-    queryFn: async () => {
+    queryKey: [
+      ...USER_QUERY_KEYS.userProfile(userId),
+      { page, limit, includePosts },
+    ],
+    queryFn: async ({ signal }) => {
       if (!userId) {
         return null;
       }
 
-      const apiPath = `/users/profile/${userId}`;
+      let apiPath = `/users/profile/${userId}`;
+      // Nếu là current user (không có userId cụ thể) thì dùng endpoint myProfile
+      if (userId === "me") {
+        apiPath = "/users/profile";
+      }
+
       const response = await axiosService.get(apiPath, {
-        params: { postPage, postLimit },
+        params: {
+          page,
+          limit,
+          includePosts,
+        },
+        signal,
       });
+
       return response.data;
     },
-    enabled: !!userId,
+    enabled: enabled && !!userId,
     retry: 1,
     refetchOnWindowFocus: false,
-    staleTime: 0,
-    cacheTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2, // 2 phút
+    cacheTime: 1000 * 60 * 5, // 5 phút
+    placeholderData,
+    select,
+    onSuccess,
   });
 };
 
@@ -44,7 +74,7 @@ export const useSearchUsers = (query, options = {}) => {
 
   return useQuery({
     queryKey: [...USER_QUERY_KEYS.searchResults(query), { page, limit }],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!query || query.trim().length < 2) {
         return {
           success: true,
@@ -60,11 +90,12 @@ export const useSearchUsers = (query, options = {}) => {
       try {
         const response = await axiosService.get(`/users/search`, {
           params: { query, page, limit },
+          signal,
         });
 
         return response.data;
       } catch (error) {
-        console.error("Error searching users:", error);
+        console.error("Error searching users:", error.message || error);
 
         return {
           success: false,
@@ -93,26 +124,30 @@ export const useUserMutations = () => {
 
   const updateProfile = useMutation({
     mutationFn: async (userData) => {
-      console.log("Updating profile with data:", userData);
       const response = await axiosService.patch(
         `/users/update-profile`,
         userData
       );
-      console.log("Profile update API response:", response.data);
       return response.data;
     },
-    onSuccess: () => {
-      console.log("Profile update successful, invalidating queries");
+    onSuccess: (data) => {
+      // Invalidate cache theo trình tự ưu tiên
       queryClient.invalidateQueries({
         queryKey: USER_QUERY_KEYS.all,
       });
       queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+
+      // Nếu có user ID, invalidate cụ thể profile của user đó
+      if (data?.data?._id) {
+        queryClient.invalidateQueries({
+          queryKey: USER_QUERY_KEYS.userProfile(data.data._id),
+        });
+      }
     },
   });
 
   const changePassword = useMutation({
     mutationFn: async (passwordData) => {
-      console.log("Changing password");
       const response = await axiosService.put(`/users/password`, passwordData);
       return response.data;
     },
@@ -124,9 +159,57 @@ export const useUserMutations = () => {
   };
 };
 
+export const useUserFollowers = (userId, options = {}) => {
+  const { page = 1, limit = 20 } = options;
+
+  return useQuery({
+    queryKey: [...USER_QUERY_KEYS.followers(userId), { page, limit }],
+    queryFn: async () => {
+      if (!userId)
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
+
+      const response = await axiosService.get(`/users/${userId}/followers`, {
+        params: { page, limit },
+      });
+
+      return response.data;
+    },
+    ...options,
+    enabled: !!userId && options.enabled !== false,
+  });
+};
+
+export const useUserFollowing = (userId, options = {}) => {
+  const { page = 1, limit = 20 } = options;
+
+  return useQuery({
+    queryKey: [...USER_QUERY_KEYS.following(userId), { page, limit }],
+    queryFn: async () => {
+      if (!userId)
+        return {
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        };
+
+      const response = await axiosService.get(`/users/${userId}/following`, {
+        params: { page, limit },
+      });
+
+      return response.data;
+    },
+    ...options,
+    enabled: !!userId && options.enabled !== false,
+  });
+};
+
 export const useUserQueries = {
   useUserProfile,
   useSearchUsers,
+  useUserFollowers,
+  useUserFollowing,
 };
 
 export default useUserQueries;

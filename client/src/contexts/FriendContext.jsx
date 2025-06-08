@@ -23,20 +23,24 @@ const FriendContext = createContext({
 
 export const FriendProvider = ({ children }) => {
   const queryClient = useQueryClient();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
-  // Use the friend queries - Chỉ kích hoạt khi đã đăng nhập
+  // Chỉ kích hoạt query khi đã đăng nhập
   const {
     data: friendsData,
     isLoading: friendsLoading,
     error: friendsError,
-  } = useFriendQueries.useFriends();
+  } = useFriendQueries.useFriends({
+    enabled: isAuthenticated && !!user && tokenService.isTokenValid(),
+  });
 
   const {
     data: friendRequestsData,
     isLoading: friendRequestsLoading,
     error: friendRequestsError,
-  } = useFriendQueries.useFriendRequests();
+  } = useFriendQueries.useFriendRequests({
+    enabled: isAuthenticated && !!user && tokenService.isTokenValid(),
+  });
 
   // Get mutations
   const {
@@ -76,56 +80,92 @@ export const FriendProvider = ({ children }) => {
 
       // Prefetch với priority cao để ưu tiên tải trước
       const prefetchOptions = {
-        staleTime: 30 * 1000, // 30 giây
-        cacheTime: 5 * 60 * 1000, // 5 phút
-        retry: true,
-        retryDelay: 1000,
+        staleTime: 5 * 60 * 1000, // Tăng lên 5 phút
+        cacheTime: 30 * 60 * 1000, // Tăng lên 30 phút
+        retry: 1,
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000),
         priority: "high", // Đặt priority cao
       };
 
-      // Prefetch bằng Promise.all để tải song song
-      Promise.all([
-        // Prefetch friend list với ưu tiên cao
-        queryClient.prefetchQuery({
-          queryKey: FRIEND_QUERY_KEYS.lists(),
-          queryFn: fetchFriendsData,
-          ...prefetchOptions,
-        }),
+      // Chỉ prefetch một lần khi người dùng đăng nhập
+      // Sử dụng tham chiếu để đảm bảo không prefetch lại
+      const prefetchedRef = queryClient.getQueryData(["prefetchStatus"]);
 
-        // Prefetch friend requests
-        queryClient.prefetchQuery({
-          queryKey: FRIEND_QUERY_KEYS.requests(),
-          queryFn: fetchFriendRequestsData,
-          ...prefetchOptions,
-        }),
-      ]).catch((err) => {
-        console.error("Error during prefetching:", err);
-      });
+      if (!prefetchedRef) {
+        // Đánh dấu đã prefetch
+        queryClient.setQueryData(["prefetchStatus"], { done: true });
 
-      // Fetch lại sau 2 giây để đảm bảo data được cập nhật
-      setTimeout(() => {
-        if (isAuthenticated && tokenService.isTokenValid()) {
-          queryClient.invalidateQueries({ queryKey: ["friends"] });
-        }
-      }, 2000);
+        // Prefetch dữ liệu bạn bè
+        queryClient
+          .prefetchQuery({
+            queryKey: FRIEND_QUERY_KEYS.lists(),
+            queryFn: fetchFriendsData,
+            ...prefetchOptions,
+          })
+          .catch((err) => {
+            console.error("Error prefetching friends:", err);
+          });
+
+        // Chỉ prefetch friend requests sau khi đã hoàn thành prefetch friends
+        setTimeout(() => {
+          if (isAuthenticated && tokenService.isTokenValid()) {
+            queryClient
+              .prefetchQuery({
+                queryKey: FRIEND_QUERY_KEYS.requests(),
+                queryFn: fetchFriendRequestsData,
+                ...prefetchOptions,
+              })
+              .catch((err) => {
+                console.error("Error prefetching friend requests:", err);
+              });
+          }
+        }, 1000);
+      }
     }
+
+    // Không cần invalidate query liên tục, đã được xử lý bởi cache và stale time
+    // Bỏ setTimeout để tránh gọi invalidateQueries không cần thiết
   }, [isAuthenticated, queryClient]);
 
   // Methods for fetching data
   const fetchFriends = () => {
     if (!isAuthenticated || !tokenService.isTokenValid()) {
-      console.log("Cannot fetch friends: Not logged in");
       return;
     }
-    queryClient.invalidateQueries({ queryKey: ["friends"] });
+
+    // Sử dụng biến để theo dõi thời gian lần cuối invalidate query
+    const lastInvalidateTime = queryClient.getQueryData([
+      "friendsLastInvalidate",
+    ]);
+    const now = Date.now();
+
+    // Chỉ invalidate nếu đã qua ít nhất 1 phút kể từ lần trước
+    if (!lastInvalidateTime || now - lastInvalidateTime > 60 * 1000) {
+      queryClient.setQueryData(["friendsLastInvalidate"], now);
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+    } else {
+      console.log("Skipping friends invalidate - throttled");
+    }
   };
 
   const fetchFriendRequests = () => {
     if (!isAuthenticated || !tokenService.isTokenValid()) {
-      console.log("Cannot fetch friend requests: Not logged in");
       return;
     }
-    queryClient.invalidateQueries({ queryKey: ["friends", "requests"] });
+
+    // Sử dụng biến để theo dõi thời gian lần cuối invalidate query
+    const lastInvalidateTime = queryClient.getQueryData([
+      "requestsLastInvalidate",
+    ]);
+    const now = Date.now();
+
+    // Chỉ invalidate nếu đã qua ít nhất 1 phút kể từ lần trước
+    if (!lastInvalidateTime || now - lastInvalidateTime > 60 * 1000) {
+      queryClient.setQueryData(["requestsLastInvalidate"], now);
+      queryClient.invalidateQueries({ queryKey: ["friends", "requests"] });
+    } else {
+      console.log("Skipping requests invalidate - throttled");
+    }
   };
 
   // Derived state

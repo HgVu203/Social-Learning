@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useAuthSession } from "../hooks/queries/useAuthQueries";
 import useAuthMutations from "../hooks/mutations/useAuthMutations";
 import tokenService from "../services/tokenService";
-import { closeSocket } from "../socket";
+import { disconnect } from "../services/socket";
 
 const AuthContext = createContext({
   isAuthenticated: false,
@@ -27,68 +27,56 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [verificationData, setVerificationData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { data, isLoading } = useAuthSession();
   const authMutations = useAuthMutations();
 
-  console.log("Auth Session Data:", data);
-  console.log("Auth Session Loading:", isLoading);
+  // Kiểm tra trạng thái xác thực ban đầu từ localStorage
+  useEffect(() => {
+    const hasToken = tokenService.isTokenValid();
+    if (hasToken) {
+      // Khởi tạo trạng thái auth từ localStorage để giao diện không flickering
+      setIsAuthenticated(true);
+      const cachedUser = tokenService.getUser();
+      if (cachedUser) {
+        setUser(cachedUser);
+      }
+
+      // Đánh dấu timestamp kiểm tra xác thực thành công
+      if (!localStorage.getItem("auth_timestamp")) {
+        localStorage.setItem("auth_timestamp", Date.now().toString());
+      }
+    }
+
+    // Đánh dấu đã tải xong để các component khác có thể render
+    if (!isLoading) {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     // Update user state when session data changes
     if (data?.success && data?.data?.user) {
       const userData = data.data.user;
-      console.log("Setting user data:", userData);
-
-      // Kiểm tra ID người dùng để đảm bảo định dạng đúng
-      if (userData._id) {
-        console.log(`User ID: ${userData._id}, type: ${typeof userData._id}`);
-
-        // Nếu _id là object thì chuyển đổi thành string
-        if (typeof userData._id === "object" && userData._id.toString) {
-          console.log("Converting user _id from object to string");
-          userData._id = userData._id.toString();
-        }
-      } else {
-        console.warn("User data is missing _id field:", userData);
-      }
 
       // Đảm bảo token được gán cho user
-      if (data.data.token && !userData.token) {
-        console.log("Adding token to user data");
+      if (data.data.token) {
         userData.token = data.data.token;
-      } else if (!userData.token) {
-        // Thử lấy token từ localStorage nếu không có trong response
-        const savedToken = tokenService.getToken();
-        if (savedToken) {
-          console.log("Using token from localStorage");
-          userData.token = savedToken;
-        } else {
-          console.warn(
-            "No token found in session data, user object, or localStorage"
-          );
-        }
+        // Lưu token vào tokenService
+        tokenService.setToken(data.data.token);
       }
 
-      // Lưu user vào state và localStorage để đảm bảo tính nhất quán
+      // Lưu user vào state và localStorage
       setUser(userData);
-      try {
-        tokenService.setUser(userData);
-      } catch (err) {
-        console.error("Error saving user to localStorage:", err);
-      }
+      setIsAuthenticated(true);
+      tokenService.setUser(userData);
 
       setLoading(false);
-
-      // Không tự động kết nối socket sau khi đăng nhập
-      // initSocket(); - đã xóa
-    } else {
-      console.log("No valid user data in session response:", data);
+    } else if (data !== undefined) {
+      // Chỉ reset khi có data thực sự trả về là không thành công
       setUser(null);
+      setIsAuthenticated(false);
       setLoading(false);
-
-      // Close socket if no valid user
-      console.log("Closing socket due to missing authentication");
-      closeSocket();
     }
   }, [data]);
 
@@ -104,29 +92,45 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const result = await authMutations.login.mutateAsync(credentials);
 
-      // Thêm token vào user object nếu đăng nhập thành công
+      // Thêm token vào user object nếu đăng nhập thành công và xử lý ngay lập tức
       if (result.success && result.data?.user && result.data?.accessToken) {
         const userData = result.data.user;
         userData.token = result.data.accessToken;
+
+        // Đặt state user và isAuthenticated ngay lập tức không đợi useEffect
         setUser(userData);
+        setIsAuthenticated(true);
+
+        // Đảm bảo token được lưu đúng cách
+        tokenService.setToken(result.data.accessToken);
+        tokenService.setUser(userData);
+
+        // Đặt timestamp để đánh dấu thời điểm xác thực thành công
+        localStorage.setItem("auth_timestamp", Date.now().toString());
+
+        // Xóa cờ redirecting nếu có để cho phép điều hướng mới
+        localStorage.removeItem("auth_redirecting");
+
+        // Đặt loading là false ngay lập tức để unblock UI
+        setLoading(false);
+
+        // Trả về kết quả để LoginPage có thể xử lý chuyển hướng ngay lập tức
+        return result;
       } else if (result.data?.requiresVerification) {
         // Don't set error for verification redirects
-        console.log("Login requires verification, skipping error message");
+        setLoading(false);
+        return result;
       }
 
+      setLoading(false);
       return result;
     } catch (error) {
       // Only set error if it's not a verification required error
       if (!error.response?.data?.data?.requiresVerification) {
         setError(error.response?.data?.message || "Login failed");
-      } else {
-        console.log(
-          "Verification required error, not displaying general error"
-        );
       }
-      throw error;
-    } finally {
       setLoading(false);
+      throw error;
     }
   };
 
@@ -164,6 +168,7 @@ export const AuthProvider = ({ children }) => {
           const userData = result.data.user;
           userData.token = result.data.accessToken;
           setUser(userData);
+          setIsAuthenticated(true);
         }
       }
 
@@ -180,17 +185,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    console.log("Logging out user");
     setLoading(true);
 
     // Close socket before clearing user data
-    console.log("Closing socket connection on logout");
-    closeSocket();
+    disconnect();
 
     // Đặt user về null trước khi gửi request để ngăn người dùng tiếp tục sử dụng app
     setUser(null);
+    setIsAuthenticated(false);
     setVerificationData(null);
     setError(null);
+
+    // Xóa token trước khi gọi API logout để đảm bảo không dùng lại
+    tokenService.clearTokens();
 
     authMutations.logout.mutate(null, {
       onSettled: () => {
@@ -266,89 +273,46 @@ export const AuthProvider = ({ children }) => {
     setError(null);
   };
 
-  // Enhance this function to be more robust
   const setCredentials = (userData) => {
-    try {
-      if (!userData) {
-        console.error("Attempted to set empty user credentials");
-        return false;
-      }
+    if (userData && userData.user && userData.accessToken) {
+      const user = userData.user;
+      user.token = userData.accessToken;
 
-      console.log(
-        "Setting credentials with userData:",
-        JSON.stringify(userData, null, 2)
-      );
+      // Đảm bảo token được lưu đúng cách
+      tokenService.setToken(userData.accessToken);
+      tokenService.setUser(user);
 
-      if (userData.accessToken && userData.user) {
-        try {
-          // Create user object with token included
-          const user = { ...userData.user, token: userData.accessToken };
-          console.log("Setting user with accessToken:", user);
-
-          // Set user in state first
-          setUser(user);
-
-          // Then try to save to localStorage
-          tokenService.setToken(userData.accessToken);
-          tokenService.setUser(user);
-
-          return true;
-        } catch (storageError) {
-          console.error("Error saving credentials to storage:", storageError);
-          // Even if localStorage fails, we can still set the user in memory
-          // This allows the session to work for this session only
-          setUser({ ...userData.user, token: userData.accessToken });
-          return true;
-        }
-      } else if (userData.token && userData.user) {
-        try {
-          console.log("Setting user with token property:", userData.user);
-
-          // Set user in state first
-          setUser(userData.user);
-
-          // Then try to save to localStorage
-          tokenService.setToken(userData.token);
-          tokenService.setUser(userData.user);
-
-          return true;
-        } catch (storageError) {
-          console.error("Error saving credentials to storage:", storageError);
-          // Even if localStorage fails, we can still set the user in memory
-          setUser(userData.user);
-          return true;
-        }
-      } else {
-        console.error("Invalid user credentials format", userData);
-        return false;
-      }
-    } catch (error) {
-      console.error("Error setting credentials:", error);
-      return false;
+      setUser(user);
+      setIsAuthenticated(true);
+      setLoading(false);
+      return { success: true };
     }
+    return { success: false, error: "Invalid credentials data" };
   };
 
-  const value = {
-    isAuthenticated: !!user,
-    user,
-    loading,
-    verificationData,
-    error,
-    login,
-    signup,
-    logout,
-    verifyEmail,
-    forgotPassword,
-    verifyResetCode,
-    resetPassword,
-    setCredentials,
-    clearError,
-    resendVerificationCode,
-  };
-
-  console.log("Auth Context Value:", value);
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        user,
+        loading,
+        error,
+        verificationData,
+        login,
+        logout,
+        signup,
+        verifyEmail,
+        forgotPassword,
+        verifyResetCode,
+        resetPassword,
+        setCredentials,
+        clearError,
+        resendVerificationCode,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => useContext(AuthContext);

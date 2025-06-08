@@ -40,17 +40,17 @@ export const useFriendQueries = {
             data: uniqueFriends,
           };
         } catch (error) {
-          console.error("Error fetching friends:", error);
+          console.error("Error fetching friends:", error.message || error);
           throw error;
         }
       },
-      staleTime: 20 * 1000, // Reduced to 20 seconds
-      cacheTime: 5 * 60 * 1000, // 5 minutes cache
-      retry: 2, // Try 2 times if error occurs
-      retryDelay: 1000, // Wait 1 second before retry
-      refetchOnMount: "always", // Always refetch when component mounts
+      staleTime: 5 * 60 * 1000, // Tăng lên 5 phút
+      cacheTime: 30 * 60 * 1000, // Tăng lên 30 phút
+      retry: 1, // Giảm số lần retry
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000), // Tăng thời gian giữa các lần retry (max 30s)
+      refetchOnMount: true, // Chỉ refetch khi cần
       refetchOnWindowFocus: false,
-      refetchOnReconnect: true, // Refetch when network reconnects
+      refetchOnReconnect: true,
       // Cache placeholder data
       placeholderData: (previousData) => previousData || { data: [] },
       enabled,
@@ -74,17 +74,20 @@ export const useFriendQueries = {
           });
           return response.data;
         } catch (error) {
-          console.error("Error fetching friend requests:", error);
+          console.error(
+            "Error fetching friend requests:",
+            error.message || error
+          );
           throw error;
         }
       },
-      staleTime: 20 * 1000, // Reduced to 20 seconds
-      cacheTime: 5 * 60 * 1000, // 5 minutes cache
-      retry: 2, // Try 2 times if error occurs
-      retryDelay: 1000, // Wait 1 second before retry
-      refetchOnMount: "always", // Always refetch when component mounts
+      staleTime: 5 * 60 * 1000, // Tăng lên 5 phút
+      cacheTime: 30 * 60 * 1000, // Tăng lên 30 phút
+      retry: 1, // Giảm số lần retry
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000), // Tăng thời gian giữa các lần retry (max 30s)
+      refetchOnMount: true, // Chỉ refetch khi cần
       refetchOnWindowFocus: false,
-      refetchOnReconnect: true, // Refetch when network reconnects
+      refetchOnReconnect: true,
       // Cache placeholder data
       placeholderData: (previousData) => previousData || { data: [] },
       enabled,
@@ -107,13 +110,17 @@ export const useFriendQueries = {
           );
           return response.data;
         } catch (error) {
-          console.error("Error fetching friend suggestions:", error);
+          console.error(
+            "Error fetching friend suggestions:",
+            error.message || error
+          );
           throw error;
         }
       },
-      staleTime: 60 * 1000, // 1 minute
-      cacheTime: 5 * 60 * 1000, // 5 minutes cache
+      staleTime: 5 * 60 * 1000, // Tăng lên 5 phút
+      cacheTime: 30 * 60 * 1000, // Tăng lên 30 phút
       retry: 1,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000),
       refetchOnMount: true,
       refetchOnWindowFocus: false,
       placeholderData: (previousData) => previousData,
@@ -136,14 +143,18 @@ export const useFriendQueries = {
           );
           return response.data;
         } catch (error) {
-          console.error("Error checking friendship status:", error);
+          console.error(
+            "Error checking friendship status:",
+            error.message || error
+          );
           return { status: "NOT_FRIEND" };
         }
       },
       enabled,
-      staleTime: 60 * 1000, // 1 phút
-      cacheTime: 5 * 60 * 1000,
+      staleTime: 5 * 60 * 1000, // Tăng lên 5 phút
+      cacheTime: 30 * 60 * 1000, // Tăng lên 30 phút
       retry: 1,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000),
     });
   },
 };

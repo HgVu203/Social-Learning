@@ -11,6 +11,8 @@ export const GROUP_QUERY_KEYS = {
   members: () => [...GROUP_QUERY_KEYS.all, "members"],
   member: (groupId) => [...GROUP_QUERY_KEYS.members(), groupId],
   myGroups: () => [...GROUP_QUERY_KEYS.all, "user"],
+  basicInfo: (groupId) => [...GROUP_QUERY_KEYS.detail(groupId), "basic"],
+  membersInfo: (groupId) => [...GROUP_QUERY_KEYS.detail(groupId), "members"],
 };
 
 export const useGroupQueries = {
@@ -25,7 +27,7 @@ export const useGroupQueries = {
           );
           return response.data;
         } catch (error) {
-          console.error("Error fetching groups:", error);
+          console.error("Error fetching groups:", error.message || error);
           throw error;
         }
       },
@@ -63,10 +65,9 @@ export const useGroupQueries = {
             )}&page=${pageParam}&limit=${limit}`
           );
 
-          console.log("Group search response:", response.data);
           return response.data;
         } catch (error) {
-          console.error("Error searching groups:", error);
+          console.error("Error searching groups:", error.message || error);
           throw error;
         }
       },
@@ -96,7 +97,10 @@ export const useGroupQueries = {
           );
           return response.data;
         } catch (error) {
-          console.error("Error fetching popular groups:", error);
+          console.error(
+            "Error fetching popular groups:",
+            error.message || error
+          );
           throw error;
         }
       },
@@ -115,7 +119,7 @@ export const useGroupQueries = {
           const response = await axiosService.get(`/group/${groupId}`);
           return response.data;
         } catch (error) {
-          console.error("Error fetching group detail:", error);
+          console.error("Error fetching group detail:", error.message || error);
           throw error;
         }
       },
@@ -151,7 +155,10 @@ export const useGroupQueries = {
               .filter((member) => member.id),
           };
         } catch (error) {
-          console.error("Error fetching group members:", error);
+          console.error(
+            "Error fetching group members:",
+            error.message || error
+          );
           throw error;
         }
       },
@@ -170,7 +177,7 @@ export const useGroupQueries = {
           const response = await axiosService.get(`/group?membership=user`);
           return response.data;
         } catch (error) {
-          console.error("Error fetching user groups:", error);
+          console.error("Error fetching user groups:", error.message || error);
           throw error;
         }
       },
@@ -183,7 +190,6 @@ export const useGroupQueries = {
 
   // Alias useMyGroups to useUserGroups for compatibility with GroupsListPage
   useMyGroups: (options = {}) => {
-    console.log("Using useMyGroups (alias for useUserGroups)");
     return useQuery({
       queryKey: GROUP_QUERY_KEYS.myGroups(),
       queryFn: async () => {
@@ -191,13 +197,65 @@ export const useGroupQueries = {
           const response = await axiosService.get(`/group?membership=user`);
           return response.data;
         } catch (error) {
-          console.error("Error fetching my groups:", error);
+          console.error("Error fetching my groups:", error.message || error);
           throw error;
         }
       },
       staleTime: 1000 * 30, // 30 seconds
       refetchOnMount: true,
       refetchOnWindowFocus: true,
+      ...options,
+    });
+  },
+
+  // Fetch only basic group info - new optimized endpoint
+  useGroupBasicInfo: (groupId, options = {}) => {
+    return useQuery({
+      queryKey: GROUP_QUERY_KEYS.basicInfo(groupId),
+      queryFn: async () => {
+        if (!groupId) return null;
+
+        try {
+          // Sử dụng API mới chỉ lấy thông tin cơ bản
+          const response = await axiosService.get(`/group/${groupId}/basic`);
+          return response.data;
+        } catch (error) {
+          console.error(
+            "Error fetching basic group info:",
+            error.message || error
+          );
+          throw error;
+        }
+      },
+      enabled: !!groupId,
+      staleTime: 1000 * 60 * 5, // 5 phút
+      ...options,
+    });
+  },
+
+  // Fetch only group members - new optimized endpoint
+  useGroupMembersOnly: (groupId, page = 1, limit = 20, options = {}) => {
+    return useQuery({
+      queryKey: [...GROUP_QUERY_KEYS.membersInfo(groupId), { page, limit }],
+      queryFn: async () => {
+        if (!groupId) return { data: [] };
+
+        try {
+          // Sử dụng API mới chỉ lấy thành viên
+          const response = await axiosService.get(`/group/${groupId}/members`, {
+            params: { page, limit },
+          });
+          return response.data;
+        } catch (error) {
+          console.error(
+            "Error fetching group members:",
+            error.message || error
+          );
+          throw error;
+        }
+      },
+      enabled: !!groupId,
+      staleTime: 1000 * 60 * 2, // 2 phút
       ...options,
     });
   },

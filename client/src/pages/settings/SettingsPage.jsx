@@ -2,19 +2,76 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLanguage } from "../../contexts/LanguageContext";
+import { useTranslation } from "react-i18next";
 import ThemeToggle from "../../components/ui/ThemeToggle";
+import LanguageToggle from "../../components/ui/LanguageToggle";
 import { useNavigate, Link } from "react-router-dom";
 import ChangePasswordModal from "../../components/auth/ChangePasswordModal";
 import EditProfileModal from "../../components/profile/EditProfileModal";
+import { useQueryClient } from "@tanstack/react-query";
+import { USER_QUERY_KEYS } from "../../hooks/queries/useUserQueries";
+import axiosService from "../../services/axiosService";
 
 const SettingsPage = () => {
   const { user, logout } = useAuth();
   const { theme } = useTheme();
+  const { language } = useLanguage();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] =
     useState(false);
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const queryClient = useQueryClient();
+
+  // Gọi API lấy thông tin profile đầy đủ
+  const fetchFullProfile = async () => {
+    if (!user?._id) return;
+
+    try {
+      setIsLoadingProfile(true);
+
+      // Kiểm tra xem đã có dữ liệu trong cache chưa
+      const cachedProfile = queryClient.getQueryData(
+        USER_QUERY_KEYS.userProfile(user._id)
+      );
+
+      if (cachedProfile?.data) {
+        console.log("Using cached profile data", cachedProfile.data);
+        setProfileData(cachedProfile.data);
+      } else {
+        // Nếu chưa có trong cache, gọi API để lấy
+        console.log("Fetching profile data from API");
+        const response = await queryClient.fetchQuery({
+          queryKey: USER_QUERY_KEYS.userProfile(user._id),
+          queryFn: async () => {
+            const apiResponse = await axiosService.get(
+              `/users/profile/${user._id}`
+            );
+            return apiResponse.data;
+          },
+        });
+
+        setProfileData(response.data);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      // Nếu có lỗi, sử dụng dữ liệu từ Auth Context
+      setProfileData(user);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  // Mở modal chỉnh sửa profile
+  const handleOpenEditProfileModal = async () => {
+    // Trước khi mở modal, lấy dữ liệu đầy đủ
+    await fetchFullProfile();
+    setIsEditProfileModalOpen(true);
+  };
 
   const handleLogout = async () => {
     try {
@@ -27,6 +84,23 @@ const SettingsPage = () => {
     }
   };
 
+  // Xử lý khi cập nhật profile thành công
+  const handleProfileUpdateSuccess = (updatedData) => {
+    console.log("Profile updated successfully:", updatedData);
+    setIsEditProfileModalOpen(false);
+
+    // Cập nhật dữ liệu profile trong state
+    setProfileData((prev) => ({
+      ...prev,
+      ...updatedData,
+    }));
+
+    // Force refetch để đảm bảo dữ liệu mới nhất
+    queryClient.invalidateQueries({
+      queryKey: USER_QUERY_KEYS.userProfile(user._id),
+    });
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
       <motion.h1
@@ -34,7 +108,7 @@ const SettingsPage = () => {
         animate={{ opacity: 1, y: 0 }}
         className="text-2xl font-bold text-[var(--color-text-primary)] mb-6"
       >
-        Settings
+        {t("settings.title")}
       </motion.h1>
 
       <div className="grid gap-6">
@@ -46,18 +120,35 @@ const SettingsPage = () => {
           className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6"
         >
           <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-4">
-            Display
+            {t("settings.display")}
           </h2>
-          <div className="flex items-center justify-between p-3 bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors">
+          <div className="flex items-center justify-between p-3 bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors mb-3">
             <div>
               <h3 className="font-medium text-[var(--color-text-primary)]">
-                Theme
+                {t("settings.theme")}
               </h3>
               <p className="text-sm text-[var(--color-text-secondary)]">
-                {theme === "dark" ? "Dark mode" : "Light mode"}
+                {theme === "dark"
+                  ? t("settings.darkMode")
+                  : t("settings.lightMode")}
               </p>
             </div>
             <ThemeToggle />
+          </div>
+
+          {/* Language Toggle */}
+          <div className="flex items-center justify-between p-3 bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors">
+            <div>
+              <h3 className="font-medium text-[var(--color-text-primary)]">
+                {t("settings.language")}
+              </h3>
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                {language === "en"
+                  ? t("settings.english")
+                  : t("settings.vietnamese")}
+              </p>
+            </div>
+            <LanguageToggle />
           </div>
         </motion.div>
 
@@ -69,34 +160,60 @@ const SettingsPage = () => {
           className="bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-6"
         >
           <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-4">
-            Account
+            {t("settings.account")}
           </h2>
           <div className="space-y-4">
             <button
-              onClick={() => setIsEditProfileModalOpen(true)}
+              onClick={handleOpenEditProfileModal}
+              disabled={isLoadingProfile}
               className="flex items-center justify-between w-full p-3 bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors cursor-pointer"
             >
               <div>
                 <h3 className="font-medium text-[var(--color-text-primary)] text-left">
-                  Edit Profile
+                  {isLoadingProfile
+                    ? t("common.loading")
+                    : t("settings.editProfile")}
                 </h3>
                 <p className="text-sm text-[var(--color-text-secondary)] text-left">
-                  Update your profile information
+                  {t("settings.updateProfileInfo")}
                 </p>
               </div>
-              <svg
-                className="w-5 h-5 text-[var(--color-text-secondary)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
+              {isLoadingProfile ? (
+                <svg
+                  className="animate-spin w-5 h-5 text-[var(--color-text-secondary)]"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5 text-[var(--color-text-secondary)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              )}
             </button>
 
             <button
@@ -105,10 +222,10 @@ const SettingsPage = () => {
             >
               <div>
                 <h3 className="font-medium text-[var(--color-text-primary)] text-left">
-                  Change Password
+                  {t("settings.changePassword")}
                 </h3>
                 <p className="text-sm text-[var(--color-text-secondary)] text-left">
-                  Update your password
+                  {t("settings.updatePassword")}
                 </p>
               </div>
               <svg
@@ -132,9 +249,11 @@ const SettingsPage = () => {
                 className="flex items-center justify-between w-full p-3 bg-[var(--color-bg-tertiary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors text-[var(--color-primary)] cursor-pointer"
               >
                 <div>
-                  <h3 className="font-medium text-left">Admin Dashboard</h3>
+                  <h3 className="font-medium text-left">
+                    {t("settings.adminDashboard")}
+                  </h3>
                   <p className="text-sm opacity-80 text-left">
-                    Access administration panel
+                    {t("settings.accessAdmin")}
                   </p>
                 </div>
                 <svg
@@ -166,10 +285,12 @@ const SettingsPage = () => {
             >
               <div>
                 <h3 className="font-medium text-left">
-                  {isLoggingOut ? "Logging out..." : "Logout"}
+                  {isLoggingOut
+                    ? t("settings.loggingOut")
+                    : t("settings.logout")}
                 </h3>
                 <p className="text-sm text-red-400/80 text-left">
-                  Sign out of your account
+                  {t("settings.signOut")}
                 </p>
               </div>
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
@@ -186,11 +307,14 @@ const SettingsPage = () => {
         onClose={() => setIsChangePasswordModalOpen(false)}
       />
 
-      {/* Edit Profile Modal */}
-      <EditProfileModal
-        isOpen={isEditProfileModalOpen}
-        onClose={() => setIsEditProfileModalOpen(false)}
-      />
+      {/* Edit Profile Modal - sử dụng điều kiện render để phù hợp với ProfilePage */}
+      {isEditProfileModalOpen && (
+        <EditProfileModal
+          profile={profileData || user}
+          onClose={() => setIsEditProfileModalOpen(false)}
+          onSuccess={handleProfileUpdateSuccess}
+        />
+      )}
     </div>
   );
 };

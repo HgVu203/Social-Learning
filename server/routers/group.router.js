@@ -11,6 +11,10 @@ const router = express.Router();
 // Public route with optional authentication for search
 router.get("/search", optionalAuth, GroupController.searchGroups);
 
+// Add new endpoints for optimized API calls
+router.get("/:id/basic", optionalAuth, GroupController.getGroupBasicInfo);
+router.get("/:id/members", optionalAuth, GroupController.getGroupMembers);
+
 // Protected routes
 router.use(protectedRouter);
 

@@ -1,12 +1,12 @@
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
 import Notification from "../models/notification.model.js";
-import { emitMessageEvent } from "../socket.js";
+import { emitMessageEvent, isUserOnline } from "../socket.js";
 
 export const MessageController = {
   sendMessage: async (req, res) => {
     try {
-      const { receiverId, message, type } = req.body;
+      const { receiverId, message, type, tempId } = req.body;
       const senderId = req.user._id;
 
       // Validate receiver exists
@@ -24,6 +24,8 @@ export const MessageController = {
         message,
         type: type || "text",
         read: false,
+        // Lưu tempId từ client để có thể map lại khi gửi response
+        clientTempId: tempId,
       });
       await newMessage.save();
 
@@ -52,6 +54,14 @@ export const MessageController = {
       // Convert to plain object to ensure all data is included
       const messageObject = populatedMessage.toObject();
 
+      // Add tempId nếu client gửi lên để dễ map giữa client và server
+      if (tempId) {
+        messageObject.tempId = tempId;
+      }
+
+      // Add trạng thái online của người nhận
+      messageObject.receiverOnline = isUserOnline(receiverId);
+
       // Log the message object for debugging
       console.log(
         "Prepared message for socket emit:",
@@ -75,7 +85,7 @@ export const MessageController = {
   getMessages: async (req, res) => {
     try {
       const userId = req.user._id;
-      const { partnerId, page = 1, limit = 20 } = req.query;
+      const { partnerId, page = 1, limit = 20, lastSeen } = req.query;
 
       if (!partnerId) {
         return res.status(400).json({
@@ -91,6 +101,18 @@ export const MessageController = {
         ],
         deletedBy: { $ne: userId },
       };
+
+      // Thêm tùy chọn chỉ lấy tin nhắn mới từ lastSeen
+      if (lastSeen) {
+        try {
+          const lastSeenDate = new Date(parseInt(lastSeen));
+          if (!isNaN(lastSeenDate.getTime())) {
+            query.createdAt = { $gt: lastSeenDate };
+          }
+        } catch (error) {
+          console.warn("Invalid lastSeen parameter:", lastSeen);
+        }
+      }
 
       const messages = await Message.find(query)
         .populate("senderId", "username fullname avatar isOnline")
@@ -115,13 +137,14 @@ export const MessageController = {
         // Mark all these messages as read
         await Message.updateMany(
           { _id: { $in: unreadIds } },
-          { $set: { read: true } }
+          { $set: { read: true, readAt: new Date() } }
         );
 
         // Update read status in the result messages
         for (const message of messages) {
           if (unreadIds.includes(message._id)) {
             message.read = true;
+            message.readAt = new Date();
           }
         }
 
@@ -131,6 +154,7 @@ export const MessageController = {
           const updatedMessage = {
             ...message.toObject(),
             read: true,
+            readAt: new Date(),
           };
 
           // Emit message_read event
@@ -252,8 +276,15 @@ export const MessageController = {
 
       const conversations = await Message.aggregate(messagesQuery);
 
-      // Count total conversations for pagination
-      const totalQuery = [
+      // Add online status
+      for (const conversation of conversations) {
+        conversation.participant.isOnline = isUserOnline(
+          conversation.participant._id.toString()
+        );
+      }
+
+      // Calculate total conversations
+      const totalCountPipeline = [
         {
           $match: {
             $or: [{ senderId: userId }, { receiverId: userId }],
@@ -274,20 +305,21 @@ export const MessageController = {
         { $count: "total" },
       ];
 
-      const totalResult = await Message.aggregate(totalQuery);
+      const totalResult = await Message.aggregate(totalCountPipeline);
       const total = totalResult.length > 0 ? totalResult[0].total : 0;
 
       return res.status(200).json({
         success: true,
         data: conversations,
         pagination: {
-          total,
           page: Number(page),
-          totalPages: Math.ceil(total / Number(limit)),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
         },
       });
     } catch (error) {
-      console.error(error);
+      console.error("Error in getConversations:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
   },
@@ -296,7 +328,7 @@ export const MessageController = {
     try {
       const userId = req.user._id;
 
-      const count = await Message.countDocuments({
+      const unreadCount = await Message.countDocuments({
         receiverId: userId,
         read: false,
         deletedBy: { $ne: userId },
@@ -304,63 +336,48 @@ export const MessageController = {
 
       return res.status(200).json({
         success: true,
-        count,
+        count: unreadCount,
       });
     } catch (error) {
-      console.error(error);
+      console.error("Error in getUnreadCount:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
   },
 
   markAsRead: async (req, res) => {
     try {
-      const messageId = req.params.id;
       const userId = req.user._id;
+      const { id } = req.params;
 
-      const message = await Message.findById(messageId);
+      // Find and update message
+      const message = await Message.findOneAndUpdate(
+        {
+          _id: id,
+          receiverId: userId,
+          read: false,
+        },
+        {
+          $set: { read: true, readAt: new Date() },
+        },
+        { new: true, runValidators: true }
+      )
+        .populate("senderId", "username fullname avatar isOnline")
+        .populate("receiverId", "username fullname avatar isOnline");
+
       if (!message) {
         return res.status(404).json({
           success: false,
-          error: "Message not found",
+          error: "Message not found or already read",
         });
       }
 
-      if (message.receiverId.toString() !== userId.toString()) {
-        return res.status(403).json({
-          success: false,
-          error: "Unauthorized",
-        });
-      }
-
-      // Update read status if not already read
-      if (!message.read) {
-        message.read = true;
-        await message.save();
-
-        // Fully populate message for socket emit
-        const populatedMessage = await Message.findById(message._id)
-          .populate("senderId", "username fullname avatar isOnline")
-          .populate("receiverId", "username fullname avatar isOnline");
-
-        if (!populatedMessage) {
-          console.error("Failed to populate message after marking as read");
-          return res.status(500).json({
-            success: false,
-            error: "Failed to process message after marking as read",
-          });
-        }
-
-        // Convert to plain object
-        const messageObject = populatedMessage.toObject();
-        console.log("Message marked as read:", messageObject);
-
-        // Emit socket event for real-time updates
-        emitMessageEvent("message_read", messageObject);
-      }
+      // Emit socket event for message read
+      emitMessageEvent("message_read", message);
 
       return res.status(200).json({
         success: true,
         message: "Message marked as read",
+        data: message,
       });
     } catch (error) {
       console.error("Error marking message as read:", error);
@@ -380,39 +397,46 @@ export const MessageController = {
         });
       }
 
-      const result = await Message.updateMany(
+      // Find all unread messages from the given user
+      const unreadMessages = await Message.find({
+        senderId: partnerId,
+        receiverId: userId,
+        read: false,
+      }).populate("senderId", "username fullname avatar isOnline");
+
+      if (unreadMessages.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No unread messages found",
+          count: 0,
+        });
+      }
+
+      // Update all messages to read
+      await Message.updateMany(
         {
           senderId: partnerId,
           receiverId: userId,
           read: false,
-          deletedBy: { $ne: userId },
         },
-        { $set: { read: true } }
+        {
+          $set: { read: true, readAt: new Date() },
+        }
       );
 
-      // Find all updated messages to emit events
-      const updatedMessages = await Message.find({
-        senderId: partnerId,
-        receiverId: userId,
-        read: true,
-        updatedAt: { $gte: new Date(Date.now() - 5000) }, // Messages updated in the last 5 seconds
-      })
-        .populate("senderId", "username fullname avatar isOnline")
-        .populate("receiverId", "username fullname avatar isOnline")
-        .lean(); // Use lean to get plain objects
-
-      console.log(
-        `Marked ${result.modifiedCount} messages as read, emitting events for ${updatedMessages.length} messages`
-      );
-
-      // Emit socket events for each updated message
-      for (const message of updatedMessages) {
-        emitMessageEvent("message_read", message);
+      // Emit read events for socket
+      for (const message of unreadMessages) {
+        emitMessageEvent("message_read", {
+          ...message.toObject(),
+          read: true,
+          readAt: new Date(),
+        });
       }
 
       return res.status(200).json({
         success: true,
-        message: `Marked ${result.modifiedCount} messages as read`,
+        message: "All messages marked as read",
+        count: unreadMessages.length,
       });
     } catch (error) {
       console.error("Error marking all messages as read:", error);
@@ -422,22 +446,19 @@ export const MessageController = {
 
   deleteMessage: async (req, res) => {
     try {
-      const messageId = req.params.id;
       const userId = req.user._id;
+      const { id } = req.params;
 
-      const message = await Message.findById(messageId);
+      // Find message and verify ownership
+      const message = await Message.findOne({
+        _id: id,
+        $or: [{ senderId: userId }, { receiverId: userId }],
+      });
+
       if (!message) {
         return res.status(404).json({
           success: false,
-          error: "Message not found",
-        });
-      }
-
-      // Only sender can delete the message
-      if (message.senderId.toString() !== userId.toString()) {
-        return res.status(403).json({
-          success: false,
-          error: "Unauthorized: Only the sender can delete messages",
+          error: "Message not found or you don't have permission to delete",
         });
       }
 
@@ -445,26 +466,6 @@ export const MessageController = {
       if (!message.deletedBy.includes(userId)) {
         message.deletedBy.push(userId);
         await message.save();
-
-        // Fully populate sender and receiver info
-        const populatedMessage = await Message.findById(message._id)
-          .populate("senderId", "username fullname avatar isOnline")
-          .populate("receiverId", "username fullname avatar isOnline");
-
-        if (!populatedMessage) {
-          console.error("Failed to populate message after deletion marking");
-          return res.status(500).json({
-            success: false,
-            error: "Failed to process message after deletion marking",
-          });
-        }
-
-        // Convert to plain object
-        const messageObject = populatedMessage.toObject();
-        console.log("Message marked as deleted:", messageObject);
-
-        // Emit socket event for real-time updates
-        emitMessageEvent("message_deleted", messageObject);
       }
 
       return res.status(200).json({

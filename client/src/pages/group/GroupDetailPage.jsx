@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
 import { useGroupMutations } from "../../hooks/mutations/useGroupMutations";
+import { useGroupPosts } from "../../hooks/queries/usePostQueries";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
 import PostList from "../../components/post/PostList";
@@ -23,56 +24,122 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 import { SkeletonGroup, SkeletonList } from "../../components/skeleton";
+import { useTranslation } from "react-i18next";
 
 const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
   const { groupId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { fetchGroupPosts } = usePostContext();
+  const { t } = useTranslation();
 
   console.log("GroupDetailPage - GroupId:", groupId, "User:", user);
 
-  const {
-    data: groupData,
-    isLoading: loading,
-    error: queryError,
-    refetch,
-  } = useGroupQueries.useGroup(groupId);
-
-  console.log("Group Data:", groupData);
-
-  // Đảm bảo currentGroup có dữ liệu
-  const currentGroup = groupData?.data || null;
-
-  console.log("Current Group after parsing:", currentGroup);
-
-  const { joinGroup, leaveGroup, updateGroup } = useGroupMutations();
+  // Initialize activeTab state before using it in the query below
   const [activeTab, setActiveTab] = useState(
     isManagePage ? "members" : isSettingsPage ? "settings" : "discussion"
   );
+
+  // Tối ưu hóa: Chia các API call thành ba phần riêng biệt
+  // 1. Thông tin cơ bản về nhóm
+  const {
+    data: basicData,
+    isLoading: loadingBasic,
+    error: basicError,
+    refetch: refetchBasic,
+  } = useGroupQueries.useGroupBasicInfo(groupId);
+
+  // 2. Thông tin về thành viên nhóm (nếu trong tab members)
+  const {
+    data: membersData,
+    isLoading: loadingMembers,
+    error: membersError,
+  } = useGroupQueries.useGroupMembersOnly(groupId, 1, 20, {
+    enabled: groupId && (isManagePage || activeTab === "members"),
+  });
+
+  // 3. Bài viết trong nhóm (nếu trong tab discussion)
+  const {
+    data: postsData,
+    isLoading: loadingPosts,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useGroupPosts(groupId, 10);
+
+  // Tổng hợp dữ liệu
+  const groupBasic = basicData?.data || null;
+  const groupMembers = membersData?.data || [];
+
+  // Kiểm tra trạng thái posts để hiển thị trong UI
+  console.log("Posts data status:", {
+    loading: loadingPosts,
+    hasMore: hasNextPage,
+    postCount: postsData?.pages?.length || 0,
+    isFetching: isFetchingNextPage,
+  });
+
+  // Hàm để tải thêm bài viết khi cuộn xuống
+  const handleLoadMorePosts = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  // Tạo một kết hợp để có dữ liệu tương thích với code hiện tại
+  const currentGroup = groupBasic
+    ? {
+        ...groupBasic,
+        members: groupMembers,
+        membersCount:
+          membersData?.pagination?.total ||
+          groupBasic.membersCount ||
+          groupBasic.members?.length ||
+          (groupBasic.createdBy && groupBasic.createdBy._id ? 1 : 0), // Ensure creator counts as a member
+        // Kiểm tra xem người dùng hiện tại có phải là thành viên không
+        isMember:
+          user &&
+          (groupMembers.some(
+            (member) => member.user?._id?.toString() === user?._id?.toString()
+          ) ||
+            // Count the creator as a member automatically
+            (groupBasic.createdBy &&
+              groupBasic.createdBy._id?.toString() === user?._id?.toString())),
+      }
+    : null;
+
+  console.log("Current Group after combining data:", currentGroup);
+
+  const { joinGroup, leaveGroup, updateGroup } = useGroupMutations();
   const [isJoining, setIsJoining] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState(queryError?.message || null);
+
+  // Combine all errors
+  const error = basicError?.message || membersError?.message || null;
+
   const [groupForm, setGroupForm] = useState({
     name: "",
     description: "",
     isPrivate: false,
   });
 
-  // Cập nhật error state khi queryError thay đổi
-  useEffect(() => {
-    if (queryError) {
-      setError(queryError.message || "Error loading group data");
-      console.error("Group data error:", queryError);
-    } else {
-      setError(null);
-    }
-  }, [queryError]);
-
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
 
   const coverInputRef = useRef(null);
+
+  // Cập nhật form khi có dữ liệu cơ bản
+  useEffect(() => {
+    if (groupBasic && isSettingsPage) {
+      setGroupForm({
+        name: groupBasic.name || "",
+        description: groupBasic.description || "",
+        isPrivate: groupBasic.isPrivate || false,
+      });
+    }
+  }, [groupBasic, isSettingsPage]);
+
+  const loading = loadingBasic || (isManagePage && loadingMembers);
 
   useEffect(() => {
     // No need to dispatch anything as React Query handles data fetching
@@ -85,10 +152,11 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
   }, [groupId, user]);
 
   useEffect(() => {
-    if (currentGroup?.isMember) {
+    if (currentGroup?.isMember && activeTab === "discussion") {
+      console.log("[GroupDetailPage] Fetching group posts for group:", groupId);
       fetchGroupPosts(groupId);
     }
-  }, [fetchGroupPosts, groupId, currentGroup?.isMember]);
+  }, [fetchGroupPosts, groupId, currentGroup?.isMember, activeTab]);
 
   useEffect(() => {
     // Switch to appropriate tab based on page type
@@ -98,17 +166,6 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       setActiveTab("settings");
     }
   }, [isManagePage, isSettingsPage]);
-
-  useEffect(() => {
-    // Initialize form with current group data when available
-    if (currentGroup) {
-      setGroupForm({
-        name: currentGroup.name || "",
-        description: currentGroup.description || "",
-        isPrivate: currentGroup.isPrivate || false,
-      });
-    }
-  }, [currentGroup]);
 
   const handleJoinGroup = async () => {
     if (isJoining) return;
@@ -131,7 +188,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
     if (isJoining) return;
 
     showConfirmToast(
-      "Are you sure you want to leave this group?",
+      t("common.confirmLeaveGroup"),
       async () => {
         setIsJoining(true);
         try {
@@ -153,7 +210,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
           showErrorToast(
             error?.response?.data?.error ||
               error?.response?.data?.message ||
-              "Failed to leave the group. Please try again."
+              t("group.failedToLeave")
           );
         } finally {
           setIsJoining(false);
@@ -162,7 +219,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       null,
       {
         icon: "logout",
-        confirmText: "Leave Group",
+        confirmText: t("common.leaveGroup"),
         confirmColor: "purple",
       }
     );
@@ -173,7 +230,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
     // Basic validation
     if (!groupForm.name.trim()) {
-      showErrorToast("Group name is required");
+      showErrorToast(t("group.groupNameRequired"));
       return;
     }
 
@@ -200,13 +257,13 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         try {
           // Validate the file again before upload
           if (coverFile.size > 5 * 1024 * 1024) {
-            showErrorToast("Image size should be less than 5MB");
+            showErrorToast(t("toast.error.fileSize"));
             setIsSaving(false);
             return;
           }
 
           if (!coverFile.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
-            showErrorToast("Only image files (JPEG, PNG, GIF) are allowed");
+            showErrorToast(t("toast.error.fileType"));
             setIsSaving(false);
             return;
           }
@@ -224,7 +281,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
           );
         } catch (fileError) {
           console.error("Error preparing file for upload:", fileError);
-          showErrorToast("Error preparing the image for upload");
+          showErrorToast(t("toast.error.uploadFailed"));
           setIsSaving(false);
           return;
         }
@@ -297,15 +354,15 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
   const handleDeleteGroup = () => {
     showConfirmToast(
-      "Are you sure you want to delete this group? This action cannot be undone.",
+      t("group.confirmDeleteGroup"),
       () => {
         // Implementation for deleting group would go here
-        showInfoToast("Delete group functionality is not yet implemented");
+        showInfoToast(t("group.deleteNotImplemented"));
       },
       null,
       {
         icon: "delete",
-        confirmText: "Delete Group",
+        confirmText: t("group.deleteGroup"),
         confirmColor: "red",
       }
     );
@@ -336,13 +393,13 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
     // Check file size (limit to 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      showErrorToast("Image size should be less than 5MB");
+      showErrorToast(t("toast.error.fileSize"));
       return;
     }
 
     // Validate file type
     if (!file.type.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
-      showErrorToast("Only image files (JPEG, PNG, GIF) are allowed");
+      showErrorToast(t("toast.error.fileType"));
       return;
     }
 
@@ -369,9 +426,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
 
     reader.onerror = (error) => {
       console.error("FileReader error:", error);
-      showErrorToast(
-        "Failed to read the image file. Please try another image."
-      );
+      showErrorToast(t("group.failedReadImage"));
     };
 
     console.log("Starting file read as Data URL");
@@ -405,7 +460,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg">
           <p className="text-red-500 font-medium mb-2">{error}</p>
           <button
-            onClick={() => refetch()}
+            onClick={() => refetchBasic()}
             className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-md transition-colors"
           >
             Try Again
@@ -420,16 +475,14 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       <div className="max-w-7xl mx-auto p-4">
         <div className="bg-white p-8 rounded-lg shadow-md text-center">
           <h2 className="text-xl font-bold text-gray-700 mb-4">
-            Group not found
+            {t("group.groupNotFound")}
           </h2>
-          <p className="text-gray-500 mb-6">
-            This group may have been deleted or you don't have access to it.
-          </p>
+          <p className="text-gray-500 mb-6">{t("group.groupMayBeDeleted")}</p>
           <button
             onClick={() => navigate("/groups")}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
-            Back to Groups
+            {t("group.backToGroup")}
           </button>
         </div>
       </div>
@@ -445,17 +498,15 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
         <div className="bg-[#1E2024] p-8 rounded-lg shadow-md text-center">
           <FiLock className="mx-auto text-4xl text-gray-400 mb-4" />
           <h2 className="text-xl font-bold text-white mb-4">
-            This is a private group
+            {t("group.privateGroupContent")}
           </h2>
-          <p className="text-gray-400 mb-6">
-            Join the group to see content and discussions.
-          </p>
+          <p className="text-gray-400 mb-6">{t("group.joinToSeeContent")}</p>
           <button
             onClick={handleJoinGroup}
             disabled={isJoining}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
           >
-            {isJoining ? "Processing..." : "Join Group"}
+            {isJoining ? t("common.submitting") : t("group.join")}
           </button>
         </div>
       );
@@ -476,29 +527,23 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 </Link>
                 <div
                   onClick={() => navigate(`/create-post?groupId=${groupId}`)}
-                  className="flex-grow bg-gradient-to-r from-[#242830] to-[#1e2229] rounded-full px-5 py-3.5 cursor-pointer hover:from-[#2a2f3c] hover:to-[#222731] transition-all duration-300 text-[#9ca3af] shadow-inner border border-gray-700/40 hover:border-blue-600/40 hover:shadow-md hover:shadow-blue-900/10 flex items-center group relative overflow-hidden"
+                  className="flex-grow bg-gradient-to-r from-[#242830] to-[#1e2229] rounded-full px-5 py-3.5 cursor-pointer text-[#9ca3af] shadow-inner border border-gray-700/40 flex items-center relative overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-blue-600 to-indigo-600 opacity-0 group-hover:opacity-70 group-hover:animate-pulse"></div>
-                  <FiImage className="mr-3 text-blue-500 group-hover:text-blue-400 transition-colors duration-300 relative z-10" />
-                  <span className="font-medium text-[#9ca3af] group-hover:text-[#cdd3de] transition-colors duration-300 relative z-10">
-                    Write something in the group...
+                  <FiImage className="mr-3 text-blue-500 relative z-10" />
+                  <span className="font-medium text-[#9ca3af] relative z-10">
+                    {t("group.writeInGroup")}
                   </span>
                 </div>
               </div>
-              {/* <div className="flex mt-3 pt-2 border-t border-gray-800">
-                <button
-                  onClick={() => navigate(`/create-post?groupId=${groupId}`)}
-                  className="flex-1 flex items-center justify-center p-2 hover:bg-gray-800 rounded-md transition-colors text-gray-300 cursor-pointer"
-                >
-                  <FiEdit2 className="mr-2 text-blue-600" />
-                  <span>Post</span>
-                </button>
-              </div> */}
             </div>
           )}
 
-          <PostList groupId={groupId} />
+          <PostList
+            groupId={groupId}
+            hasMorePosts={hasNextPage}
+            isLoadingMore={isFetchingNextPage}
+            onLoadMore={handleLoadMorePosts}
+          />
         </div>
       );
     }
@@ -506,20 +551,22 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
     if (activeTab === "about") {
       return (
         <div className="bg-[#1E2024] rounded-lg shadow-md p-6 border border-gray-800">
-          <h2 className="text-xl font-bold text-white mb-4">About</h2>
+          <h2 className="text-xl font-bold text-white mb-4">
+            {t("group.about")}
+          </h2>
           <div className="space-y-6">
             <div>
               <h3 className="text-lg font-medium text-gray-200 mb-2">
-                Group Information
+                {t("group.groupInformation")}
               </h3>
               <p className="text-gray-300 whitespace-pre-line">
-                {currentGroup.description || "This group has no description."}
+                {currentGroup.description || t("group.noDescription")}
               </p>
             </div>
 
             <div className="border-t border-gray-800 pt-4">
               <h3 className="text-lg font-medium text-gray-200 mb-2">
-                Details
+                {t("group.details")}
               </h3>
               <ul className="space-y-3">
                 <li className="flex items-start">
@@ -527,13 +574,13 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   <div>
                     <p className="font-medium text-gray-200">
                       {currentGroup.isPrivate
-                        ? "Private Group"
-                        : "Public Group"}
+                        ? t("group.private")
+                        : t("group.public")}
                     </p>
                     <p className="text-sm text-gray-400">
                       {currentGroup.isPrivate
-                        ? "Only members can see who is in the group and what they post."
-                        : "Anyone can see who is in the group and what they post."}
+                        ? t("group.privateDescription")
+                        : t("group.publicDescription")}
                     </p>
                   </div>
                 </li>
@@ -541,21 +588,25 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   <FiEye className="mt-1 mr-3 text-gray-500" />
                   <div>
                     <p className="font-medium text-gray-200">
-                      {currentGroup.isPrivate ? "Hidden" : "Visible"}
+                      {currentGroup.isPrivate
+                        ? t("group.hidden")
+                        : t("group.visible")}
                     </p>
                     <p className="text-sm text-gray-400">
                       {currentGroup.isPrivate
-                        ? "Only members can find this group."
-                        : "Anyone can find this group."}
+                        ? t("group.hiddenDescription")
+                        : t("group.visibleDescription")}
                     </p>
                   </div>
                 </li>
                 <li className="flex items-start">
                   <FiCalendar className="mt-1 mr-3 text-gray-500" />
                   <div>
-                    <p className="font-medium text-gray-200">History</p>
+                    <p className="font-medium text-gray-200">
+                      {t("group.history")}
+                    </p>
                     <p className="text-sm text-gray-400">
-                      Group created on{" "}
+                      {t("group.createdOn")}{" "}
                       {new Date(currentGroup.createdAt).toLocaleDateString(
                         "en-US",
                         {
@@ -573,20 +624,21 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
             {isAdmin && (
               <div className="border-t border-gray-800 pt-4">
                 <h3 className="text-lg font-medium text-gray-200 mb-2">
-                  Group Administration
+                  {t("group.adminControls")}
                 </h3>
                 <div className="space-y-2">
                   <button
                     onClick={() => navigate(`/groups/${groupId}/settings`)}
                     className="flex items-center text-blue-500 hover:underline cursor-pointer"
                   >
-                    <FiSettings className="mr-1" /> Manage group settings
+                    <FiSettings className="mr-1" />{" "}
+                    {t("group.manageGroupSettings")}
                   </button>
                   <button
                     onClick={() => navigate(`/groups/${groupId}/manage`)}
                     className="flex items-center text-blue-500 hover:underline cursor-pointer"
                   >
-                    <FiUsers className="mr-1" /> Manage members
+                    <FiUsers className="mr-1" /> {t("group.manageMembers")}
                   </button>
                 </div>
               </div>
@@ -611,12 +663,14 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
     if (activeTab === "settings" && isAdmin) {
       return (
         <div className="bg-[#1E2024] rounded-lg shadow-md p-6 border border-gray-800">
-          <h2 className="text-xl font-bold text-white mb-6">Group Settings</h2>
+          <h2 className="text-xl font-bold text-white mb-6">
+            {t("group.settings")}
+          </h2>
 
           <div className="space-y-6">
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Group Name
+                {t("group.groupName")}
               </label>
               <input
                 type="text"
@@ -624,13 +678,13 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 value={groupForm.name}
                 onChange={handleInputChange}
                 className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                placeholder="Enter group name"
+                placeholder={t("group.groupNamePlaceholder")}
               />
             </div>
 
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Description
+                {t("group.description")}
               </label>
               <textarea
                 name="description"
@@ -638,7 +692,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 onChange={handleInputChange}
                 rows={4}
                 className="w-full px-4 py-2 bg-[#16181c] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                placeholder="Enter group description"
+                placeholder={t("group.descriptionPlaceholder")}
               />
             </div>
 
@@ -652,16 +706,18 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 className="h-4 w-4 text-blue-600 border-gray-700 rounded focus:ring-blue-500 bg-gray-700"
               />
               <label htmlFor="isPrivate" className="ml-2 block text-gray-300">
-                Private Group
+                {t("group.isPrivate")}
               </label>
             </div>
 
             <div className="border-t border-gray-700 pt-6">
-              <h3 className="text-lg font-medium text-gray-200 mb-4">Media</h3>
+              <h3 className="text-lg font-medium text-gray-200 mb-4">
+                {t("group.media")}
+              </h3>
 
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-2">
-                  Cover Image
+                  {t("group.coverImage")}
                 </label>
                 <div
                   onClick={() => coverInputRef.current?.click()}
@@ -676,7 +732,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                       />
                       <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <p className="text-white text-sm font-medium">
-                          Click to change cover image
+                          {t("group.clickToChangeCover")}
                         </p>
                       </div>
                     </div>
@@ -684,7 +740,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                     <>
                       <FiImage className="mx-auto text-gray-500 text-xl mb-2" />
                       <p className="text-sm text-gray-400">
-                        Click to upload group cover image
+                        {t("group.clickToUploadCover")}
                       </p>
                     </>
                   )}
@@ -705,7 +761,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 onClick={handleDeleteGroup}
                 className="px-4 py-2 bg-red-600/30 hover:bg-red-700/50 text-red-300 rounded-lg flex items-center transition-colors cursor-pointer"
               >
-                <FiTrash2 className="mr-1" /> Delete Group
+                <FiTrash2 className="mr-1" /> {t("group.deleteGroup")}
               </button>
 
               <button
@@ -714,7 +770,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                 className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center disabled:opacity-50 cursor-pointer"
               >
                 <FiSave className="mr-1" />
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? t("group.savingChanges") : t("group.saveChanges")}
               </button>
             </div>
           </div>
@@ -734,11 +790,11 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
             onClick={() => navigate(`/groups/${groupId}`)}
             className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800 cursor-pointer"
           >
-            Back to Group
+            {t("group.backToGroup")}
           </button>
           <div className="text-gray-400 py-2.5">|</div>
           <div className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-lg shadow-sm">
-            Settings
+            {t("group.settings")}
           </div>
         </div>
       );
@@ -751,11 +807,11 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
             onClick={() => navigate(`/groups/${groupId}`)}
             className="px-4 py-2.5 font-medium rounded-lg transition-all text-gray-300 hover:bg-gray-800 cursor-pointer"
           >
-            Back to Group
+            {t("group.backToGroup")}
           </button>
           <div className="text-gray-400 py-2.5">|</div>
           <div className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-lg shadow-sm">
-            Manage Members
+            {t("group.manageMembers")}
           </div>
         </div>
       );
@@ -771,7 +827,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               : "text-gray-300 hover:bg-gray-800"
           }`}
         >
-          Discussions
+          {t("group.discussion")}
         </button>
         <button
           onClick={() => setActiveTab("members")}
@@ -781,7 +837,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               : "text-gray-300 hover:bg-gray-800"
           }`}
         >
-          Members
+          {t("group.members")}
         </button>
         <button
           onClick={() => setActiveTab("about")}
@@ -791,7 +847,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
               : "text-gray-300 hover:bg-gray-800"
           }`}
         >
-          About
+          {t("group.about")}
         </button>
       </div>
     );
@@ -822,16 +878,16 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   <p className="text-[var(--color-text-secondary)] flex items-center mb-4">
                     {currentGroup.isPrivate ? (
                       <span className="flex items-center">
-                        <FiLock className="mr-1" /> Private Group
+                        <FiLock className="mr-1" /> {t("group.private")}
                       </span>
                     ) : (
                       <span className="flex items-center text-green-400">
-                        <FiUsers className="mr-1" /> Public Group
+                        <FiUsers className="mr-1" /> {t("group.public")}
                       </span>
                     )}{" "}
                     <span className="mx-2">•</span>{" "}
-                    {currentGroup.members?.length || 0} members
-                    <span className="mx-2">•</span> Created{" "}
+                    {currentGroup.members?.length || 0} {t("group.members")}
+                    <span className="mx-2">•</span> {t("group.created")}{" "}
                     {new Date(currentGroup.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -845,12 +901,12 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
       {(isSettingsPage || isManagePage) && (
         <div className="bg-[var(--color-bg-secondary)] rounded-xl p-6 shadow-lg mb-8 border border-[var(--color-border)]">
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-            {isSettingsPage ? "Group Settings" : "Manage Group Members"}
+            {isSettingsPage ? t("group.settings") : t("group.groupMembers")}
           </h1>
           <p className="text-[var(--color-text-secondary)] mt-1">
             {isSettingsPage
-              ? "Customize your group's settings and appearance"
-              : "Manage members and permissions for your group"}
+              ? t("group.customizeSettings")
+              : t("group.manageMembers")}
           </p>
         </div>
       )}
@@ -867,7 +923,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   to={`/groups/${groupId}/settings`}
                   className="px-4 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all font-medium flex items-center shadow-sm cursor-pointer"
                 >
-                  <FiSettings className="mr-1" /> Settings
+                  <FiSettings className="mr-1" /> {t("group.settings")}
                 </Link>
               )}
               {currentGroup.isMember || isAdmin ? (
@@ -876,7 +932,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   disabled={isJoining}
                   className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-bg-tertiary)] to-[var(--color-bg-hover)] text-[var(--color-text-secondary)] rounded-lg hover:from-[var(--color-bg-hover)] hover:to-[var(--color-bg-tertiary)] transition-all disabled:opacity-50 font-medium shadow-sm cursor-pointer"
                 >
-                  {isJoining ? "Processing..." : "Leave Group"}
+                  {isJoining ? t("common.submitting") : t("group.leave")}
                 </button>
               ) : (
                 <button
@@ -884,7 +940,7 @@ const GroupDetailPage = ({ isManagePage = false, isSettingsPage = false }) => {
                   disabled={isJoining}
                   className="px-5 py-2.5 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white rounded-lg hover:from-[var(--color-primary-hover)] hover:to-[var(--color-primary)] transition-all disabled:opacity-50 font-medium shadow-sm cursor-pointer"
                 >
-                  {isJoining ? "Processing..." : "Join Group"}
+                  {isJoining ? t("common.submitting") : t("group.join")}
                 </button>
               )}
             </div>

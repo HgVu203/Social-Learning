@@ -8,11 +8,9 @@ export const useFriendshipMutations = () => {
   // Mutation để gửi lời mời kết bạn
   const sendFriendRequest = useMutation({
     mutationFn: async (friendId) => {
-      console.log(`Sending friend request to user ID: ${friendId}`);
       const response = await axiosService.post("/friendship/send", {
         friendId,
       });
-      console.log("Send friend request response:", response.data);
       return response.data;
     },
     onSuccess: () => {
@@ -24,18 +22,16 @@ export const useFriendshipMutations = () => {
       });
     },
     onError: (error) => {
-      console.error("Error sending friend request:", error);
+      console.error("Error sending friend request:", error.message || error);
     },
   });
 
   // Mutation để chấp nhận lời mời kết bạn
   const acceptFriendRequest = useMutation({
     mutationFn: async (friendId) => {
-      console.log(`Accepting friend request from user ID: ${friendId}`);
       const response = await axiosService.post("/friendship/accept", {
         friendId,
       });
-      console.log("Accept friend request response:", response.data);
       return response.data;
     },
     onSuccess: () => {
@@ -44,18 +40,16 @@ export const useFriendshipMutations = () => {
       queryClient.invalidateQueries({ queryKey: FRIEND_QUERY_KEYS.requests() });
     },
     onError: (error) => {
-      console.error("Error accepting friend request:", error);
+      console.error("Error accepting friend request:", error.message || error);
     },
   });
 
   // Mutation để từ chối lời mời kết bạn
   const rejectFriendRequest = useMutation({
     mutationFn: async (friendId) => {
-      console.log(`Rejecting friend request from user ID: ${friendId}`);
       const response = await axiosService.post("/friendship/reject", {
         friendId,
       });
-      console.log("Reject friend request response:", response.data);
       return response.data;
     },
     onSuccess: () => {
@@ -63,16 +57,14 @@ export const useFriendshipMutations = () => {
       queryClient.invalidateQueries({ queryKey: FRIEND_QUERY_KEYS.requests() });
     },
     onError: (error) => {
-      console.error("Error rejecting friend request:", error);
+      console.error("Error rejecting friend request:", error.message || error);
     },
   });
 
   // Mutation để hủy kết bạn
   const unfriend = useMutation({
     mutationFn: async (friendId) => {
-      console.log(`Unfriending user ID: ${friendId}`);
       const response = await axiosService.delete(`/friendship/${friendId}`);
-      console.log("Unfriend response:", response.data);
       return response.data;
     },
     onSuccess: () => {
@@ -80,7 +72,7 @@ export const useFriendshipMutations = () => {
       queryClient.invalidateQueries({ queryKey: FRIEND_QUERY_KEYS.lists() });
     },
     onError: (error) => {
-      console.error("Error unfriending:", error);
+      console.error("Error unfriending:", error.message || error);
     },
   });
 

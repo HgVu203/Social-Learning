@@ -1,8 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosService from "../../services/axiosService";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useSocket } from "../../contexts/SocketContext";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  sendMessage as socketSendMessage,
+  markMessageAsRead,
+  trackMessageDelivery,
+  getPendingMessages,
+  isUserOnline,
+} from "../../socket";
 
 export const MESSAGE_QUERY_KEYS = {
   all: ["messages"],
@@ -23,6 +30,18 @@ export const useConversations = (params = {}) => {
       const response = await axiosService.get("/message/conversations", {
         params,
       });
+
+      // Add online status for each conversation
+      if (response.data && Array.isArray(response.data.data)) {
+        response.data.data.forEach((conversation) => {
+          if (conversation.participant && conversation.participant._id) {
+            conversation.participant.isOnline = isUserOnline(
+              conversation.participant._id
+            );
+          }
+        });
+      }
+
       return response.data.data || [];
     },
     refetchInterval: 20000, // Automatically refresh every 20 seconds
@@ -33,9 +52,15 @@ export const useConversations = (params = {}) => {
   useEffect(() => {
     if (!user) return;
 
-    // Set up a global event listener for conversation updates
-    const onConversationUpdated = () => {
-      console.log("Global conversation update detected");
+    // Set up event listeners for conversation updates
+    const handleSocketEvents = [
+      "conversation_updated",
+      "new_message_notification",
+      "online_users_updated",
+      "user_status_change",
+    ];
+
+    const invalidateQueries = () => {
       queryClient.invalidateQueries({
         queryKey: MESSAGE_QUERY_KEYS.conversations(),
       });
@@ -44,11 +69,16 @@ export const useConversations = (params = {}) => {
       });
     };
 
-    // Add event listener to the window object
-    window.addEventListener("conversation_updated", onConversationUpdated);
+    // Add all event listeners
+    handleSocketEvents.forEach((eventName) => {
+      window.addEventListener(eventName, invalidateQueries);
+    });
 
     return () => {
-      window.removeEventListener("conversation_updated", onConversationUpdated);
+      // Remove all event listeners
+      handleSocketEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, invalidateQueries);
+      });
     };
   }, [queryClient, user]);
 
@@ -57,7 +87,9 @@ export const useConversations = (params = {}) => {
 
 // Get unread message count
 export const useUnreadMessageCount = () => {
-  return useQuery({
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
     queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
     queryFn: async () => {
       const response = await axiosService.get("/message/unread-count");
@@ -65,6 +97,23 @@ export const useUnreadMessageCount = () => {
     },
     refetchInterval: 20000, // Refresh every 20 seconds
   });
+
+  // Update when receiving new messages
+  useEffect(() => {
+    const handleNewMessage = () => {
+      queryClient.invalidateQueries({
+        queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
+      });
+    };
+
+    window.addEventListener("new_message_notification", handleNewMessage);
+
+    return () => {
+      window.removeEventListener("new_message_notification", handleNewMessage);
+    };
+  }, [queryClient]);
+
+  return query;
 };
 
 // Get messages with a specific user
@@ -76,9 +125,19 @@ export const useMessages = (
   const { page, limit } = options;
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { subscribeToMessages, isConnected } = useSocket();
+  const { isConnected } = useSocket();
 
-  // New: Track last seen messages to prevent disappearance when switching conversations
+  // Always refetch on component mount to ensure fresh data
+  useEffect(() => {
+    if (userId) {
+      // Force immediate refetch when component mounts
+      queryClient.invalidateQueries({
+        queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(userId),
+      });
+    }
+  }, [userId, queryClient]);
+
+  // Track last seen messages to prevent disappearance when switching conversations
   useEffect(() => {
     if (!userId) return;
 
@@ -101,12 +160,9 @@ export const useMessages = (
             `message_cache_${userId}`,
             JSON.stringify(cacheEntry)
           );
-          console.log(
-            `Saved ${currentData.messages.length} messages to cache for ${userId}`
-          );
         }
       } catch (error) {
-        console.error("Error saving message cache:", error);
+        console.error("Error saving message cache:", error.message || error);
       }
     };
   }, [userId, queryClient]);
@@ -124,51 +180,189 @@ export const useMessages = (
       const cachedData = cachedEntry.data;
       const cacheAge = Date.now() - cachedEntry.timestamp;
 
-      // Only use cache if it's less than 3 minutes old
-      if (cachedData?.messages?.length > 0 && cacheAge < 1000 * 60 * 3) {
-        console.log(
-          `Restored ${cachedData.messages.length} messages from cache for ${userId}`
-        );
+      // Only use cache if it's less than 1 minute old (reduced from 3 minutes)
+      if (cachedData?.messages?.length > 0 && cacheAge < 1000 * 60 * 1) {
         queryClient.setQueryData(
           MESSAGE_QUERY_KEYS.messagesWithUser(userId),
           cachedData
         );
-      } else if (cacheAge >= 1000 * 60 * 3) {
+      } else {
         // Clear expired cache
         sessionStorage.removeItem(`message_cache_${userId}`);
       }
     } catch (error) {
-      console.error("Error restoring message cache:", error);
+      console.error("Error restoring message cache:", error.message || error);
     }
   }, [userId, queryClient]);
 
-  // Get messages history with a specific user
+  // Thêm tính năng xử lý reconnect
+  const handleSocketReconnect = useCallback(() => {
+    if (userId) {
+      // Force refetch khi socket reconnect
+      queryClient.invalidateQueries({
+        queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(userId),
+      });
+    }
+  }, [userId, queryClient]);
+
+  useEffect(() => {
+    window.addEventListener("socket_connected", handleSocketReconnect);
+    return () => {
+      window.removeEventListener("socket_connected", handleSocketReconnect);
+    };
+  }, [handleSocketReconnect]);
+
+  // Xử lý force refresh khi có yêu cầu từ components khác
+  const handleForceRefresh = useCallback(
+    (event) => {
+      if (event.detail && event.detail.conversationId === userId) {
+        console.log(`Force refreshing messages for conversation ${userId}`);
+        queryClient.invalidateQueries({
+          queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(userId),
+        });
+      }
+    },
+    [userId, queryClient]
+  );
+
+  useEffect(() => {
+    window.addEventListener("force_message_refresh", handleForceRefresh);
+    return () => {
+      window.removeEventListener("force_message_refresh", handleForceRefresh);
+    };
+  }, [handleForceRefresh]);
+
+  // Xử lý clear cache khi có yêu cầu
+  const handleClearCache = useCallback(
+    (event) => {
+      if (
+        event.detail &&
+        (!event.detail.conversationId || event.detail.conversationId === userId)
+      ) {
+        console.log(
+          `Clearing message cache for ${event.detail.conversationId || "all"}`
+        );
+        if (userId) {
+          sessionStorage.removeItem(`message_cache_${userId}`);
+        } else {
+          // Xóa tất cả message cache
+          Object.keys(sessionStorage).forEach((key) => {
+            if (key.startsWith("message_cache_")) {
+              sessionStorage.removeItem(key);
+            }
+          });
+        }
+      }
+    },
+    [userId]
+  );
+
+  useEffect(() => {
+    window.addEventListener("clear_message_cache", handleClearCache);
+    return () => {
+      window.removeEventListener("clear_message_cache", handleClearCache);
+    };
+  }, [handleClearCache]);
+
+  // Xử lý sự kiện nhận tin nhắn mới để cập nhật danh sách
+  const handleNewMessage = useCallback(
+    (event) => {
+      let message;
+
+      // Xử lý 2 loại event: từ socket trực tiếp và từ custom event
+      if (event.type === "new_message") {
+        message = event;
+      } else if (event.detail) {
+        message = event.detail;
+      } else {
+        return;
+      }
+
+      // Kiểm tra message có phải là của conversation này không
+      if (!message || !message.senderId || !message.receiverId) return;
+
+      const messagePartnerId =
+        message.senderId._id === user?.id
+          ? message.receiverId._id
+          : message.senderId._id;
+
+      if (messagePartnerId !== userId && message.chatId !== userId) return;
+
+      // Lấy dữ liệu hiện tại của cuộc hội thoại
+      const currentData = queryClient.getQueryData(
+        MESSAGE_QUERY_KEYS.messagesWithUser(userId)
+      );
+
+      if (!currentData) return;
+
+      // Kiểm tra tin nhắn đã tồn tại chưa
+      const messageExists = currentData.messages.some(
+        (msg) => msg._id === message._id || msg.tempId === message.tempId
+      );
+
+      if (messageExists) return;
+
+      // Thêm tin nhắn mới vào đầu danh sách
+      const updatedMessages = [message, ...currentData.messages];
+
+      // Cập nhật cache
+      queryClient.setQueryData(MESSAGE_QUERY_KEYS.messagesWithUser(userId), {
+        ...currentData,
+        messages: updatedMessages,
+      });
+
+      // Đồng thời cập nhật danh sách hội thoại
+      queryClient.invalidateQueries({
+        queryKey: MESSAGE_QUERY_KEYS.conversations(),
+      });
+    },
+    [userId, queryClient, user?.id]
+  );
+
+  useEffect(() => {
+    // Lắng nghe tin nhắn mới từ socket trực tiếp
+    window.addEventListener("new_message", handleNewMessage);
+
+    // Lắng nghe tin nhắn mới từ custom event
+    window.addEventListener("new_message_notification", handleNewMessage);
+
+    return () => {
+      window.removeEventListener("new_message", handleNewMessage);
+      window.removeEventListener("new_message_notification", handleNewMessage);
+    };
+  }, [handleNewMessage]);
+
+  // Lấy danh sách tin nhắn từ server kết hợp với tin nhắn pending
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: MESSAGE_QUERY_KEYS.messagesWithUser(userId),
     queryFn: async () => {
       try {
         if (!userId) return { messages: [], hasMore: false };
 
-        console.log(
-          `Fetching messages for conversation ${userId}, page ${page}`
-        );
-
-        // First get the current cached data to preserve it in case of error
+        // Lưu dữ liệu hiện tại để phòng lỗi
         const previousData = queryClient.getQueryData(
           MESSAGE_QUERY_KEYS.messagesWithUser(userId)
         );
 
-        const response = await axiosService.get("/message", {
-          params: { partnerId: userId, page, limit },
-        });
+        // Xác định thời điểm lấy tin nhắn mới (nếu có)
+        let lastSeen = null;
+        if (previousData?.lastFetched && page === 1) {
+          lastSeen = previousData.lastFetched;
+        }
 
-        console.log(
-          `Fetched ${response.data.data?.length || 0} messages for ${userId}`
-        );
+        // Gọi API lấy tin nhắn
+        const response = await axiosService.get("/message", {
+          params: {
+            partnerId: userId,
+            page,
+            limit,
+            lastSeen,
+            _t: Date.now(), // Thêm timestamp vào query params để tránh cache
+          },
+        });
 
         // Validate response data
         if (!response.data.data || !Array.isArray(response.data.data)) {
-          console.warn("Invalid message data format:", response.data);
           // Return previous messages instead of empty array to prevent disappearing
           return (
             previousData || {
@@ -176,6 +370,7 @@ export const useMessages = (
               hasMore: false,
               currentPage: parseInt(page),
               error: "Invalid data format from server",
+              lastFetched: Date.now(),
             }
           );
         }
@@ -187,38 +382,41 @@ export const useMessages = (
           page === 1 &&
           previousData?.messages?.length > 0
         ) {
-          console.warn(
-            "Received empty message array but had previous messages, preserving cache"
-          );
-          return previousData;
+          return {
+            ...previousData,
+            lastFetched: Date.now(),
+          };
         }
 
-        // Process messages to ensure structure consistency
-        const processedMessages = response.data.data.map((message) => {
-          // Ensure senderId is consistent
-          if (message.senderId && typeof message.senderId === "object") {
-            // Message with populated sender
-            console.log(
-              "Message with populated sender:",
-              message.senderId._id,
-              message.message
-            );
-          } else if (message.senderId) {
-            // Message with sender ID only
-            console.log(
-              "Message with sender ID only:",
-              message.senderId,
-              message.message
-            );
-          }
+        // Tin nhắn từ server
+        let serverMessages = response.data.data;
 
-          return message;
-        });
+        // Lấy tin nhắn đang chờ xác nhận
+        const pendingMessages = getPendingMessages(userId);
+
+        // Kết hợp tin nhắn từ server và tin nhắn đang chờ
+        let combinedMessages = [...serverMessages];
+
+        if (page === 1 && pendingMessages.length > 0) {
+          // Lọc bỏ tin nhắn pending đã có trong danh sách server
+          const filteredPending = pendingMessages.filter((pendingMsg) => {
+            // Kiểm tra nếu có tempId thì không trùng với tin nhắn server nào
+            return !serverMessages.some(
+              (serverMsg) =>
+                serverMsg.tempId === pendingMsg.tempId ||
+                serverMsg.clientTempId === pendingMsg.tempId
+            );
+          });
+
+          // Thêm tin nhắn đang chờ vào đầu danh sách
+          combinedMessages = [...filteredPending, ...serverMessages];
+        }
 
         return {
-          messages: processedMessages,
+          messages: combinedMessages,
           hasMore: response.data.hasMore || false,
           currentPage: parseInt(page),
+          lastFetched: Date.now(),
         };
       } catch (error) {
         console.error("Error fetching messages:", error);
@@ -234,18 +432,21 @@ export const useMessages = (
             hasMore: false,
             error: error.message,
             currentPage: parseInt(page),
+            lastFetched: Date.now(),
           }
         );
       }
     },
     enabled: !!userId,
-    staleTime: 1000 * 2, // 2 seconds
+    staleTime: 0, // Always consider data stale to force refetch
+    cacheTime: 30 * 1000, // Reduce cache time to 30 seconds
     refetchOnWindowFocus: true,
-    // Reduced polling frequency to prevent race conditions
-    refetchInterval: isConnected ? 8000 : 3000, // Less aggressive polling
+    refetchOnMount: true, // Always refetch when component mounts
+    // Increased polling frequency to get latest messages faster
+    refetchInterval: isConnected ? 15000 : 5000, // More aggressive polling when not connected via socket
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-    // This is crucial - tell React Query how to merge new data with old data
+    // Tell React Query how to merge new data with old data
     structuralSharing: (oldData, newData) => {
       // If we have no new data or it has an error, keep old data
       if (!newData || newData.error)
@@ -261,161 +462,6 @@ export const useMessages = (
     ...queryOptions,
   });
 
-  // Set up a function to refresh messages when socket reconnects
-  useEffect(() => {
-    const handleSocketReconnect = () => {
-      console.log("Socket reconnected, refreshing messages");
-      if (userId) {
-        refetch();
-      }
-    };
-
-    window.addEventListener("socket_reconnected", handleSocketReconnect);
-
-    return () => {
-      window.removeEventListener("socket_reconnected", handleSocketReconnect);
-    };
-  }, [refetch, userId]);
-
-  // Set up a function to handle forced message refresh
-  useEffect(() => {
-    const handleForceRefresh = (event) => {
-      const { conversationId } = event.detail || {};
-      if (conversationId && conversationId === userId) {
-        console.log(`Force refreshing messages for conversation ${userId}`);
-        refetch();
-      }
-    };
-
-    window.addEventListener("force_message_refresh", handleForceRefresh);
-
-    return () => {
-      window.removeEventListener("force_message_refresh", handleForceRefresh);
-    };
-  }, [refetch, userId]);
-
-  // Watch for new message event - trigger refetch
-  useEffect(() => {
-    const handleNewMessage = (event) => {
-      try {
-        const { partnerId, message, updateId } = event?.detail || {};
-
-        // Skip if no partner ID
-        if (!partnerId) return;
-
-        // Only process if this is for our conversation
-        if (partnerId === userId) {
-          console.log("New message notification, refreshing data");
-
-          // Track processed messages to prevent duplicates
-          const processedKey = `processed_${updateId || Date.now()}`;
-          if (window[processedKey]) return;
-          window[processedKey] = true;
-
-          // For urgent updates with actual message data, update cache directly
-          if (message && updateId) {
-            // Add message directly to cache for immediate display
-            queryClient.setQueryData(
-              MESSAGE_QUERY_KEYS.messagesWithUser(userId),
-              (oldData) => {
-                if (!oldData) {
-                  return {
-                    messages: [message],
-                    hasMore: false,
-                    currentPage: 1,
-                  };
-                }
-
-                // Check if message already exists
-                const messageExists = oldData.messages.some(
-                  (m) => m._id === message._id
-                );
-
-                if (messageExists) return oldData;
-
-                // Add the message to the cache
-                return {
-                  ...oldData,
-                  messages: [message, ...oldData.messages],
-                };
-              }
-            );
-
-            // Also update conversations
-            queryClient.invalidateQueries({
-              queryKey: MESSAGE_QUERY_KEYS.conversations(),
-            });
-
-            // Clean up after a delay
-            setTimeout(() => {
-              delete window[processedKey];
-            }, 5000);
-          } else {
-            // For regular updates, just refetch
-            refetch();
-          }
-        }
-      } catch (error) {
-        console.error("Error handling new message notification:", error);
-      }
-    };
-
-    // Listen for message events
-    window.addEventListener("new_message_received", handleNewMessage);
-    window.addEventListener("urgent_new_message", handleNewMessage);
-
-    return () => {
-      window.removeEventListener("new_message_received", handleNewMessage);
-      window.removeEventListener("urgent_new_message", handleNewMessage);
-    };
-  }, [userId, refetch, queryClient]);
-
-  // Websocket subscription for notifications only
-  useEffect(() => {
-    if (!userId || !user) return;
-
-    console.log(`Setting up message notification for user ${userId}`);
-
-    try {
-      // Set up message subscriptions using Socket Context
-      const unsubscribe = subscribeToMessages(userId, {
-        onMessageReceived: (message) => {
-          console.log("New message received via socket:", message);
-
-          // Create a unique update ID
-          const socketUpdateId = `socket_${message._id}_${Date.now()}`;
-
-          // Dispatch event to trigger refetch with full message data
-          window.dispatchEvent(
-            new CustomEvent("urgent_new_message", {
-              detail: {
-                partnerId: userId,
-                message: message,
-                updateId: socketUpdateId,
-              },
-            })
-          );
-
-          // Also update other caches
-          queryClient.invalidateQueries({
-            queryKey: MESSAGE_QUERY_KEYS.conversations(),
-          });
-        },
-        onMessageRead: () => {
-          refetch();
-        },
-        onMessageDeleted: () => {
-          refetch();
-        },
-      });
-
-      return unsubscribe;
-    } catch (error) {
-      console.error("Error subscribing to messages:", error);
-      return () => {};
-    }
-  }, [userId, user, queryClient, subscribeToMessages, refetch]);
-
   return {
     data: data || { messages: [], hasMore: false },
     isLoading,
@@ -426,214 +472,197 @@ export const useMessages = (
 
 export const useMessageMutations = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
+  // Gửi tin nhắn mới
   const sendMessage = useMutation({
     mutationFn: async ({ receiverId, message, type = "text" }) => {
-      console.log(`Sending message to ${receiverId}:`, { message, type });
+      try {
+        // Tạo đối tượng tin nhắn
+        const messageData = {
+          receiverId,
+          message,
+          type,
+        };
 
-      if (!receiverId || !message) {
-        throw new Error("Missing required parameters: receiverId or message");
+        // Gửi thông qua socket trước để phản hồi nhanh
+        const tempId = socketSendMessage({
+          senderId: user.id,
+          receiverId: receiverId,
+          message,
+          type,
+        });
+
+        if (tempId) {
+          messageData.tempId = tempId;
+        }
+
+        // Gửi thông qua HTTP API để lưu trên server
+        const response = await axiosService.post("/message/send", messageData);
+
+        return {
+          ...response.data.data,
+          tempId,
+        };
+      } catch (error) {
+        console.error("Error sending message:", error);
+        // Ném lỗi để mutation bị reject
+        throw error;
       }
-
-      const response = await axiosService.post("/message/send", {
-        receiverId,
-        message,
-        type,
-      });
-
-      return response.data;
     },
     onSuccess: (data, variables) => {
-      // Get the message that was just sent
-      const sentMessage = data.data;
+      // Lấy dữ liệu hiện tại của conversation
+      const currentData = queryClient.getQueryData(
+        MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId)
+      );
 
-      if (!sentMessage) {
-        console.error("No message data in response:", data);
-        return;
+      // Nếu không có dữ liệu hiện tại, không làm gì cả
+      if (!currentData) return;
+
+      // Kiểm tra tin nhắn đã tồn tại trong danh sách chưa
+      const existingIndex = currentData.messages.findIndex(
+        (msg) => msg._id === data._id || msg.tempId === data.tempId
+      );
+
+      if (existingIndex >= 0) {
+        // Nếu đã tồn tại, cập nhật tin nhắn đó
+        const updatedMessages = [...currentData.messages];
+        updatedMessages[existingIndex] = {
+          ...updatedMessages[existingIndex],
+          ...data,
+          status: "sent",
+        };
+
+        // Cập nhật lại danh sách tin nhắn
+        queryClient.setQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId),
+          {
+            ...currentData,
+            messages: updatedMessages,
+          }
+        );
+      } else {
+        // Nếu chưa tồn tại, thêm vào danh sách và giữ nguyên thứ tự theo thời gian
+        const newMessage = {
+          ...data,
+          senderId: { _id: user.id },
+          receiverId: { _id: variables.receiverId },
+          read: false,
+          status: "sent",
+        };
+
+        const allMessages = [...currentData.messages, newMessage];
+        // Sắp xếp lại theo thời gian (cũ đến mới)
+        allMessages.sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        );
+
+        queryClient.setQueryData(
+          MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId),
+          {
+            ...currentData,
+            messages: allMessages,
+          }
+        );
       }
 
-      console.log("Message sent successfully:", sentMessage);
-
-      // Prevent duplicate messages by checking before update
-      // CRITICAL: Create a unique ID to track this specific update
-      const updateId = `msg_${sentMessage._id}_${Date.now()}`;
-      window.lastMessageUpdate = updateId;
-
-      // Update the messages cache with the new message
-      queryClient.setQueryData(
-        MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId),
-        (oldData) => {
-          if (!oldData)
-            return {
-              messages: [sentMessage],
-              hasMore: false,
-              currentPage: 1,
-            };
-
-          // Check if the message already exists in the cache
-          const messageExists = oldData.messages.some(
-            (m) => m._id === sentMessage._id
+      // Theo dõi trạng thái tin nhắn thông qua socket
+      if (data.tempId) {
+        trackMessageDelivery(data.tempId, ({ status }) => {
+          // Cập nhật trạng thái tin nhắn khi có thay đổi
+          const updatedData = queryClient.getQueryData(
+            MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId)
           );
 
-          if (messageExists) return oldData;
+          if (!updatedData) return;
 
-          // Add the new message while preserving all existing messages
-          return {
-            ...oldData,
-            messages: [sentMessage, ...oldData.messages],
-          };
-        }
-      );
+          const msgIndex = updatedData.messages.findIndex(
+            (msg) => msg.tempId === data.tempId || msg._id === data._id
+          );
 
-      // IMPORTANT: Wait a moment before dispatching socket events to prevent event race conditions
-      setTimeout(() => {
-        // Dispatch an urgent event to force update of both sides
-        window.dispatchEvent(
-          new CustomEvent("urgent_new_message", {
-            detail: {
-              message: sentMessage,
-              partnerId: variables.receiverId,
-              updateId: updateId,
-            },
-          })
-        );
-      }, 300);
+          if (msgIndex >= 0) {
+            const updatedMessages = [...updatedData.messages];
+            updatedMessages[msgIndex] = {
+              ...updatedMessages[msgIndex],
+              status,
+            };
 
-      // Delay cache invalidation to prevent duplicate processing
-      setTimeout(() => {
-        // Only proceed if this is still the latest update
-        if (window.lastMessageUpdate !== updateId) return;
-
-        // Invalidate conversations to update the last message preview
-        queryClient.invalidateQueries({
-          queryKey: MESSAGE_QUERY_KEYS.conversations(),
-        });
-
-        // Dispatch global event for conversation updates
-        window.dispatchEvent(new Event("conversation_updated"));
-      }, 1000);
-    },
-    onError: (error) => {
-      console.error("Failed to send message:", error);
-    },
-  });
-
-  const markAsRead = useMutation({
-    mutationFn: async (messageId) => {
-      console.log(`Marking message ${messageId} as read`);
-
-      const response = await axiosService.patch(`/message/${messageId}/read`);
-      return response.data;
-    },
-    onSuccess: (data, messageId) => {
-      // Find the correct conversation for this message
-      const userQueries = queryClient.getQueryCache().findAll({
-        queryKey: MESSAGE_QUERY_KEYS.messages(),
-        exact: false,
-      });
-
-      // Update the read status in all conversation caches
-      userQueries.forEach((query) => {
-        queryClient.setQueryData(query.queryKey, (oldData) => {
-          if (!oldData) return oldData;
-
-          return {
-            ...oldData,
-            messages: oldData.messages.map((m) => {
-              if (m._id === messageId) {
-                return { ...m, read: true };
+            queryClient.setQueryData(
+              MESSAGE_QUERY_KEYS.messagesWithUser(variables.receiverId),
+              {
+                ...updatedData,
+                messages: updatedMessages,
               }
-              return m;
-            }),
-          };
+            );
+          }
         });
-      });
+      }
 
-      // Invalidate unread count
-      queryClient.invalidateQueries({
-        queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
-      });
-
-      // Invalidate conversations to update the read status
+      // Cập nhật danh sách hội thoại
       queryClient.invalidateQueries({
         queryKey: MESSAGE_QUERY_KEYS.conversations(),
       });
     },
+    onError: (error, variables) => {
+      console.error("Error in sendMessage mutation:", error);
+
+      // Hiển thị lỗi cho người dùng
+      window.dispatchEvent(
+        new CustomEvent("message_error", {
+          detail: {
+            receiverId: variables.receiverId,
+            error: error.message || "Failed to send message",
+          },
+        })
+      );
+    },
   });
 
+  // Đánh dấu tin nhắn đã đọc
+  const markAsRead = useMutation({
+    mutationFn: async ({ messageId, chatId, senderId }) => {
+      // Gửi thông qua socket trước
+      markMessageAsRead({ messageId, chatId, senderId });
+
+      // Sau đó gửi HTTP request để đảm bảo dữ liệu được lưu
+      return axiosService.patch(`/message/${messageId}/read`);
+    },
+    onSuccess: () => {
+      // Cập nhật số lượng tin nhắn chưa đọc
+      queryClient.invalidateQueries({
+        queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
+      });
+    },
+  });
+
+  // Đánh dấu tất cả tin nhắn đã đọc
   const markAllAsRead = useMutation({
     mutationFn: async (partnerId) => {
-      console.log(`Marking all messages from ${partnerId} as read`);
-
-      const response = await axiosService.patch("/message/read-all", {
-        partnerId,
-      });
-      return response.data;
+      return axiosService.patch("/message/read-all", { partnerId });
     },
-    onSuccess: (data, partnerId) => {
-      // Update the read status in the conversation cache
-      queryClient.setQueryData(
-        MESSAGE_QUERY_KEYS.messagesWithUser(partnerId),
-        (oldData) => {
-          if (!oldData) return oldData;
-
-          return {
-            ...oldData,
-            messages: oldData.messages.map((m) => {
-              if (m.senderId._id === partnerId && !m.read) {
-                return { ...m, read: true };
-              }
-              return m;
-            }),
-          };
-        }
-      );
-
-      // Invalidate unread count
+    onSuccess: () => {
+      // Cập nhật số lượng tin nhắn chưa đọc và danh sách hội thoại
       queryClient.invalidateQueries({
         queryKey: MESSAGE_QUERY_KEYS.unreadCount(),
       });
-
-      // Invalidate conversations to update the read status
       queryClient.invalidateQueries({
         queryKey: MESSAGE_QUERY_KEYS.conversations(),
       });
     },
   });
 
+  // Xóa tin nhắn
   const deleteMessage = useMutation({
     mutationFn: async (messageId) => {
-      console.log(`Deleting message ${messageId}`);
-
-      const response = await axiosService.delete(`/message/${messageId}`);
-      return response.data;
+      return axiosService.delete(`/message/${messageId}`);
     },
     onSuccess: (_, messageId) => {
-      // Find the correct conversation for this message
-      const userQueries = queryClient.getQueryCache().findAll({
-        queryKey: MESSAGE_QUERY_KEYS.messages(),
-        exact: false,
-      });
-
-      // Remove the message from all conversation caches
-      userQueries.forEach((query) => {
-        queryClient.setQueryData(query.queryKey, (oldData) => {
-          if (!oldData) return oldData;
-
-          return {
-            ...oldData,
-            messages: oldData.messages.filter((m) => m._id !== messageId),
-          };
-        });
-      });
-
-      // Invalidate conversations to update the last message preview
-      queryClient.invalidateQueries({
-        queryKey: MESSAGE_QUERY_KEYS.conversations(),
-      });
-
-      // Dispatch global event for conversation updates
-      window.dispatchEvent(new Event("conversation_updated"));
+      // Thông báo cho các components quan tâm
+      window.dispatchEvent(
+        new CustomEvent("message_deleted", {
+          detail: { messageId },
+        })
+      );
     },
   });
 

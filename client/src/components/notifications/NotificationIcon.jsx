@@ -1,81 +1,83 @@
-import { useState, useRef, useEffect } from "react";
-import { IoMdNotificationsOutline } from "react-icons/io";
-import { useNotification } from "../../contexts/NotificationContext";
+import { useState, useEffect, useRef } from "react";
+import { FiBell } from "react-icons/fi";
 import NotificationDropdown from "./NotificationDropdown";
-import { motion, AnimatePresence } from "framer-motion";
+import { useNotification } from "../../contexts/NotificationContext";
+import { createPortal } from "react-dom";
 
-const NotificationIcon = ({ className = "" }) => {
+const NotificationIcon = () => {
+  const [showDropdown, setShowDropdown] = useState(false);
   const { unreadCount } = useNotification();
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  const iconRef = useRef(null);
+  const [iconPosition, setIconPosition] = useState({ top: 0, right: 0 });
+
+  // Cập nhật vị trí icon khi cần
+  useEffect(() => {
+    if (showDropdown && iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      setIconPosition({
+        top: rect.bottom,
+        right: window.innerWidth - rect.right,
+      });
+    }
+  }, [showDropdown]);
 
   // Handle outside clicks to close dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
+      if (
+        iconRef.current &&
+        !iconRef.current.contains(event.target) &&
+        !event.target.closest(".notification-dropdown")
+      ) {
+        setShowDropdown(false);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    if (showDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
-
-  const toggleDropdown = () => {
-    setIsOpen(!isOpen);
-  };
+  }, [showDropdown]);
 
   return (
-    <div className={`relative ${className}`}>
-      <button
-        onClick={toggleDropdown}
-        className="relative p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-primary)]"
-        aria-label="Notification Bell"
-      >
-        <IoMdNotificationsOutline className="text-2xl" />
-        {unreadCount > 0 && (
-          <motion.span
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="absolute top-0 right-0 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center"
-          >
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </motion.span>
-        )}
-      </button>
+    <>
+      {/* Notification Bell Icon */}
+      <div ref={iconRef} className="relative">
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] active:bg-[var(--color-bg-tertiary)] cursor-pointer notification-bell"
+          aria-label="Notifications"
+        >
+          <div className="relative">
+            <FiBell className="w-6 h-6 text-[var(--color-text-primary)]" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-medium">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            ref={dropdownRef}
-            initial={{ opacity: 0, x: 300 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 300 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed top-0 right-0 w-80 h-full bg-[var(--color-bg-primary)] shadow-lg z-50 border-l border-[var(--color-border)]"
+      {/* Notification Dropdown hiển thị thông qua Portal ở top-level của DOM */}
+      {showDropdown &&
+        createPortal(
+          <div
+            className="notification-dropdown fixed"
+            style={{
+              top: `${iconPosition.top}px`,
+              right: `${iconPosition.right}px`,
+              zIndex: 9999,
+            }}
           >
-            <div className="flex flex-col h-full">
-              <div className="px-4 py-3 border-b border-[var(--color-border)] flex justify-between items-center bg-[var(--color-bg-secondary)]">
-                <h3 className="font-semibold text-lg text-[var(--color-text-primary)]">
-                  Notifications
-                </h3>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <NotificationDropdown onClose={() => setIsOpen(false)} />
-              </div>
-            </div>
-          </motion.div>
+            <NotificationDropdown onClose={() => setShowDropdown(false)} />
+          </div>,
+          document.body
         )}
-      </AnimatePresence>
-    </div>
+    </>
   );
 };
 

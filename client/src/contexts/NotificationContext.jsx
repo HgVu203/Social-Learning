@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
-import { getSocket } from "../socket";
 import axiosInstance from "../services/axiosService";
 
 const NotificationContext = createContext();
@@ -28,17 +27,18 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const socket = getSocket();
-    if (!socket) return;
-
-    // Listen for new notifications
-    socket.on("notification_received", (notification) => {
+    // Lắng nghe sự kiện thông báo mới từ socket (thông qua custom event)
+    const handleNotification = (event) => {
+      const notification = event.detail;
+      console.log("Received notification in context:", notification);
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
-    });
+    };
+
+    window.addEventListener("notification_received", handleNotification);
 
     return () => {
-      socket.off("notification_received");
+      window.removeEventListener("notification_received", handleNotification);
     };
   }, [isAuthenticated]);
 

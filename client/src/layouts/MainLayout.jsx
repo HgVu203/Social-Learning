@@ -9,7 +9,6 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 const MainLayout = () => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const isTablet = useMediaQuery("(min-width: 768px)");
 
   // Close mobile sidebar when switching to desktop view
   useEffect(() => {
@@ -36,8 +35,18 @@ const MainLayout = () => {
   }, [showMobileSidebar, isDesktop]);
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] overflow-hidden">
-      <div className="max-w-full mx-auto flex relative">
+    <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+      {/* Sử dụng CSS Grid layout để tự động co dãn theo tỉ lệ màn hình */}
+      <div
+        className={`
+        ${
+          isDesktop
+            ? "grid grid-cols-[minmax(220px,0.9fr)_minmax(500px,2.2fr)_minmax(280px,1fr)] h-screen overflow-hidden"
+            : "block"
+        }
+        min-h-screen w-full
+      `}
+      >
         {/* Left Sidebar - Only visible on desktop or when toggled on mobile */}
         <AnimatePresence>
           {(isDesktop || showMobileSidebar) && (
@@ -49,9 +58,12 @@ const MainLayout = () => {
                 duration: showMobileSidebar ? 0.25 : 0.3,
                 ease: "easeInOut",
               }}
-              className={`${
-                isDesktop ? "w-[280px] fixed" : "w-[280px] fixed z-40"
-              } h-screen border-r border-[var(--color-border)] bg-[var(--color-bg-primary)]`}
+              className={`
+                h-screen border-r border-[var(--color-border)] bg-[var(--color-bg-primary)] overflow-y-auto
+                ${
+                  isDesktop ? "sticky top-0 col-span-1" : "fixed w-[280px] z-40"
+                }
+              `}
             >
               <Sidebar onClose={() => setShowMobileSidebar(false)} />
             </motion.div>
@@ -72,15 +84,17 @@ const MainLayout = () => {
           )}
         </AnimatePresence>
 
-        {/* Main Content - Removed animations to prevent jerky transitions */}
+        {/* Main Content */}
         <div
-          className={`flex-1 min-h-screen bg-[var(--color-bg-primary)] ${
-            isDesktop
-              ? "ml-[280px] mr-[350px] border-r border-[var(--color-border)]"
-              : isTablet
-              ? "ml-0 mr-0 w-full"
-              : "ml-0 mr-0 w-full"
-          } overflow-y-auto ${!isDesktop ? "pb-16" : ""}`}
+          className={`
+            h-screen bg-[var(--color-bg-primary)] overflow-y-auto
+            ${
+              isDesktop
+                ? "border-r border-[var(--color-border)] col-span-1"
+                : "w-full"
+            }
+            ${!isDesktop ? "pb-16" : ""}
+          `}
         >
           <div className={`${!isDesktop ? "px-2 py-1 mt-2" : "p-2"}`}>
             <Outlet />
@@ -89,12 +103,9 @@ const MainLayout = () => {
 
         {/* Right Panel - Only visible on desktop */}
         {isDesktop && (
-          <motion.div
-            initial={false}
-            className="w-[350px] fixed right-0 h-screen z-10 border-l border-[var(--color-border)] bg-[var(--color-bg-primary)] overflow-hidden"
-          >
+          <div className="col-span-1 border-l border-[var(--color-border)] bg-[var(--color-bg-primary)] h-screen overflow-y-auto sticky top-0">
             <RightPanel />
-          </motion.div>
+          </div>
         )}
       </div>
 

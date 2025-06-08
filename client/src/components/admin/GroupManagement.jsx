@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  FaUsers,
   FaEdit,
   FaTrash,
-  FaSearch,
-  FaCheck,
-  FaBan,
-  FaCalendarAlt,
-  FaUserFriends,
+  FaCircle,
   FaChevronLeft,
   FaChevronRight,
+  FaUsers,
+  FaUserFriends,
+  FaCalendarAlt,
 } from "react-icons/fa";
 import { toast } from "react-toastify";
 import {
@@ -18,43 +17,34 @@ import {
   ADMIN_QUERY_KEYS,
 } from "../../hooks/queries/useAdminQueries";
 import { useQueryClient } from "@tanstack/react-query";
-import Select from "../ui/Select";
-import Button from "../ui/Button";
-import { SkeletonGroupManagement } from "../skeleton";
 import { adminService } from "../../services/adminService";
+import { SkeletonGroupManagement } from "../skeleton";
+import AdvancedSearch from "./AdvancedSearch";
+import Button from "../ui/Button";
+import Select from "../ui/Select";
 
 const GroupManagement = () => {
-  const [searchTerm, setSearchTerm] = useState("");
+  const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchField, setSearchField] = useState("all");
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingGroupId, setProcessingGroupId] = useState(null);
-  const groupsPerPage = 5;
+  const groupsPerPage = 10;
   const queryClient = useQueryClient();
 
-  // Sử dụng React Query để lấy dữ liệu
+  // Sử dụng React Query hook để lấy dữ liệu nhóm
   const {
     data: groupsData,
     isLoading,
     refetch,
-    error,
-  } = useAdminGroups(currentPage, groupsPerPage);
+  } = useAdminGroups(currentPage, groupsPerPage, searchTerm, searchField);
 
-  // Debug data
-  useEffect(() => {
-    console.log("GroupsData received:", groupsData);
-    console.log("Error:", error);
-  }, [groupsData, error]);
-
-  // Sửa lại để đảm bảo dữ liệu được xử lý đúng
-  const filteredGroups = groupsData?.data || [];
-  const totalPages = groupsData?.pagination?.totalPages || 1;
-
-  // Sử dụng React Query mutations
-  const { updateGroup, deleteGroup } = useAdminGroupMutations();
-
-  // Tìm kiếm dữ liệu
-  const searchGroups = () => {
+  // Xử lý tìm kiếm nâng cao
+  const handleAdvancedSearch = ({ field, term }) => {
+    setSearchField(field);
+    setSearchTerm(term);
     if (currentPage !== 1) {
       setCurrentPage(1);
     } else {
@@ -62,11 +52,18 @@ const GroupManagement = () => {
     }
   };
 
-  useEffect(() => {
-    if (searchTerm === "") {
-      searchGroups();
-    }
-  }, [searchTerm]);
+  const groups = groupsData?.data || [];
+  const totalPages = groupsData?.pagination?.totalPages || 1;
+
+  // Sử dụng React Query mutations
+  const { updateGroup, deleteGroup } = useAdminGroupMutations();
+
+  // Function to refresh data
+  const refreshData = () => {
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_QUERY_KEYS.groups(),
+    });
+  };
 
   // Prefetch data for next page
   useEffect(() => {
@@ -77,13 +74,27 @@ const GroupManagement = () => {
         queryKey: ADMIN_QUERY_KEYS.groupsList({
           page: nextPage,
           limit: groupsPerPage,
+          search: searchTerm,
+          field: searchField,
         }),
         queryFn: async () => {
-          return await adminService.getAllGroups(nextPage, groupsPerPage);
+          return await adminService.getAllGroups(
+            nextPage,
+            groupsPerPage,
+            searchTerm,
+            searchField
+          );
         },
       });
     }
-  }, [currentPage, groupsPerPage, totalPages, queryClient]);
+  }, [
+    currentPage,
+    searchTerm,
+    searchField,
+    groupsPerPage,
+    totalPages,
+    queryClient,
+  ]);
 
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
@@ -95,11 +106,15 @@ const GroupManagement = () => {
           queryKey: ADMIN_QUERY_KEYS.groupsList({
             page: pageNumber + 1,
             limit: groupsPerPage,
+            search: searchTerm,
+            field: searchField,
           }),
           queryFn: async () => {
             return await adminService.getAllGroups(
               pageNumber + 1,
-              groupsPerPage
+              groupsPerPage,
+              searchTerm,
+              searchField
             );
           },
         });
@@ -118,14 +133,15 @@ const GroupManagement = () => {
   };
 
   const handleDeleteGroup = async (groupId) => {
-    if (window.confirm("Are you sure you want to delete this group?")) {
+    if (window.confirm(t("admin.groups.confirmDelete"))) {
       try {
         setProcessingGroupId(groupId);
         await deleteGroup.mutateAsync(groupId);
-        toast.success("Group deleted successfully");
+        toast.success(t("toast.success.deleted"));
+        refreshData();
       } catch (error) {
         console.error("Error deleting group:", error);
-        toast.error(error.response?.data?.error || "Failed to delete group");
+        toast.error(error.response?.data?.error || t("toast.error.generic"));
       } finally {
         setProcessingGroupId(null);
       }
@@ -143,12 +159,13 @@ const GroupManagement = () => {
           status: selectedGroup.status,
         },
       });
-      toast.success("Group updated successfully");
+      toast.success(t("toast.success.updated"));
+      refreshData();
       closeModal();
     } catch (error) {
       console.error("Error updating group:", error);
       toast.error(
-        error.response?.data?.error || error.message || "Failed to update group"
+        error.response?.data?.error || error.message || t("toast.error.generic")
       );
     }
   };
@@ -166,7 +183,7 @@ const GroupManagement = () => {
   }
 
   // Hiển thị thông báo lỗi nếu có
-  if (error) {
+  if (groupsData?.error) {
     return (
       <div className="p-4 text-center">
         <div className="text-red-500 mb-4">Failed to load groups</div>
@@ -176,25 +193,26 @@ const GroupManagement = () => {
   }
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h3 className="text-lg font-semibold mb-4 md:mb-0 text-[var(--color-text-primary)]">
-          Group Management
-        </h3>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search groups..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchGroups()}
-            className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] w-full md:w-64 bg-[var(--color-bg-secondary)] border-[var(--color-border)] text-[var(--color-text-primary)]"
-          />
-          <FaSearch
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-primary)] opacity-70 cursor-pointer"
-            onClick={searchGroups}
-          />
-        </div>
+    <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-md p-5 overflow-hidden">
+      {/* Header with Advanced Search */}
+      <div className="flex flex-col mb-6 space-y-4">
+        <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          {t("admin.groupManagement")}
+        </h2>
+
+        <AdvancedSearch
+          fields={[
+            { value: "all", label: t("admin.searchFields.all") },
+            { value: "name", label: t("admin.searchFields.name") },
+            {
+              value: "description",
+              label: t("admin.searchFields.description"),
+            },
+            { value: "status", label: t("admin.searchFields.status") },
+          ]}
+          onSearch={handleAdvancedSearch}
+          loading={isLoading}
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl shadow-sm">
@@ -202,28 +220,28 @@ const GroupManagement = () => {
           <thead className="bg-[var(--color-bg-tertiary)]">
             <tr>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Group
+                {t("admin.groups.group")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Description
+                {t("admin.groups.description")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Members
+                {t("admin.groups.members")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Status
+                {t("admin.groups.status")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Created
+                {t("admin.groups.created")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Actions
+                {t("admin.groups.actions")}
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {filteredGroups && filteredGroups.length > 0 ? (
-              filteredGroups.map((group) => (
+            {groups && groups.length > 0 ? (
+              groups.map((group) => (
                 <tr
                   key={group._id}
                   className="hover:bg-[var(--color-bg-hover)]"
@@ -257,30 +275,20 @@ const GroupManagement = () => {
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span
-                      className={`px-2 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${
+                      className={`inline-flex items-center text-xs whitespace-nowrap ${
                         group.status === "active"
                           ? "bg-emerald-500/20 text-emerald-500"
                           : group.status === "featured"
-                          ? "bg-amber-500/20 text-amber-500"
+                          ? "bg-purple-500/20 text-purple-500"
                           : group.status === "pending"
-                          ? "bg-blue-500/20 text-blue-500"
+                          ? "bg-amber-500/20 text-amber-500"
                           : group.status === "blocked"
-                          ? "bg-rose-500/20 text-rose-500"
-                          : "bg-rose-500/20 text-rose-500"
-                      }`}
+                          ? "bg-red-500/20 text-red-500"
+                          : "bg-gray-500/20 text-gray-500"
+                      } px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full`}
                     >
-                      {group.status === "active" ? (
-                        <FaCheck className="mr-1" />
-                      ) : group.status === "featured" ? (
-                        <FaCheck className="mr-1" />
-                      ) : group.status === "pending" ? (
-                        <FaCheck className="mr-1" />
-                      ) : group.status === "blocked" ? (
-                        <FaBan className="mr-1" />
-                      ) : (
-                        <FaBan className="mr-1" />
-                      )}
-                      {group.status || "Unknown"}
+                      <FaCircle className="mr-1 text-[0.5rem]" />
+                      {t(`admin.status.${group.status}`) || group.status}
                     </span>
                   </td>
                   <td className="py-3 px-4 whitespace-nowrap text-[var(--color-text-primary)]">
@@ -333,7 +341,7 @@ const GroupManagement = () => {
                   colSpan="6"
                   className="py-4 px-4 text-center text-[var(--color-text-secondary)]"
                 >
-                  No groups found.
+                  {t("admin.groups.noGroups")}
                 </td>
               </tr>
             )}
@@ -428,7 +436,7 @@ const GroupManagement = () => {
             <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg relative z-50">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-medium text-[var(--color-text-primary)]">
-                  Edit Group
+                  {t("admin.groups.editGroup")}
                 </h2>
                 <button
                   onClick={closeModal}
@@ -457,7 +465,7 @@ const GroupManagement = () => {
                     className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                     htmlFor="name"
                   >
-                    Group Name
+                    {t("admin.groups.groupName")}
                   </label>
                   <input
                     type="text"
@@ -466,7 +474,7 @@ const GroupManagement = () => {
                     value={selectedGroup.name}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] bg-[var(--color-bg-primary)] border-[var(--color-border)] text-[var(--color-text-primary)] shadow-sm hover:border-[var(--color-primary)]/60 transition-all"
-                    placeholder="Enter group name"
+                    placeholder={t("admin.groups.enterGroupName")}
                     disabled={updateGroup.isPending}
                   />
                 </div>
@@ -476,7 +484,7 @@ const GroupManagement = () => {
                     className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                     htmlFor="description"
                   >
-                    Description
+                    {t("admin.groups.description")}
                   </label>
                   <textarea
                     id="description"
@@ -485,7 +493,7 @@ const GroupManagement = () => {
                     onChange={handleInputChange}
                     rows={4}
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] bg-[var(--color-bg-primary)] border-[var(--color-border)] text-[var(--color-text-primary)] shadow-sm hover:border-[var(--color-primary)]/60 transition-all resize-none"
-                    placeholder="Enter group description"
+                    placeholder={t("admin.groups.enterDescription")}
                     disabled={updateGroup.isPending}
                   ></textarea>
                 </div>
@@ -495,7 +503,7 @@ const GroupManagement = () => {
                     className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                     htmlFor="status"
                   >
-                    Status
+                    {t("admin.groups.status")}
                   </label>
                   <Select
                     id="status"
@@ -503,11 +511,11 @@ const GroupManagement = () => {
                     value={selectedGroup.status}
                     onChange={handleInputChange}
                     options={[
-                      { value: "active", label: "Active" },
-                      { value: "inactive", label: "Inactive" },
-                      { value: "featured", label: "Featured" },
-                      { value: "pending", label: "Pending" },
-                      { value: "blocked", label: "Blocked" },
+                      { value: "active", label: t("admin.status.active") },
+                      { value: "inactive", label: t("admin.status.inactive") },
+                      { value: "featured", label: t("admin.status.featured") },
+                      { value: "pending", label: t("admin.status.pending") },
+                      { value: "blocked", label: t("admin.status.blocked") },
                     ]}
                     disabled={updateGroup.isPending}
                   />
@@ -519,14 +527,14 @@ const GroupManagement = () => {
                     onClick={closeModal}
                     disabled={updateGroup.isPending}
                   >
-                    Cancel
+                    {t("admin.cancel")}
                   </Button>
                   <Button
                     variant="primary"
                     type="submit"
                     isLoading={updateGroup.isPending}
                   >
-                    Save Changes
+                    {t("admin.groups.saveChanges")}
                   </Button>
                 </div>
               </form>

@@ -1,4 +1,4 @@
-import { createEmbedding, cosineSimilarity } from "../utils/ai.js";
+import { createEmbedding, cosineSimilarity } from "./text-embedding.service.js";
 import UserActivity from "../models/user_activity.model.js";
 import Post from "../models/post.model.js";
 import fs from "fs/promises";

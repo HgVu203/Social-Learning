@@ -3,44 +3,62 @@ import axiosService from "../../services/axiosService";
 import { AUTH_QUERY_KEYS } from "../queries/useAuthQueries";
 import tokenService from "../../services/tokenService";
 import { showSuccessToast, showErrorToast } from "../../utils/toast";
+import { useTranslation } from "react-i18next";
 
 export const useAuthMutations = () => {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Đăng nhập
   const login = useMutation({
     mutationFn: async (credentials) => {
-      console.log("Login mutation called with:", credentials.email);
       try {
+        const startTime = performance.now();
         const response = await axiosService.post("/auth/login", credentials);
-        console.log("Login API response:", response.data);
+        console.log(`Login API call took ${performance.now() - startTime}ms`);
+
+        // Xử lý token ngay lập tức nếu có để giảm độ trễ
+        if (response.data?.success && response.data?.data?.accessToken) {
+          const token = response.data.data.accessToken;
+          // Đặt token vào headers ngay lập tức
+          axiosService.defaults.headers.common[
+            "Authorization"
+          ] = `Bearer ${token}`;
+
+          // Đặt token lên storage đồng bộ
+          tokenService.setToken(token);
+
+          if (response.data.data.user) {
+            const userData = { ...response.data.data.user, token };
+            tokenService.setUser(userData);
+
+            // Đặt một cờ để giúp xác định đã xác thực thành công
+            localStorage.setItem("auth_timestamp", Date.now().toString());
+          }
+        }
+
         return response.data;
       } catch (error) {
-        console.error("Login API error:", error);
-        console.error("Login error response:", error.response?.data);
+        console.error("Login API error:", error.message || error);
         throw error;
       }
     },
     onSuccess: (data) => {
       if (data?.success && data?.data?.accessToken) {
-        console.log(
-          "Setting token from login success:",
-          data.data.accessToken.substring(0, 15) + "..."
-        );
-        tokenService.setToken(data.data.accessToken);
+        // Thêm timestamp để đánh dấu thời điểm đăng nhập thành công
+        localStorage.setItem("auth_timestamp", Date.now().toString());
 
-        if (data.data.user) {
-          const userData = { ...data.data.user, token: data.data.accessToken };
-          tokenService.setUser(userData);
-        }
-
-        queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.all });
-      } else {
-        console.warn("Login success but no accessToken or missing data:", data);
+        // Tránh invalidate không cần thiết để giảm số lượng API calls
+        queryClient.invalidateQueries({
+          queryKey: AUTH_QUERY_KEYS.session(),
+          refetchType: "none", // Không refetch ngay lập tức để giảm API calls
+        });
       }
     },
     onError: (error) => {
-      console.error("Login error in mutation:", error);
+      console.error("Login error in mutation:", error.message || error);
+      // Xóa timestamp nếu có lỗi
+      localStorage.removeItem("auth_timestamp");
     },
   });
 
@@ -50,15 +68,11 @@ export const useAuthMutations = () => {
       const response = await axiosService.post("/auth/signup", userData);
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       // Don't show success toast here - we want to redirect to verification page instead
-      console.log(
-        "Registration completed, verification required",
-        data.success
-      );
     },
     onError: (error) => {
-      console.error("Signup error:", error);
+      console.error("Signup error:", error.message || error);
     },
   });
 
@@ -72,31 +86,23 @@ export const useAuthMutations = () => {
       return response.data;
     },
     onSuccess: (data) => {
-      if (data.success) {
-        // If we received user data and token in the response, set them
-        if (data.data?.accessToken) {
-          console.log(
-            "Setting token from email verification:",
-            data.data.accessToken
-          );
-          tokenService.setToken(data.data.accessToken);
+      if (data.success && data.data?.accessToken) {
+        tokenService.setToken(data.data.accessToken);
 
-          if (data.data.user) {
-            const userWithToken = {
-              ...data.data.user,
-              token: data.data.accessToken,
-            };
-            tokenService.setUser(userWithToken);
+        if (data.data.user) {
+          const userWithToken = {
+            ...data.data.user,
+            token: data.data.accessToken,
+          };
+          tokenService.setUser(userWithToken);
 
-            // Update auth queries
-            queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.all });
-          }
+          // Update auth queries
+          queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.all });
         }
       }
     },
     onError: (error) => {
-      // Không hiển thị toast thông báo lỗi
-      console.error("Email verification error:", error);
+      console.error("Email verification error:", error.message || error);
     },
   });
 
@@ -109,13 +115,13 @@ export const useAuthMutations = () => {
     onSuccess: () => {
       tokenService.clearTokens();
       queryClient.clear(); // Clear all queries
-      showSuccessToast("Logged out successfully");
+      showSuccessToast(t("auth.logoutSuccess"));
 
       // Chuyển hướng về trang đăng nhập
       window.location.href = "/login";
     },
     onError: (error) => {
-      console.error("Logout error:", error);
+      console.error("Logout error:", error.message || error);
       // Still clear tokens on error
       tokenService.clearTokens();
       queryClient.clear();
@@ -133,12 +139,8 @@ export const useAuthMutations = () => {
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      // Không hiển thị toast thông báo nữa
-      console.log("Password reset code sent successfully", data);
-    },
     onError: (error) => {
-      console.error("Forgot password error:", error);
+      console.error("Forgot password error:", error.message || error);
       showErrorToast(
         error.response?.data?.message || "Forgot password request failed"
       );
@@ -151,13 +153,8 @@ export const useAuthMutations = () => {
       const response = await axiosService.post("/auth/verify-reset-code", data);
       return response.data;
     },
-    onSuccess: (data) => {
-      // Không hiển thị toast thông báo thành công
-      console.log("Reset code verification success:", data);
-    },
     onError: (error) => {
-      // Không hiển thị toast thông báo lỗi
-      console.error("Verify reset code error:", error);
+      console.error("Verify reset code error:", error.message || error);
     },
   });
 
@@ -167,13 +164,11 @@ export const useAuthMutations = () => {
       const response = await axiosService.post("/auth/reset-password", data);
       return response.data;
     },
-    onSuccess: (data) => {
-      if (data.success) {
-        showSuccessToast("Password reset successfully! You can now login.");
-      }
+    onSuccess: () => {
+      showSuccessToast(t("auth.passwordResetSuccess"));
     },
     onError: (error) => {
-      console.error("Reset password error:", error);
+      console.error("Reset password error:", error.message || error);
 
       // Xử lý các loại lỗi khác nhau
       let errorMessage = "Password reset failed";
@@ -209,10 +204,7 @@ export const useAuthMutations = () => {
   // Set user credentials directly (for social login callback)
   const setCredentials = (userData) => {
     try {
-      console.log("Setting credentials:", JSON.stringify(userData, null, 2));
-
       if (userData?.accessToken) {
-        console.log("Setting token:", userData.accessToken);
         tokenService.setToken(userData.accessToken);
 
         if (userData.user) {
@@ -222,7 +214,6 @@ export const useAuthMutations = () => {
             token: userData.accessToken,
           };
 
-          console.log("Saving user data with token:", userWithToken);
           tokenService.setUser(userWithToken);
 
           // Force update Authorization header
@@ -241,7 +232,7 @@ export const useAuthMutations = () => {
         return { success: false, error: "Access token missing" };
       }
     } catch (error) {
-      console.error("Error in setCredentials:", error);
+      console.error("Error in setCredentials:", error.message || error);
       return { success: false, error: error.message };
     }
   };
@@ -254,15 +245,8 @@ export const useAuthMutations = () => {
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      if (data.success) {
-        // Không hiển thị toast thông báo thành công
-        console.log("Verification code resent successfully");
-      }
-    },
     onError: (error) => {
-      // Không hiển thị toast thông báo lỗi
-      console.error("Resend verification error:", error);
+      console.error("Resend verification error:", error.message || error);
     },
   });
 
@@ -281,7 +265,7 @@ export const useAuthMutations = () => {
   };
 };
 
-// Add alias exports for backward compatibility
+// Sửa: Các hàm trả về kết quả của useMutation() thay vì trực tiếp mutation object
 export const useLogin = () => useAuthMutations().login;
 export const useSignup = () => useAuthMutations().signup;
 export const useVerifyEmail = () => useAuthMutations().verifyEmail;
@@ -289,5 +273,7 @@ export const useLogout = () => useAuthMutations().logout;
 export const useForgotPassword = () => useAuthMutations().forgotPassword;
 export const useVerifyResetCode = () => useAuthMutations().verifyResetCode;
 export const useResetPassword = () => useAuthMutations().resetPassword;
+export const useResendVerificationCode = () =>
+  useAuthMutations().resendVerificationCode;
 
 export default useAuthMutations;

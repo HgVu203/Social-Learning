@@ -5,6 +5,11 @@ import Follow from "../models/follow.model.js";
 import UserActivity from "../models/user_activity.model.js";
 import NodeCache from "node-cache";
 import Feedback from "../models/feedback.model.js";
+import Message from "../models/message.model.js";
+import {
+  analyzeContent,
+  getOffensiveContentGroups,
+} from "../services/content-moderation.service.js";
 
 // Khởi tạo cache với ttl 5 phút
 const adminCache = new NodeCache({ stdTTL: 300 });
@@ -1731,6 +1736,477 @@ export const AdminController = {
       return res.status(500).json({
         success: false,
         error: error.message,
+      });
+    }
+  },
+
+  // Phân tích lại nội dung nhạy cảm cho bài viết đã có
+  analyzePostContent: async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[Admin API] Analyzing content for post ${id}`);
+
+      // Tìm bài viết
+      const post = await Post.findById(id);
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found",
+        });
+      }
+
+      // Import và sử dụng phân tích nội dung
+      const offensiveDetector = await import(
+        "../services/content-moderation.service.js"
+      );
+
+      // Phân tích nội dung
+      const result = offensiveDetector.analyzeContent(post.content);
+
+      // Cập nhật bài viết
+      post.offensiveContent = result.offensiveContent;
+      post.offensiveSeverity = result.offensiveSeverity;
+      post.offensiveWords = result.offensiveWords;
+
+      await post.save();
+
+      return res.json({
+        success: true,
+        data: {
+          postId: post._id,
+          offensiveContent: post.offensiveContent,
+          offensiveSeverity: post.offensiveSeverity,
+          offensiveWords: post.offensiveWords,
+        },
+      });
+    } catch (error) {
+      console.error("[Admin API] Error analyzing post content:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to analyze post content: " + error.message,
+      });
+    }
+  },
+
+  // Phân tích lại nội dung nhạy cảm cho tất cả bài viết
+  analyzeAllContent: async (req, res) => {
+    try {
+      console.log("[Admin API] Starting content analysis of all posts");
+
+      // Tìm tất cả bài viết hoặc lọc theo query (nếu cần)
+      const query = req.query.status
+        ? { status: req.query.status, deleted: { $ne: true } }
+        : { deleted: { $ne: true } };
+      console.log("[Admin API] Query filter:", JSON.stringify(query));
+
+      // Lấy tất cả bài viết chưa xóa mà không giới hạn số lượng
+      const allPosts = await Post.find(query).sort({ createdAt: -1 });
+
+      console.log(`[Admin API] Found ${allPosts.length} posts to analyze`);
+
+      if (!allPosts || allPosts.length === 0) {
+        console.log("[Admin API] No posts found for analysis");
+        return res.status(200).json({
+          success: true,
+          message: "No posts found for analysis",
+          stats: {
+            totalPosts: 0,
+            updatedPosts: 0,
+            offensivePosts: 0,
+            severityDistribution: { high: 0, medium: 0, low: 0 },
+          },
+        });
+      }
+
+      // Import và sử dụng phân tích nội dung
+      const offensiveDetector = await import(
+        "../services/content-moderation.service.js"
+      );
+
+      // Kiểm tra mô-đun đã được import thành công hay chưa
+      if (!offensiveDetector || !offensiveDetector.analyzeContent) {
+        console.error(
+          "[Admin API] Failed to import offensive content detector"
+        );
+        return res.status(500).json({
+          success: false,
+          error: "Failed to load content analysis module",
+        });
+      }
+
+      let updatedCount = 0;
+      let errorCount = 0;
+      let offensiveCount = 0;
+
+      // Phân tích từng bài viết
+      for (const post of allPosts) {
+        try {
+          console.log(
+            `[Admin API] Analyzing post ID: ${post._id}, title: ${
+              post.title || "(no title)"
+            }, content: ${
+              post.content
+                ? post.content.substring(0, 30) + "..."
+                : "(no content)"
+            }`
+          );
+
+          // Phân tích nội dung với mô-đun
+          const result = offensiveDetector.analyzeContent(post.content);
+
+          // Log result để debug
+          console.log(
+            `[Admin API] Analysis result for post ${post._id}:`,
+            JSON.stringify({
+              offensiveContent: result.offensiveContent,
+              offensiveSeverity: result.offensiveSeverity,
+              offensiveWords: result.offensiveWords,
+              offensiveScore: result.offensiveScore,
+            })
+          );
+
+          // Always update to ensure fields exist
+          post.offensiveContent = result.offensiveContent;
+          post.offensiveSeverity = result.offensiveSeverity;
+          post.offensiveWords = result.offensiveWords;
+
+          await post.save();
+          updatedCount++;
+
+          // Đếm số bài viết có nội dung nhạy cảm
+          if (result.offensiveContent) {
+            offensiveCount++;
+            console.log(
+              `[Admin API] Found offensive content in post ${
+                post._id
+              }: ${result.offensiveWords.join(", ")}`
+            );
+          }
+        } catch (postError) {
+          errorCount++;
+          console.error(
+            `[Admin API] Error analyzing post ${post._id}: ${postError.message}`
+          );
+        }
+      }
+
+      // Kiểm tra kết quả sau khi phân tích
+      const verifyOffensivePosts = await Post.find({
+        offensiveContent: true,
+      }).countDocuments();
+
+      console.log(
+        `[Admin API] Analysis completed: ${updatedCount} posts updated, found ${offensiveCount} with offensive content`
+      );
+      console.log(
+        `[Admin API] Verification: ${verifyOffensivePosts} posts marked as offensive in database`
+      );
+
+      // Thống kê phân bố mức độ nghiêm trọng
+      const severityDistribution = {
+        high: await Post.countDocuments({ offensiveSeverity: "high" }),
+        medium: await Post.countDocuments({ offensiveSeverity: "medium" }),
+        low: await Post.countDocuments({ offensiveSeverity: "low" }),
+      };
+
+      console.log(
+        `[Admin API] Severity distribution: High: ${severityDistribution.high}, Medium: ${severityDistribution.medium}, Low: ${severityDistribution.low}`
+      );
+
+      return res.status(200).json({
+        success: true,
+        stats: {
+          totalPosts: allPosts.length,
+          updatedPosts: updatedCount,
+          offensivePosts: offensiveCount,
+          severityDistribution,
+          errorCount,
+        },
+        message: `Analyzed ${allPosts.length} posts, updated ${updatedCount}, found ${offensiveCount} with offensive content, errors: ${errorCount}`,
+      });
+    } catch (error) {
+      console.error("[Admin API] Error in analyze content:", error);
+      return res.status(500).json({
+        success: false,
+        error:
+          error.message || "Internal server error processing content analysis",
+      });
+    }
+  },
+
+  // Lấy danh sách các bài viết có nội dung vi phạm
+  getOffensivePosts: async (req, res) => {
+    try {
+      console.log("[Admin API] Getting offensive posts");
+
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const severity = req.query.severity || null;
+
+      // Xây dựng query để lọc bài viết có nội dung vi phạm
+      const query = {
+        offensiveContent: true,
+        deleted: { $ne: true }, // Không lấy bài viết đã xóa
+      };
+
+      // Nếu có lọc theo mức độ nghiêm trọng
+      if (severity) {
+        query.offensiveSeverity = severity;
+      }
+
+      console.log("[Admin API] Offensive posts query:", JSON.stringify(query));
+
+      // Đếm tổng số bài viết vi phạm
+      const totalPosts = await Post.countDocuments(query);
+      console.log(`[Admin API] Total offensive posts found: ${totalPosts}`);
+
+      // Kiểm tra database để chắc chắn tất cả bài viết đã được phân tích
+      const allOffensivePosts = await Post.find({ offensiveContent: true })
+        .select("_id title content offensiveWords offensiveSeverity")
+        .limit(5)
+        .lean();
+
+      console.log(
+        `[Admin API] Sample offensive posts: ${JSON.stringify(
+          allOffensivePosts
+        )}`
+      );
+
+      // Lấy danh sách bài viết phân trang
+      const posts = await Post.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("author", "username fullname avatar")
+        .lean();
+
+      console.log(
+        `[Admin API] Found ${posts.length} offensive posts for this page`
+      );
+
+      if (posts.length === 0) {
+        console.log(
+          "[Admin API] No offensive posts found for the current query"
+        );
+
+        // Kiểm tra mọi bài viết có nội dung vi phạm mà không cần phân trang
+        const checkQuery = { offensiveContent: true };
+        const totalOffensivePostsInDB = await Post.countDocuments(checkQuery);
+        console.log(
+          `[Admin API] Total offensive posts in DB (without paging): ${totalOffensivePostsInDB}`
+        );
+      } else {
+        console.log(`[Admin API] First post title: "${posts[0].title}"`);
+      }
+
+      // Thống kê phân bố mức độ nghiêm trọng
+      const severityStats = await Post.aggregate([
+        { $match: { offensiveContent: true } },
+        { $group: { _id: "$offensiveSeverity", count: { $sum: 1 } } },
+      ]);
+
+      const severityDistribution = {
+        high: severityStats.find((item) => item._id === "high")?.count || 0,
+        medium: severityStats.find((item) => item._id === "medium")?.count || 0,
+        low: severityStats.find((item) => item._id === "low")?.count || 0,
+      };
+
+      console.log("[Admin API] Severity distribution:", severityDistribution);
+
+      return res.status(200).json({
+        success: true,
+        data: posts,
+        pagination: {
+          totalPosts,
+          totalPages: Math.ceil(totalPosts / limit),
+          currentPage: page,
+          postsPerPage: limit,
+        },
+        stats: {
+          severityDistribution,
+        },
+      });
+    } catch (error) {
+      console.error("[Admin API] Error fetching offensive posts:", error);
+      return res.status(500).json({
+        success: false,
+        error:
+          error.message || "Internal server error fetching offensive content",
+      });
+    }
+  },
+
+  // Phân tích tất cả bài viết để tìm nội dung trùng lặp
+  analyzeDuplicateContent: async (req, res) => {
+    try {
+      console.log("[Admin API] Starting duplicate content analysis");
+
+      // Tìm tất cả bài viết có nội dung đủ dài, không tính bài xóa
+      const query = req.query.status
+        ? { status: req.query.status, deleted: { $ne: true } }
+        : { deleted: { $ne: true } };
+
+      // Lấy tất cả bài viết chưa xóa mà không giới hạn số lượng
+      const allPosts = await Post.find(query).sort({ createdAt: -1 });
+
+      console.log(`[Admin API] Found ${allPosts.length} posts to analyze`);
+
+      if (allPosts.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No posts found for duplicate analysis",
+          stats: {
+            totalPosts: 0,
+            validPosts: 0,
+            duplicateGroups: 0,
+          },
+        });
+      }
+
+      // Lọc bài viết có nội dung trên 50 ký tự
+      const validPosts = allPosts.filter(
+        (post) => post.content && post.content.length > 50
+      );
+      console.log(
+        `[Admin API] ${validPosts.length} posts have content longer than 50 characters`
+      );
+
+      if (validPosts.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No valid posts found for duplicate analysis",
+          stats: {
+            totalPosts: allPosts.length,
+            validPosts: 0,
+            duplicateGroups: 0,
+          },
+        });
+      }
+
+      // Import các hàm từ mô-đun AI
+      const aiUtils = await import("../services/text-embedding.service.js");
+      const { createEmbedding, cosineSimilarity } = aiUtils;
+
+      // Kiểm tra mô-đun đã được import thành công hay chưa
+      if (!createEmbedding || !cosineSimilarity) {
+        console.error("[Admin API] Failed to import AI utilities");
+        return res.status(500).json({
+          success: false,
+          error: "Failed to load AI utilities module",
+        });
+      }
+
+      // Tạo embedding cho mỗi bài viết
+      const postsWithEmbeddings = [];
+      console.log(
+        `[Admin API] Generating embeddings for ${validPosts.length} posts`
+      );
+
+      for (const post of validPosts) {
+        try {
+          const embedding = await createEmbedding(post.content);
+          postsWithEmbeddings.push({
+            id: post._id.toString(),
+            content: post.content,
+            title: post.title || "",
+            author: post.author,
+            embedding: embedding,
+          });
+        } catch (error) {
+          console.error(
+            `[Admin API] Error creating embedding for post ${post._id}:`,
+            error.message
+          );
+        }
+      }
+
+      console.log(
+        `[Admin API] Generated embeddings for ${postsWithEmbeddings.length} posts`
+      );
+
+      // Ngưỡng cho phần phát hiện trùng lặp
+      const SIMILARITY_THRESHOLD = 0.85; // Độ tương tự tối thiểu để coi là trùng lặp
+
+      // Tạo các nhóm bài viết trùng lặp
+      const groupedPosts = [];
+      const processedPosts = new Set();
+
+      // So sánh từng cặp bài viết
+      for (let i = 0; i < postsWithEmbeddings.length; i++) {
+        if (processedPosts.has(postsWithEmbeddings[i].id)) {
+          continue; // Bỏ qua bài viết đã được xử lý
+        }
+
+        const currentGroup = [];
+        currentGroup.push(postsWithEmbeddings[i].id);
+
+        for (let j = 0; j < postsWithEmbeddings.length; j++) {
+          if (i === j || processedPosts.has(postsWithEmbeddings[j].id)) {
+            continue; // Không so sánh bài viết với chính nó hoặc bài đã xử lý
+          }
+
+          const similarity = cosineSimilarity(
+            postsWithEmbeddings[i].embedding,
+            postsWithEmbeddings[j].embedding
+          );
+
+          if (similarity >= SIMILARITY_THRESHOLD) {
+            currentGroup.push(postsWithEmbeddings[j].id);
+            processedPosts.add(postsWithEmbeddings[j].id);
+          }
+        }
+
+        // Nếu tìm được nhóm có từ 2 bài viết trở lên, đưa vào kết quả
+        if (currentGroup.length > 1) {
+          groupedPosts.push(currentGroup);
+          processedPosts.add(postsWithEmbeddings[i].id);
+        }
+      }
+
+      // Chuyển đổi kết quả sang định dạng yêu cầu của frontend
+      const duplicateGroups = groupedPosts.map((group, index) => {
+        return {
+          groupId: index + 1,
+          postIds: group,
+          similarity: "high", // Có thể thay bằng giá trị thực tế nếu cần
+        };
+      });
+
+      console.log(
+        `[Admin API] Found ${duplicateGroups.length} duplicate groups`
+      );
+
+      // Tìm danh sách ID của tất cả bài viết trùng lặp
+      const allDuplicatePostIds = new Set();
+      duplicateGroups.forEach((group) => {
+        group.postIds.forEach((id) => {
+          allDuplicatePostIds.add(id);
+        });
+      });
+
+      const stats = {
+        totalPosts: allPosts.length,
+        validPosts: validPosts.length,
+        duplicateGroups: duplicateGroups.length,
+        duplicatePosts: allDuplicatePostIds.size,
+      };
+
+      console.log("[Admin API] Duplicate content analysis completed:", stats);
+
+      return res.status(200).json({
+        success: true,
+        message: `Analyzed ${allPosts.length} posts, found ${duplicateGroups.length} duplicate groups with ${allDuplicatePostIds.size} posts`,
+        stats: stats,
+        duplicateGroups: duplicateGroups,
+      });
+    } catch (error) {
+      console.error("[Admin API] Error analyzing duplicate content:", error);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to analyze duplicate content: ${
+          error.message || "Unknown error"
+        }`,
       });
     }
   },

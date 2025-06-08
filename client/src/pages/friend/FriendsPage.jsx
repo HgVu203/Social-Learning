@@ -18,8 +18,10 @@ import { useSearchUsers } from "../../hooks/queries/useUserQueries";
 import { useFriendshipStatus } from "../../hooks/queries/useFriendQueries";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
 const FriendsPage = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const {
     friends,
@@ -325,30 +327,32 @@ const FriendsPage = () => {
         return (
           <button
             onClick={handleLocalSendRequest}
-            className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] cursor-pointer"
+            className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[80px] cursor-pointer"
           >
-            <FiUserPlus className="mr-1 sm:mr-2" size={16} />
-            <span className="hidden xs:inline">Add Friend</span>
-            <span className="xs:hidden">Add</span>
+            <FiUserPlus className="mr-2" size={16} />
+            <span className="hidden xs:inline">
+              {t("friend.sendFriendRequest")}
+            </span>
+            <span className="xs:hidden">{t("common.add")}</span>
           </button>
         );
       case "FRIEND":
         return (
-          <div className="flex flex-col xs:flex-row space-y-2 xs:space-y-0 xs:space-x-2">
+          <div className="flex flex-col xs:flex-row space-y-2 xs:space-y-0 xs:space-x-3">
             <Link
               to={`/messages/${userId}`}
-              className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] cursor-pointer"
+              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[80px] cursor-pointer"
             >
-              <FiMessageSquare className="mr-1 sm:mr-2" size={16} />
-              <span className="hidden xs:inline">Message</span>
-              <span className="xs:hidden">Msg</span>
+              <FiMessageSquare className="mr-2" size={16} />
+              <span className="hidden xs:inline">{t("message.message")}</span>
+              <span className="xs:hidden">{t("friend.msg")}</span>
             </Link>
             <button
               onClick={handleLocalUnfriend}
-              className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] cursor-pointer"
+              className="py-1.5 px-4 bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm font-medium rounded-md hover:bg-[var(--color-bg-hover)] active:scale-95 transition-all flex items-center justify-center min-w-[80px] cursor-pointer"
             >
-              <FiUserX className="mr-1 sm:mr-2" size={16} />
-              <span>Unfriend</span>
+              <FiUserX className="mr-2" size={16} />
+              <span>{t("friend.unfriend")}</span>
             </button>
           </div>
         );
@@ -356,30 +360,32 @@ const FriendsPage = () => {
         return (
           <button
             disabled
-            className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-gray-400 to-gray-500 text-white text-sm sm:text-base font-medium rounded-md opacity-75 cursor-not-allowed flex items-center justify-center min-w-[90px] sm:min-w-[140px]"
+            className="py-1.5 px-4 bg-[var(--color-bg-secondary)] text-[var(--color-text-tertiary)] text-sm font-medium rounded-md opacity-75 cursor-not-allowed flex items-center justify-center min-w-[80px]"
           >
-            <FiClock className="mr-1 sm:mr-2" size={16} />
-            <span className="hidden xs:inline">Request Sent</span>
-            <span className="xs:hidden">Sent</span>
+            <FiClock className="mr-2" size={16} />
+            <span className="hidden xs:inline">
+              {t("profile.friendRequestSent")}
+            </span>
+            <span className="xs:hidden">{t("profile.friendRequestSent")}</span>
           </button>
         );
       case "PENDING_RECEIVED":
         return (
-          <div className="flex flex-col xs:flex-row space-y-2 xs:space-y-0 xs:space-x-2 flex-shrink-0 ml-1 sm:ml-3">
+          <div className="flex flex-col xs:flex-row space-y-2 xs:space-y-0 xs:space-x-3 flex-shrink-0">
             <button
               onClick={handleLocalAccept}
               disabled={processingIds.includes(userId)}
-              className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[80px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <FiUserCheck className="mr-1 sm:mr-2" size={16} />
-              <span>Confirm</span>
+              <FiUserCheck className="mr-2" size={16} />
+              <span>{t("friend.confirm")}</span>
             </button>
             <button
               onClick={handleLocalReject}
               disabled={processingIds.includes(userId)}
-              className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="py-1.5 px-4 bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm font-medium rounded-md hover:bg-[var(--color-bg-hover)] active:scale-95 transition-all flex items-center justify-center min-w-[80px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <span>Delete</span>
+              <span>{t("friend.delete")}</span>
             </button>
           </div>
         );
@@ -389,36 +395,34 @@ const FriendsPage = () => {
   };
 
   const renderFriendRequests = () => {
-    // Lọc lại một lần nữa để đảm bảo
-    const filteredRequests = localPendingRequests.filter((request) => {
-      // Chỉ hiển thị những request từ người chưa phải bạn bè
-      return !localFriends.some((friend) => friend._id === request.userId._id);
-    });
-
-    // Loại bỏ trùng lặp
-    const uniqueFilteredRequests = removeDuplicates(filteredRequests, "_id");
+    // Filter unique requests that are not already friends
+    const uniqueFilteredRequests = removeDuplicates(
+      localPendingRequests,
+      "_id"
+    );
 
     if (uniqueFilteredRequests.length === 0) {
       return (
-        <div className="card p-6 text-center">
+        <div className="card p-5 sm:p-6 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            No new friend requests.
+            {t("friend.noFriendRequests")}
           </p>
         </div>
       );
     }
 
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         {uniqueFilteredRequests.map((request, index) => (
           <motion.div
             key={`friend-request-${request._id}-${index}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="card p-2 sm:p-3 flex flex-col xs:flex-row items-start xs:items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl gap-3 xs:gap-0"
+            transition={{ duration: 0.4 }}
+            className="card p-4 sm:p-5 flex flex-col xs:flex-row items-start xs:items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl gap-3 xs:gap-0"
           >
-            <div className="flex items-center space-x-3 flex-1 min-w-0 w-full xs:w-auto">
+            <div className="flex items-center space-x-4 flex-1 min-w-0 w-full xs:w-auto">
               <Link
                 to={`/profile/${request.userId._id}`}
                 className="flex-shrink-0 rounded-full overflow-hidden"
@@ -427,13 +431,13 @@ const FriendsPage = () => {
                   src={request.userId.avatar}
                   alt={request.userId.username}
                   size="lg"
-                  className="flex-shrink-0 hover:opacity-90 transition-opacity"
+                  className="flex-shrink-0 hover:opacity-90 transition-opacity w-14 h-14 sm:w-16 sm:h-16"
                 />
               </Link>
               <div className="flex-1 min-w-0">
                 <Link
                   to={`/profile/${request.userId._id}`}
-                  className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
+                  className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block text-base sm:text-lg"
                 >
                   {request.userId.fullname || request.userId.username}
                 </Link>
@@ -442,20 +446,20 @@ const FriendsPage = () => {
                 </p>
               </div>
             </div>
-            <div className="flex flex-row xs:flex-row space-x-2 flex-shrink-0 ml-0 xs:ml-3 w-full xs:w-auto justify-end">
+            <div className="flex flex-row xs:flex-row space-x-3 flex-shrink-0 ml-0 xs:ml-3 w-full xs:w-auto justify-end">
               <button
                 onClick={() => handleAcceptRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[80px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <FiUserCheck className="mr-1 sm:mr-2" size={16} /> Confirm
+                <FiUserCheck className="mr-2" size={16} /> {t("friend.confirm")}
               </button>
               <button
                 onClick={() => handleRejectRequest(request.userId._id)}
                 disabled={processingIds.includes(request.userId._id)}
-                className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="py-1.5 px-4 bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm font-medium rounded-md hover:bg-[var(--color-bg-hover)] active:scale-95 transition-all flex items-center justify-center min-w-[80px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                Delete
+                {t("friend.delete")}
               </button>
             </div>
           </motion.div>
@@ -467,9 +471,9 @@ const FriendsPage = () => {
   const renderAllFriends = () => {
     if (localFriends.length === 0) {
       return (
-        <div className="card p-6 text-center">
+        <div className="card p-5 sm:p-6 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            You don't have any friends yet.
+            {t("friend.noFriendsYet")}
           </p>
         </div>
       );
@@ -486,16 +490,17 @@ const FriendsPage = () => {
 
     return (
       <>
-        <div className="space-y-3">
+        <div className="space-y-4">
           {uniqueFilteredFriends.map((friend, index) => (
             <motion.div
               key={`friend-${friend._id}-${index}`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="card p-2 sm:p-3 flex flex-col xs:flex-row items-start xs:items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl gap-3 xs:gap-0"
+              transition={{ duration: 0.4 }}
+              className="card p-4 sm:p-5 flex flex-col xs:flex-row items-start xs:items-center justify-between hover:bg-[var(--color-bg-hover)] transition-colors rounded-xl gap-3 xs:gap-0"
             >
-              <div className="flex items-center space-x-3 flex-1 min-w-0 w-full xs:w-auto">
+              <div className="flex items-center space-x-4 flex-1 min-w-0 w-full xs:w-auto">
                 <Link
                   to={`/profile/${friend._id}`}
                   className="flex-shrink-0 rounded-full overflow-hidden"
@@ -504,13 +509,13 @@ const FriendsPage = () => {
                     src={friend.avatar}
                     alt={friend.username}
                     size="lg"
-                    className="flex-shrink-0 hover:opacity-90 transition-opacity"
+                    className="flex-shrink-0 hover:opacity-90 transition-opacity w-14 h-14 sm:w-16 sm:h-16"
                   />
                 </Link>
                 <div className="flex-1 min-w-0">
                   <Link
                     to={`/profile/${friend._id}`}
-                    className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
+                    className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block text-base sm:text-lg"
                   >
                     {friend.fullname || friend.username}
                   </Link>
@@ -519,23 +524,27 @@ const FriendsPage = () => {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-row xs:flex-row space-x-2 flex-shrink-0 ml-0 xs:ml-3 w-full xs:w-auto justify-end">
+              <div className="flex flex-row xs:flex-row space-x-3 flex-shrink-0 ml-0 xs:ml-3 w-full xs:w-auto justify-end">
                 <Link
                   to={`/messages/${friend._id}`}
-                  className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] flex-1 xs:flex-none cursor-pointer"
+                  className="py-1.5 px-4 bg-[var(--color-primary)] text-white text-sm font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[80px] flex-1 xs:flex-none cursor-pointer"
                 >
-                  <FiMessageSquare className="mr-1 sm:mr-2" size={16} />
-                  <span className="hidden sm:inline">Message</span>
-                  <span className="sm:hidden">Msg</span>
+                  <FiMessageSquare className="mr-2" size={16} />
+                  <span className="hidden sm:inline">
+                    {t("message.message")}
+                  </span>
+                  <span className="sm:hidden">{t("friend.msg")}</span>
                 </Link>
                 <button
                   onClick={() => handleUnfriend(friend._id)}
                   disabled={processingIds.includes(friend._id)}
-                  className="py-1.5 sm:py-2 px-3 sm:px-5 bg-gradient-to-r from-gray-600 to-gray-700 text-white text-sm sm:text-base font-medium rounded-md hover:shadow-md active:scale-95 transition-all flex items-center justify-center min-w-[90px] sm:min-w-[120px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="py-1.5 px-4 bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] text-sm font-medium rounded-md hover:bg-[var(--color-bg-hover)] active:scale-95 transition-all flex items-center justify-center min-w-[80px] flex-1 xs:flex-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <FiUserX className="mr-1 sm:mr-2" size={16} />
-                  <span className="hidden sm:inline">Unfriend</span>
-                  <span className="sm:hidden">Remove</span>
+                  <FiUserX className="mr-2" size={16} />
+                  <span className="hidden sm:inline">
+                    {t("friend.unfriend")}
+                  </span>
+                  <span className="sm:hidden">{t("friend.remove")}</span>
                 </button>
               </div>
             </motion.div>
@@ -551,16 +560,16 @@ const FriendsPage = () => {
     }
 
     return (
-      <div className="card mb-4 sm:mb-6">
-        <div className="p-3 sm:p-4 border-b border-[var(--color-border)] flex justify-between items-center">
-          <h2 className="text-base sm:text-lg font-semibold text-[var(--color-text-primary)]">
-            Search Results
+      <div className="card mb-5 sm:mb-6 overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-[var(--color-border)] flex justify-between items-center">
+          <h2 className="text-lg sm:text-xl font-semibold text-[var(--color-text-primary)]">
+            {t("friend.searchResults")}
           </h2>
           {searchLoading && <LoadingSpinner size="sm" />}
         </div>
 
         {searchResults?.data && searchResults.data.length > 0 ? (
-          <div className="p-3 sm:p-4 space-y-3">
+          <div className="p-4 sm:p-5 space-y-4">
             {searchResults.data.map((user, index) => {
               // Kiểm tra xem user này có đang được xử lý không
               const isProcessing = processingIds.includes(user._id);
@@ -579,9 +588,9 @@ const FriendsPage = () => {
               return (
                 <div
                   key={`search-result-${user._id}-${index}`}
-                  className="bg-[var(--color-bg-secondary)] rounded-xl p-2 sm:p-3 flex flex-col xs:flex-row items-start xs:items-center justify-between shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors gap-3 xs:gap-0"
+                  className="bg-[var(--color-bg-secondary)] rounded-xl p-4 sm:p-5 flex items-center justify-between shadow-sm hover:bg-[var(--color-bg-hover)] transition-colors"
                 >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0 w-full xs:w-auto">
+                  <div className="flex items-center space-x-4 flex-1">
                     <Link
                       to={`/profile/${user._id}`}
                       className="flex-shrink-0 rounded-full overflow-hidden"
@@ -590,13 +599,13 @@ const FriendsPage = () => {
                         src={user.avatar}
                         alt={user.username}
                         size="lg"
-                        className="flex-shrink-0 hover:opacity-90 transition-opacity"
+                        className="flex-shrink-0 hover:opacity-90 transition-opacity w-14 h-14 sm:w-16 sm:h-16"
                       />
                     </Link>
                     <div className="flex-1 min-w-0">
                       <Link
                         to={`/profile/${user._id}`}
-                        className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block"
+                        className="font-semibold text-[var(--color-text-primary)] hover:underline truncate block text-base sm:text-lg"
                       >
                         {user.fullname || user.username}
                       </Link>
@@ -605,7 +614,7 @@ const FriendsPage = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="flex-shrink-0 ml-0 xs:ml-3 w-full xs:w-auto flex justify-end">
+                  <div className="flex items-center justify-center ml-4 flex-shrink-0">
                     {renderFriendshipButton()}
                   </div>
                 </div>
@@ -613,11 +622,9 @@ const FriendsPage = () => {
             })}
           </div>
         ) : (
-          <div className="p-4 sm:p-6 text-center">
-            <p className="text-gray-400">
-              {searchLoading
-                ? "Searching..."
-                : `No users found matching "${debouncedQuery}"`}
+          <div className="p-5 sm:p-6 text-center">
+            <p className="text-[var(--color-text-secondary)]">
+              {t("friend.noSearchResults")}
             </p>
           </div>
         )}
@@ -632,18 +639,18 @@ const FriendsPage = () => {
       .map((_, index) => (
         <div
           key={`skeleton-friend-${index}`}
-          className="card p-3 flex items-center justify-between animate-pulse mb-3"
+          className="card p-4 sm:p-5 flex items-center justify-between animate-pulse mb-4"
         >
-          <div className="flex items-center space-x-3 flex-1">
-            <div className="w-14 h-14 rounded-full bg-gray-300 dark:bg-gray-700"></div>
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gray-300 dark:bg-gray-700"></div>
             <div className="flex-1">
-              <div className="h-5 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="h-5 sm:h-6 bg-gray-300 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
               <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/2"></div>
             </div>
           </div>
-          <div className="flex space-x-2">
-            <div className="h-9 w-24 bg-blue-300 dark:bg-blue-700 rounded-xl"></div>
-            <div className="h-9 w-24 bg-gray-300 dark:bg-gray-700 rounded-xl"></div>
+          <div className="flex space-x-3">
+            <div className="h-10 w-24 sm:w-28 bg-[var(--color-primary)] bg-opacity-70 rounded-md"></div>
+            <div className="h-10 w-24 sm:w-28 bg-gray-300 dark:bg-gray-700 rounded-md"></div>
           </div>
         </div>
       ));
@@ -654,11 +661,11 @@ const FriendsPage = () => {
     // Display skeleton loader when no cached data available
     if (loading && !localFriends.length) {
       return (
-        <div className="space-y-3">
-          <div className="flex justify-center my-2 mb-4">
-            <div className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm">
+        <div className="space-y-4">
+          <div className="flex justify-center mb-4">
+            <div className="inline-flex items-center px-4 py-2.5 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm font-medium">
               <LoadingSpinner size="sm" className="mr-2" />
-              <span>Loading friends...</span>
+              <span>{t("common.loading")}</span>
             </div>
           </div>
           {renderSkeletonFriends()}
@@ -668,13 +675,13 @@ const FriendsPage = () => {
       // If we have cached data, show it with a small loading indicator
       return (
         <>
-          <div className="flex justify-center my-2 mb-4">
-            <div className="inline-flex items-center px-4 py-2 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm">
+          <div className="flex justify-center mb-4">
+            <div className="inline-flex items-center px-4 py-2.5 bg-[var(--color-primary)] bg-opacity-10 rounded-lg text-sm font-medium">
               <LoadingSpinner size="sm" className="mr-2" />
-              <span>Updating...</span>
+              <span>{t("common.loading")}</span>
             </div>
           </div>
-          {showSearchResults
+          {showSearchResults && debouncedQuery.length >= 2
             ? renderSearchResults()
             : activeTab === "requests"
             ? renderFriendRequests()
@@ -685,13 +692,16 @@ const FriendsPage = () => {
 
     if (error) {
       return (
-        <div className="bg-red-900/20 text-red-500 p-4 rounded-lg">
-          {error.message || "Could not load friends data"}
+        <div className="bg-red-500/10 text-red-500 p-5 rounded-lg border border-red-200 dark:border-red-800">
+          {error.message || t("friend.loadError")}
         </div>
       );
     }
 
-    if (showSearchResults) {
+    // Hiển thị một trong ba: kết quả tìm kiếm, yêu cầu kết bạn, hoặc tất cả bạn bè
+    // Thêm điều kiện debouncedQuery.length >= 2 để đảm bảo chỉ hiển thị kết quả tìm kiếm khi có
+    // đủ ký tự để tìm kiếm
+    if (showSearchResults && debouncedQuery.length >= 2) {
       return renderSearchResults();
     }
 
@@ -713,116 +723,68 @@ const FriendsPage = () => {
   };
 
   return (
-    <div className="p-1 sm:p-3 md:p-4 max-w-7xl mx-auto">
-      {/* Header */}
-      <motion.div
+    <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4 md:py-6">
+      <motion.h1
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6"
+        className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-4"
       >
-        <h1 className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)]">
-          Friends
-        </h1>
+        {t("friend.title")}
+      </motion.h1>
 
-        {/* Search Input */}
-        <div className="relative max-w-md w-full">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <FiSearch className="text-[var(--color-text-tertiary)] w-4 h-4 sm:w-5 sm:h-5" />
+      {/* Thanh tìm kiếm và tabs */}
+      <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div className="flex-1">
+          <div className="relative">
+            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-tertiary)]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("friend.searchPlaceholder")}
+              className="w-full pl-10 pr-4 py-2 rounded-md bg-[var(--color-bg-secondary)] border border-[var(--color-border)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent text-[var(--color-text-primary)] text-sm placeholder-[var(--color-text-tertiary)] transition-colors"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search people..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full py-1.5 sm:py-2 pl-9 sm:pl-10 pr-4 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
-          />
-          {showSearchResults && (
-            <button
-              onClick={() => {
-                setSearchQuery("");
-                setShowSearchResults(false);
-              }}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
-            >
-              <svg
-                className="w-4 h-4 sm:w-5 sm:h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          )}
         </div>
-      </motion.div>
+        <div className="flex space-x-2 overflow-x-auto sm:overflow-visible">
+          <button
+            onClick={() => {
+              setActiveTab("all");
+              setShowSearchResults(false);
+            }}
+            className={`px-3 py-1.5 rounded-md flex items-center justify-center transition-colors ${
+              activeTab === "all"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+            } flex-shrink-0 text-sm`}
+          >
+            <FiUsers className="mr-2" />
+            {t("friend.allFriends")}
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("requests");
+              setShowSearchResults(false);
+            }}
+            className={`px-3 py-1.5 rounded-md flex items-center justify-center transition-colors ${
+              activeTab === "requests"
+                ? "bg-[var(--color-primary)] text-white"
+                : "bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+            } flex-shrink-0 text-sm relative`}
+          >
+            <FiBell className="mr-2" />
+            {t("friend.requests")}
+            {localPendingRequests.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs">
+                {localPendingRequests.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
 
-      {/* Tabs */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex mb-4 sm:mb-6 border-b border-[var(--color-border)] overflow-x-auto scrollbar-hide"
-      >
-        <button
-          onClick={() => {
-            setActiveTab("all");
-            setShowSearchResults(false);
-          }}
-          className={`flex items-center py-2 sm:py-3 px-3 sm:px-4 text-sm sm:text-base relative transition-colors cursor-pointer whitespace-nowrap ${
-            activeTab === "all" && !showSearchResults
-              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
-              : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-          }`}
-        >
-          <FiUsers className="mr-1.5 sm:mr-2 w-4 h-4 sm:w-5 sm:h-5" />
-          <span>All Friends</span>
-          {localFriends.length > 0 && (
-            <span className="ml-1.5 sm:ml-2 bg-[var(--color-bg-tertiary)] px-1.5 sm:px-2 py-0.5 rounded-full text-xs">
-              {removeDuplicates(localFriends, "_id").length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("requests");
-            setShowSearchResults(false);
-          }}
-          className={`flex items-center py-2 sm:py-3 px-3 sm:px-4 text-sm sm:text-base relative transition-colors cursor-pointer whitespace-nowrap ${
-            activeTab === "requests" && !showSearchResults
-              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
-              : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-          }`}
-        >
-          <FiBell className="mr-1.5 sm:mr-2 w-4 h-4 sm:w-5 sm:h-5" />
-          <span>Requests</span>
-          {localPendingRequests.length > 0 && (
-            <span className="ml-1.5 sm:ml-2 bg-[var(--color-primary)] text-white px-1.5 sm:px-2 py-0.5 rounded-full text-xs">
-              {removeDuplicates(localPendingRequests, "_id").length}
-            </span>
-          )}
-        </button>
-        {showSearchResults && (
-          <div className="flex items-center py-2 sm:py-3 px-3 sm:px-4 text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] whitespace-nowrap">
-            <FiSearch className="mr-1.5 sm:mr-2 w-4 h-4 sm:w-5 sm:h-5" />
-            <span>Search Results</span>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Main Content */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        {renderContent()}
-      </motion.div>
+      {/* Main content section */}
+      {renderContent()}
     </div>
   );
 };

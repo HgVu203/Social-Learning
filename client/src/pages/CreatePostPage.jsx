@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { showErrorToast, showSuccessWithDelay } from "../../utils/toast";
 import { useDropzone } from "react-dropzone";
 import { FiX } from "react-icons/fi";
+import { usePostContext } from "../../contexts/PostContext";
 
 const CreatePostPage = () => {
   const navigate = useNavigate();
+  const { createPost } = usePostContext();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState([]);
@@ -92,23 +93,17 @@ const CreatePostPage = () => {
         formData.append("images", image);
       });
 
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/posts/create-post`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
+      const response = await createPost.mutateAsync(formData);
 
-      if (response.data.success) {
+      if (response.success) {
         showSuccessWithDelay(
           "Post created successfully!",
           navigate,
-          `/post/${response.data.data._id}`
+          `/post/${response.data._id}`
         );
+      } else {
+        setError(response.message || "Failed to create post");
+        showErrorToast("Failed to create post");
       }
     } catch (err) {
       console.error("Error creating post:", err);
@@ -223,13 +218,13 @@ const CreatePostPage = () => {
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-600 text-white"
                 >
                   {tag}
                   <button
                     type="button"
                     onClick={() => removeTag(tag)}
-                    className="ml-1 inline-flex items-center p-0.5 hover:bg-indigo-200 rounded-full"
+                    className="ml-1 inline-flex items-center p-0.5 hover:bg-indigo-700 rounded-full text-white"
                   >
                     <FiX className="h-3 w-3" />
                   </button>

@@ -4,18 +4,20 @@ import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthButton from "../../components/auth/AuthButton";
-import { FaEnvelope, FaArrowLeft } from "react-icons/fa";
+import { FaEnvelope } from "react-icons/fa";
+import { useTranslation } from "react-i18next";
 
 const VerifyResetCodePage = () => {
   const [codeDigits, setCodeDigits] = useState(["", "", "", "", "", ""]);
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const inputRefs = useRef([]);
   const { verifyResetCode, clearError } = useAuth();
+  const { t } = useTranslation();
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     // Initialize refs array
@@ -98,41 +100,46 @@ const VerifyResetCodePage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (isSubmitting) return;
+    // Prevent multiple submissions
+    if (verifyResetCode.isPending || isSubmittingRef.current) return;
 
-    const code = codeDigits.join("");
-
-    if (code.length !== 6) {
-      setMessage("Please enter all 6 digits of the verification code");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError("");
+    const verificationCode = codeDigits.join("");
+    if (!email || !verificationCode || verificationCode.length !== 6) return;
 
     try {
-      // Verify reset code with API
-      const result = await verifyResetCode({
+      isSubmittingRef.current = true;
+      setError("");
+
+      const result = await verifyResetCode.mutateAsync({
         email,
-        code,
+        code: verificationCode,
       });
 
       if (result.success) {
-        // Navigate to reset password page with code and email only if verification succeeded
+        // Navigate to reset password page with verified code & email
         navigate("/reset-password", {
           state: {
-            email: email,
-            code: code,
+            email,
+            code: verificationCode,
+            verified: true,
           },
         });
       } else {
-        setError("Invalid verification code. Please try again.");
+        setError(result.error || t("auth.verificationFailed"));
       }
     } catch (err) {
-      console.error("Verification failed:", err);
-      setError("Invalid verification code. Please try again.");
+      console.error("Code verification error:", err);
+
+      // Trích xuất thông báo lỗi từ API response
+      const errorMessage =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        t("auth.invalidCode");
+
+      setError(errorMessage);
     } finally {
-      setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -155,24 +162,17 @@ const VerifyResetCodePage = () => {
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="max-w-md w-full relative"
+        className="w-full max-w-md"
       >
-        <button
-          type="button"
-          onClick={handleChangeEmail}
-          className="absolute top-4 left-4 text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors p-2 z-10 cursor-pointer"
-        >
-          <FaArrowLeft className="h-5 w-5" />
-        </button>
-
         <AuthForm
-          title="Verify Code"
-          subtitle="Enter the verification code to reset your password"
+          title={t("auth.verifyResetCode")}
+          subtitle={t("auth.verifyResetCodeSubtitle")}
           onSubmit={handleSubmit}
-          className="space-y-5"
+          error={error}
+          clearError={clearError}
         >
           {message && (
             <motion.div
@@ -185,35 +185,12 @@ const VerifyResetCodePage = () => {
             </motion.div>
           )}
 
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700 mb-6"
-            >
-              <div className="flex">
-                <svg
-                  className="w-5 h-5 mr-2"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{error}</span>
-              </div>
-            </motion.div>
-          )}
-
           <div>
             <label
               className="block text-[var(--color-text-primary)] mb-2 font-medium"
               htmlFor="code-0"
             >
-              Verification Code
+              {t("auth.verificationCode")}
             </label>
 
             <div
@@ -233,7 +210,7 @@ const VerifyResetCodePage = () => {
                     maxLength={1}
                     inputMode="numeric"
                     autoComplete={index === 0 ? "one-time-code" : "off"}
-                    disabled={isSubmitting}
+                    disabled={verifyResetCode.isPending}
                     autoFocus={index === 0}
                   />
                 </div>
@@ -241,20 +218,20 @@ const VerifyResetCodePage = () => {
             </div>
 
             <p className="text-sm text-[var(--color-text-secondary)] mt-2 text-center">
-              We've sent a 6-digit code to your email address.
+              {t("auth.enterVerificationCode")}
             </p>
           </div>
 
           <div className="flex flex-col gap-4 mt-6">
             <AuthButton
               type="submit"
-              disabled={isSubmitting || !isCodeComplete}
-              isLoading={isSubmitting}
+              disabled={verifyResetCode.isPending || !isCodeComplete}
+              isLoading={verifyResetCode.isPending}
               variant="primary"
               fullWidth
               className="py-3 text-base font-medium cursor-pointer"
             >
-              Verify & Continue
+              {t("auth.verifyAndContinue")}
             </AuthButton>
 
             <AuthButton
@@ -265,7 +242,7 @@ const VerifyResetCodePage = () => {
               fullWidth
               className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors font-medium"
             >
-              Change Email
+              {t("auth.changeEmail")}
             </AuthButton>
           </div>
         </AuthForm>

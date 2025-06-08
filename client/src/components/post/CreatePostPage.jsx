@@ -9,12 +9,14 @@ import {
 } from "../../utils/toast";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
+import { useTranslation } from "react-i18next";
 
 const CreatePostPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { createPost } = usePostContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useTranslation();
 
   const [formData, setFormData] = useState({
     title: "",
@@ -125,7 +127,7 @@ const CreatePostPage = () => {
 
       if (result.success && result.data && result.data._id) {
         // Show success toast
-        showSuccessToast("Post created successfully!");
+        showSuccessToast(t("post.createSuccess"));
         // Navigate to the new post
         navigate(`/post/${result.data._id}`);
       } else {

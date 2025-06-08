@@ -14,8 +14,10 @@ import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
 import GroupItem from "../../components/group/GroupCard";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useTranslation } from "react-i18next";
 
 const GroupsListPage = () => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("myGroups");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -127,7 +129,7 @@ const GroupsListPage = () => {
       return (
         <div className="card p-8 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            Failed to load popular groups. Please try again later.
+            {t("group.failedToLoad")}
           </p>
         </div>
       );
@@ -137,7 +139,7 @@ const GroupsListPage = () => {
       return (
         <div className="card p-8 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            No popular groups available at the moment
+            {t("group.noGroups")}
           </p>
         </div>
       );
@@ -154,7 +156,7 @@ const GroupsListPage = () => {
                   ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
-              aria-label="Grid view"
+              aria-label={t("common.gridView")}
             >
               <FiGrid size={18} />
             </button>
@@ -165,7 +167,7 @@ const GroupsListPage = () => {
                   ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
-              aria-label="List view"
+              aria-label={t("common.listView")}
             >
               <FiList size={18} />
             </button>
@@ -248,7 +250,7 @@ const GroupsListPage = () => {
       return (
         <div className="card p-8 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            Failed to load your groups. Please try again later.
+            {t("group.failedToLoad")}
           </p>
         </div>
       );
@@ -259,24 +261,24 @@ const GroupsListPage = () => {
         <div className="card p-8 text-center">
           <div className="max-w-md mx-auto">
             <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">
-              You haven't joined any groups yet
+              {t("group.noJoinedGroups")}
             </h3>
             <p className="text-[var(--color-text-secondary)] mb-6">
-              Explore popular groups and join communities that interest you
+              {t("group.exploreGroups")}
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={() => setActiveTab("popular")}
                 className="btn btn-primary"
               >
-                Explore Popular Groups
+                {t("group.explorePopularGroups")}
               </button>
               <Link
-                to="/groups/create"
+                to="/create-group"
                 className="btn btn-secondary inline-flex items-center"
               >
                 <FiPlus className="mr-2" size={18} />
-                Create Group
+                {t("group.createGroup")}
               </Link>
             </div>
           </div>
@@ -287,14 +289,15 @@ const GroupsListPage = () => {
     return (
       <>
         <div className="flex justify-end mb-4">
-          <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
+          <div className="inline-flex bg-[var(--color-bg-secondary)] rounded-lg p-1 border border-[var(--color-border)] shadow-md">
             <button
               onClick={() => setGridView(true)}
               className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 gridView
-                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
+              aria-label={t("common.gridView")}
             >
               <FiGrid size={18} />
             </button>
@@ -302,9 +305,10 @@ const GroupsListPage = () => {
               onClick={() => setGridView(false)}
               className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 !gridView
-                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
+              aria-label={t("common.listView")}
             >
               <FiList size={18} />
             </button>
@@ -384,7 +388,7 @@ const GroupsListPage = () => {
       return (
         <div className="card p-8 text-center">
           <p className="text-[var(--color-text-secondary)]">
-            Failed to search for groups. Please try again later.
+            {t("group.failedToLoad")}
           </p>
         </div>
       );
@@ -400,16 +404,16 @@ const GroupsListPage = () => {
               className="w-48 h-48 mx-auto mb-4 opacity-80"
             />
             <h3 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">
-              No groups found for "{debouncedSearchQuery}"
+              {t("group.noGroupsFound", { query: debouncedSearchQuery })}
             </h3>
             <p className="text-[var(--color-text-secondary)] mb-6">
-              Try different keywords or check out popular groups
+              {t("group.tryDifferentKeywords")}
             </p>
             <button
               onClick={handleClearSearch}
               className="btn btn-secondary mr-3"
             >
-              Clear Search
+              {t("group.clearSearch")}
             </button>
             <button
               onClick={() => {
@@ -418,7 +422,7 @@ const GroupsListPage = () => {
               }}
               className="btn btn-primary"
             >
-              Explore Popular Groups
+              {t("group.explorePopularGroups")}
             </button>
           </div>
         </div>
@@ -429,18 +433,22 @@ const GroupsListPage = () => {
       <>
         <div className="mb-4 flex items-center justify-between">
           <p className="text-[var(--color-text-secondary)]">
-            Found {sortedSearchResults.length} group
-            {sortedSearchResults.length !== 1 ? "s" : ""}
+            {sortedSearchResults.length === 1
+              ? t("group.searchResults", { count: sortedSearchResults.length })
+              : t("group.searchResultsPlural", {
+                  count: sortedSearchResults.length,
+                })}
           </p>
 
-          <div className="inline-flex bg-[#1E2024]/80 rounded-lg p-1 border border-gray-800 shadow-md">
+          <div className="inline-flex bg-[var(--color-bg-secondary)] rounded-lg p-1 border border-[var(--color-border)] shadow-md">
             <button
               onClick={() => setGridView(true)}
               className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 gridView
-                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
+              aria-label={t("common.gridView")}
             >
               <FiGrid size={18} />
             </button>
@@ -448,9 +456,10 @@ const GroupsListPage = () => {
               onClick={() => setGridView(false)}
               className={`p-2.5 rounded-md transition-all duration-200 cursor-pointer ${
                 !gridView
-                  ? "bg-gradient-to-r from-blue-600/80 to-indigo-700/80 text-white shadow-inner"
+                  ? "bg-[var(--color-primary)] text-white shadow-inner"
                   : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
               }`}
+              aria-label={t("common.listView")}
             >
               <FiList size={18} />
             </button>
@@ -507,48 +516,38 @@ const GroupsListPage = () => {
 
   // Render tabs with better mobile support
   const renderTabs = () => {
-    const tabs = [
-      {
-        id: "myGroups",
-        label: "My Groups",
-        icon: <FiUsers className="w-5 h-5" />,
-      },
-      {
-        id: "popular",
-        label: "Popular",
-        icon: <FiTrendingUp className="w-5 h-5" />,
-      },
-    ];
-
     return (
-      <div className="mb-6">
-        <div className="flex overflow-x-auto no-scrollbar bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)]">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setSearchQuery("");
-                setIsSearchFocused(false);
-              }}
-              className={`flex items-center py-3 px-5 font-medium whitespace-nowrap flex-1 justify-center transition-colors cursor-pointer ${
-                activeTab === tab.id && !showSearchResults
-                  ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]"
-                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-              }`}
-            >
-              <span className="flex items-center">
-                <span className="mr-2">{tab.icon}</span>
-                <span>{tab.label}</span>
-                {tab.id === "myGroups" && myGroups.length > 0 && (
-                  <span className="ml-2 bg-[var(--color-bg-tertiary)] px-2 py-0.5 rounded-full text-xs">
-                    {myGroups.length}
-                  </span>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
+      <div className="flex font-medium text-sm bg-[var(--color-bg-secondary)] shadow-sm rounded-xl overflow-hidden">
+        <button
+          onClick={() => setActiveTab("myGroups")}
+          className={`flex items-center justify-center py-4 px-5 md:px-8 ${
+            activeTab === "myGroups"
+              ? "bg-[var(--color-primary)] text-white font-semibold"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
+          } flex-1 transition-all duration-200`}
+        >
+          <FiUsers
+            className={`${
+              activeTab === "myGroups" ? "text-white" : ""
+            } w-5 h-5 mr-2`}
+          />
+          <span className="font-semibold">{t("group.myGroups")}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("popular")}
+          className={`flex items-center justify-center py-4 px-5 md:px-8 ${
+            activeTab === "popular"
+              ? "bg-[var(--color-primary)] text-white font-semibold"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
+          } flex-1 transition-all duration-200`}
+        >
+          <FiTrendingUp
+            className={`${
+              activeTab === "popular" ? "text-white" : ""
+            } w-5 h-5 mr-2`}
+          />
+          <span className="font-semibold">{t("group.popular")}</span>
+        </button>
       </div>
     );
   };
@@ -556,92 +555,79 @@ const GroupsListPage = () => {
   // Render responsive search bar
   const renderSearchBar = () => {
     return (
-      <AnimatePresence mode="wait">
-        {!isSearchFocused && !showSearchResults ? (
-          <motion.button
-            key="search-button"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSearchFocused(true)}
-            className="flex items-center gap-2 w-full p-3 rounded-full bg-[var(--color-bg-secondary)] text-[var(--color-text-tertiary)] border border-[var(--color-border)] cursor-pointer"
-          >
-            <FiSearch className="text-[var(--color-text-tertiary)]" />
-            <span className="text-sm">Search groups...</span>
-          </motion.button>
-        ) : (
-          <motion.div
-            key="search-input"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="relative w-full"
-          >
-            <div className="flex items-center w-full bg-[var(--color-bg-secondary)] rounded-full border border-[var(--color-border)] overflow-hidden">
-              <button
-                onClick={handleClearSearch}
-                className="p-3 text-[var(--color-text-secondary)] cursor-pointer"
-              >
-                <FiX className="w-5 h-5" />
-              </button>
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search groups..."
-                autoFocus
-                className="flex-1 bg-transparent border-none py-3 px-2 focus:outline-none text-[var(--color-text-primary)]"
-              />
-              <div className="p-3 text-[var(--color-text-secondary)]">
-                <FiSearch className="w-5 h-5" />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="relative my-4">
+        <div
+          className={`flex items-center rounded-full px-4 py-2 ${
+            isSearchFocused || debouncedSearchQuery
+              ? "bg-[var(--color-bg-secondary)] border border-[var(--color-primary-light)] shadow-inner"
+              : "bg-[var(--color-bg-secondary)]"
+          } shadow-sm transition-all duration-300`}
+        >
+          <FiSearch
+            className={`${
+              isSearchFocused || debouncedSearchQuery
+                ? "text-[var(--color-primary)]"
+                : "text-[var(--color-text-secondary)]"
+            } w-5 h-5 mr-2`}
+          />
+          <input
+            type="text"
+            placeholder={t("group.searchGroups")}
+            className="bg-[var(--color-bg-secondary)] border-none outline-none w-full text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] transition-colors"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            ref={searchInputRef}
+          />
+          {searchQuery && (
+            <button
+              onClick={handleClearSearch}
+              className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            >
+              <FiX className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
     );
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-3 md:px-4 pt-4 pb-20 sm:pb-10">
-      <div className="flex flex-col-reverse md:flex-row md:items-center justify-between mb-6 gap-4">
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)]"
-        >
-          Groups
-        </motion.h1>
-
+    <div className="container max-w-[1200px] px-4 mx-auto py-4 sm:py-6 md:py-8">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          {t("group.title")}
+        </h1>
         <Link
-          to="/groups/create"
-          className="inline-flex items-center justify-center px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors shadow-sm w-full md:w-auto"
+          to="/create-group"
+          className="flex items-center px-3 py-2 sm:px-4 sm:py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white rounded-lg font-medium text-sm transition-colors shadow-md hover:shadow-lg"
         >
-          <FiPlus className="mr-2" />
-          <span>Create Group</span>
+          <FiPlus className="mr-1.5 w-4 h-4" />
+          {t("group.createGroup")}
         </Link>
       </div>
 
-      {/* Search Bar with improved mobile UX */}
-      <div className="mb-6">{renderSearchBar()}</div>
+      {/* Search bar */}
+      {renderSearchBar()}
 
-      {/* Tabs with better mobile support */}
+      {/* Tabs */}
       {!showSearchResults && renderTabs()}
 
-      {/* Main Content */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeTab + (showSearchResults ? "-search" : "")}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          {renderGroups()}
-        </motion.div>
-      </AnimatePresence>
+      {/* Group List */}
+      <div className="mt-6">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab + (showSearchResults ? "search" : "")}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+          >
+            {renderGroups()}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

@@ -14,16 +14,19 @@ export const useFriendMutations = () => {
   const sendFriendRequest = useMutation({
     mutationFn: async (params) => {
       const { userId } = params;
-      console.log(`Sending friend request to user: ${userId}`);
       const response = await axiosService.post("/friendship/send", { userId });
-      return response.data;
+      return { ...response.data, userId };
     },
-    onSuccess: (data) => {
-      console.log("Friend request sent successfully:", data);
-      invalidateFriendQueries();
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(FRIEND_QUERY_KEYS.status(variables.userId), {
+        status: "PENDING_SENT",
+      });
+
+      queryClient.invalidateQueries({ queryKey: FRIEND_QUERY_KEYS.lists() });
+      queryClient.invalidateQueries({ queryKey: FRIEND_QUERY_KEYS.requests() });
     },
     onError: (error) => {
-      console.error("Error sending friend request:", error);
+      console.error("Error sending friend request:", error.message || error);
     },
   });
 
@@ -31,18 +34,16 @@ export const useFriendMutations = () => {
   const acceptFriendRequest = useMutation({
     mutationFn: async (params) => {
       const { requestId } = params;
-      console.log(`Accepting friend request: ${requestId}`);
       const response = await axiosService.post("/friendship/accept", {
         requestId,
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      console.log("Friend request accepted:", data);
+    onSuccess: () => {
       invalidateFriendQueries();
     },
     onError: (error) => {
-      console.error("Error accepting friend request:", error);
+      console.error("Error accepting friend request:", error.message || error);
     },
   });
 
@@ -50,34 +51,30 @@ export const useFriendMutations = () => {
   const rejectFriendRequest = useMutation({
     mutationFn: async (params) => {
       const { requestId } = params;
-      console.log(`Rejecting friend request: ${requestId}`);
       const response = await axiosService.post("/friendship/reject", {
         requestId,
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      console.log("Friend request rejected:", data);
+    onSuccess: () => {
       invalidateFriendQueries();
     },
     onError: (error) => {
-      console.error("Error rejecting friend request:", error);
+      console.error("Error rejecting friend request:", error.message || error);
     },
   });
 
   // Remove friend
   const removeFriend = useMutation({
     mutationFn: async (friendId) => {
-      console.log(`Removing friend: ${friendId}`);
       const response = await axiosService.delete(`/friendship/${friendId}`);
       return response.data;
     },
-    onSuccess: (data) => {
-      console.log("Friend removed:", data);
+    onSuccess: () => {
       invalidateFriendQueries();
     },
     onError: (error) => {
-      console.error("Error removing friend:", error);
+      console.error("Error removing friend:", error.message || error);
     },
   });
 

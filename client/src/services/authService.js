@@ -24,7 +24,7 @@ const normalizeError = (error) => {
     success: false,
     message:
       error.message ||
-      error.response.data.error ||
+      error.response?.data?.error ||
       "Unable to connect to server",
     data: null,
   };
@@ -52,7 +52,7 @@ const authService = {
 
       return response.data;
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Login error:", error.message || error);
       return normalizeError(error);
     }
   },
@@ -80,7 +80,7 @@ const authService = {
 
       return response.data;
     } catch (error) {
-      console.error("Signup error:", error);
+      console.error("Signup error:", error.message || error);
       return normalizeError(error);
     }
   },
@@ -96,7 +96,7 @@ const authService = {
       tokenService.clearTokens(axiosInstance);
       return response.data;
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("Logout error:", error.message || error);
       // Vẫn xóa token khi có lỗi
       tokenService.clearTokens(axiosInstance);
       return normalizeError(error);
@@ -117,7 +117,6 @@ const authService = {
       import.meta.env.VITE_API_URL
     }/auth/google?state=${state}&t=${timestamp}`;
 
-    console.log("Redirecting to Google OAuth:", redirectUrl);
     window.location.href = redirectUrl;
   },
 
@@ -135,7 +134,6 @@ const authService = {
       import.meta.env.VITE_API_URL
     }/auth/facebook?state=${state}&t=${timestamp}`;
 
-    console.log("Redirecting to Facebook OAuth:", redirectUrl);
     window.location.href = redirectUrl;
   },
 
@@ -149,7 +147,7 @@ const authService = {
       const response = await axiosInstance.post(`/auth/verify-email`, data);
       return response.data;
     } catch (error) {
-      console.error("Email verification error:", error);
+      console.error("Email verification error:", error.message || error);
       return normalizeError(error);
     }
   },
@@ -166,7 +164,7 @@ const authService = {
       });
       return response.data;
     } catch (error) {
-      console.error("Forgot password error:", error);
+      console.error("Forgot password error:", error.message || error);
       return normalizeError(error);
     }
   },
@@ -184,7 +182,7 @@ const authService = {
       );
       return response.data;
     } catch (error) {
-      console.error("Verify reset code error:", error);
+      console.error("Verify reset code error:", error.message || error);
       return normalizeError(error);
     }
   },
@@ -199,7 +197,7 @@ const authService = {
       const response = await axiosInstance.post("/auth/reset-password", data);
       return response.data;
     } catch (error) {
-      console.error("Reset password error:", error);
+      console.error("Reset password error:", error.message || error);
       return normalizeError(error);
     }
   },

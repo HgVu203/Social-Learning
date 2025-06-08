@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  FaSearch,
   FaPlus,
   FaMinus,
   FaMedal,
@@ -26,16 +26,19 @@ import Button from "../ui/Button";
 import Select from "../ui/Select";
 import { SkeletonPointsManagement } from "../skeleton";
 import { adminService } from "../../services/adminService";
+import AdvancedSearch from "./AdvancedSearch";
 
 const PointsManagement = () => {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchField, setSearchField] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState(null);
   const [pointsToUpdate, setPointsToUpdate] = useState(0);
   const [badgeToAssign, setBadgeToAssign] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [operation, setOperation] = useState("add");
-  const usersPerPage = 5;
+  const usersPerPage = 10;
   const queryClient = useQueryClient();
 
   // Sử dụng React Query để lấy dữ liệu người dùng
@@ -43,7 +46,18 @@ const PointsManagement = () => {
     data: userData,
     isLoading,
     refetch,
-  } = useAdminUsers(currentPage, usersPerPage, searchTerm);
+  } = useAdminUsers(currentPage, usersPerPage, searchTerm, searchField);
+
+  // Xử lý tìm kiếm nâng cao
+  const handleAdvancedSearch = ({ field, term }) => {
+    setSearchField(field);
+    setSearchTerm(term);
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    } else {
+      refetch();
+    }
+  };
 
   const filteredUsers = userData?.data || [];
   const totalPages = userData?.pagination?.totalPages || 1;
@@ -66,40 +80,8 @@ const PointsManagement = () => {
     return null;
   };
 
-  // Debug badge data
-  useEffect(() => {
-    if (userData && userData.data) {
-      console.log("User data received:", userData.data);
-      // Log specific badge info for each user
-      userData.data.forEach((user) => {
-        const normalizedBadge = normalizeBadge(user.badge);
-        console.log(
-          `User ${user.username || user._id} badge:`,
-          user.badge,
-          "→ normalized:",
-          normalizedBadge
-        );
-      });
-    }
-  }, [userData]);
-
   // Sử dụng React Query mutation để cập nhật điểm
   const updateUserPoints = useUpdateUserPoints();
-
-  // Tìm kiếm người dùng
-  const searchUsers = () => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-    } else {
-      refetch();
-    }
-  };
-
-  useEffect(() => {
-    if (searchTerm === "") {
-      searchUsers();
-    }
-  }, [searchTerm]);
 
   // Prefetch data for next page
   useEffect(() => {
@@ -111,17 +93,26 @@ const PointsManagement = () => {
           page: nextPage,
           limit: usersPerPage,
           searchTerm,
+          searchField,
         }),
         queryFn: async () => {
           return await adminService.getAllUsers(
             nextPage,
             usersPerPage,
-            searchTerm
+            searchTerm,
+            searchField
           );
         },
       });
     }
-  }, [currentPage, totalPages, usersPerPage, searchTerm, queryClient]);
+  }, [
+    currentPage,
+    totalPages,
+    usersPerPage,
+    searchTerm,
+    searchField,
+    queryClient,
+  ]);
 
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
@@ -134,12 +125,14 @@ const PointsManagement = () => {
             page: pageNumber + 1,
             limit: usersPerPage,
             searchTerm,
+            searchField,
           }),
           queryFn: async () => {
             return await adminService.getAllUsers(
               pageNumber + 1,
               usersPerPage,
-              searchTerm
+              searchTerm,
+              searchField
             );
           },
         });
@@ -167,7 +160,7 @@ const PointsManagement = () => {
 
   const handleUpdatePoints = async () => {
     if (pointsToUpdate <= 0 && !badgeToAssign) {
-      toast.error("Please enter points or select a badge to update");
+      toast.error(t("admin.pointsManagement.toast.enterPointsOrBadge"));
       return;
     }
 
@@ -196,22 +189,6 @@ const PointsManagement = () => {
           }
         : selectedUser.badge;
 
-      // Bắt đầu logging để theo dõi quá trình cập nhật
-      console.log("[Points Management] Current user data before update:", {
-        id: selectedUser._id,
-        points: selectedUser.points,
-        badge: selectedUser.badge,
-      });
-
-      console.log("[Points Management] Optimistic update with:", {
-        points: newPoints,
-        badge: newBadge,
-        calculatedPoints: calculatedPoints,
-        badgeToAssign: badgeToAssign,
-      });
-
-      // Cập nhật ngay giao diện người dùng trước khi server trả về kết quả
-      // Cập nhật selectedUser để modal hiển thị đúng
       setSelectedUser((prev) => ({
         ...prev,
         points: newPoints,
@@ -224,11 +201,10 @@ const PointsManagement = () => {
           page: currentPage,
           limit: usersPerPage,
           searchTerm,
+          searchField,
         }),
         (oldData) => {
           if (!oldData) return oldData;
-          console.log("[Points Management] Updating React Query cache data");
-
           const updatedData = {
             ...oldData,
             data: oldData.data.map((user) =>
@@ -241,52 +217,33 @@ const PointsManagement = () => {
                 : user
             ),
           };
-
-          console.log(
-            "[Points Management] Updated user in cache:",
-            updatedData.data.find((u) => u._id === selectedUser._id)
-          );
-
           return updatedData;
         }
       );
-
-      // Gọi API cập nhật points và badge
-      console.log(
-        "[Points Management] Sending update with badge:",
-        badgeToAssign
-      );
-      const result = await updateUserPoints.mutateAsync({
+      await updateUserPoints.mutateAsync({
         userId: selectedUser._id,
         points: calculatedPoints,
         badge: badgeToAssign || undefined,
       });
 
-      console.log("[Points Management] Server response:", result);
-
-      if (result?.data?.badge) {
-        console.log(
-          `[Points Management] Server confirmed badge:`,
-          result.data.badge
-        );
-      }
-
       // Only mention points in the success message if points were actually updated
       let successMessage = "";
       if (pointsToUpdate > 0) {
         const operationText =
-          operation === "add" ? "added to" : "subtracted from";
-        successMessage = `Successfully ${operationText} ${
+          operation === "add"
+            ? t("admin.pointsManagement.toast.addedTo")
+            : t("admin.pointsManagement.toast.subtractedFrom");
+        successMessage = `${operationText} ${
           selectedUser.fullname || selectedUser.username
-        }'s points`;
+        }${t("admin.pointsManagement.toast.points")}`;
       }
 
       if (badgeToAssign) {
         const badgeText =
           pointsToUpdate > 0
-            ? " and assigned badge"
-            : "Successfully assigned badge";
-        successMessage += `${badgeText} to ${
+            ? t("admin.pointsManagement.toast.andAssignedBadge")
+            : t("admin.pointsManagement.toast.successfullyAssignedBadge");
+        successMessage += `${badgeText} ${
           selectedUser.fullname || selectedUser.username
         }`;
       }
@@ -308,11 +265,7 @@ const PointsManagement = () => {
       closeModal();
     } catch (error) {
       console.error("[Points Management] Error updating points:", error);
-      toast.error(
-        error.response?.data?.error ||
-          error.message ||
-          "Failed to update points"
-      );
+      toast.error(t("admin.pointsManagement.toast.updateError"));
 
       // Revert optimistic updates if there's an error
       queryClient.invalidateQueries({
@@ -360,25 +313,25 @@ const PointsManagement = () => {
   }
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h3 className="text-lg font-semibold mb-4 md:mb-0 text-[var(--color-text-primary)]">
-          Points Management
-        </h3>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchUsers()}
-            className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] w-full md:w-64 bg-[var(--color-bg-secondary)] border-[var(--color-border)] text-[var(--color-text-primary)]"
-          />
-          <FaSearch
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-primary)] opacity-70 cursor-pointer"
-            onClick={searchUsers}
-          />
-        </div>
+    <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-md p-5 overflow-hidden">
+      {/* Header with Advanced Search */}
+      <div className="flex flex-col mb-6 space-y-4">
+        <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          {t("admin.pointsManagement.title")}
+        </h2>
+
+        <AdvancedSearch
+          fields={[
+            { value: "all", label: t("admin.searchFields.all") },
+            { value: "name", label: t("admin.searchFields.name") },
+            { value: "email", label: t("admin.searchFields.email") },
+            { value: "username", label: t("admin.searchFields.username") },
+            { value: "points", label: t("admin.searchFields.points") },
+            { value: "badge", label: t("admin.searchFields.badge") },
+          ]}
+          onSearch={handleAdvancedSearch}
+          loading={isLoading}
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl shadow-sm">
@@ -386,19 +339,19 @@ const PointsManagement = () => {
           <thead className="bg-[var(--color-bg-tertiary)]">
             <tr>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                User
+                {t("admin.pointsManagement.table.user")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Email
+                {t("admin.pointsManagement.table.email")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Points
+                {t("admin.pointsManagement.table.points")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Badges
+                {t("admin.pointsManagement.table.badges")}
               </th>
               <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Actions
+                {t("admin.pointsManagement.table.actions")}
               </th>
             </tr>
           </thead>
@@ -457,7 +410,7 @@ const PointsManagement = () => {
                         </div>
                       ) : (
                         <span className="text-sm text-[var(--color-text-tertiary)]">
-                          No badge
+                          {t("admin.pointsManagement.table.noBadge")}
                         </span>
                       )}
                     </div>
@@ -467,7 +420,7 @@ const PointsManagement = () => {
                       onClick={() => handleManagePoints(user)}
                       className="px-3 py-1.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg transition-all cursor-pointer"
                     >
-                      Manage Points
+                      {t("admin.pointsManagement.table.managePoints")}
                     </button>
                   </td>
                 </tr>
@@ -478,7 +431,7 @@ const PointsManagement = () => {
                   colSpan="5"
                   className="py-4 px-4 text-center text-[var(--color-text-secondary)]"
                 >
-                  No users found.
+                  {t("admin.pointsManagement.table.noUsersFound")}
                 </td>
               </tr>
             )}
@@ -591,7 +544,7 @@ const PointsManagement = () => {
             <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg relative z-50">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-medium text-[var(--color-text-primary)]">
-                  Manage User Points
+                  {t("admin.pointsManagement.modal.title")}
                 </h2>
                 <button
                   onClick={closeModal}
@@ -629,7 +582,8 @@ const PointsManagement = () => {
                   </p>
                   <div className="flex items-center space-x-2">
                     <p className="text-sm font-semibold text-[var(--color-primary)]">
-                      Current points: {selectedUser.points || 0}
+                      {t("admin.pointsManagement.modal.currentPoints")}:{" "}
+                      {selectedUser.points || 0}
                     </p>
                     {selectedUser.badge && selectedUser.badge.name && (
                       <div className="flex items-center">
@@ -637,7 +591,7 @@ const PointsManagement = () => {
                           •
                         </span>
                         <span className="text-sm font-semibold text-[var(--color-text-secondary)] flex items-center">
-                          Badge:
+                          {t("admin.pointsManagement.modal.badge")}:
                           <span className="ml-1 inline-flex items-center justify-center w-5 h-5">
                             {getBadgeIcon(selectedUser.badge)}
                           </span>
@@ -660,7 +614,7 @@ const PointsManagement = () => {
                     disabled={updateUserPoints.isPending}
                     icon={<FaPlus />}
                   >
-                    Add Points
+                    {t("admin.pointsManagement.modal.addPoints")}
                   </Button>
                   <Button
                     type="button"
@@ -669,13 +623,13 @@ const PointsManagement = () => {
                     disabled={updateUserPoints.isPending}
                     icon={<FaMinus />}
                   >
-                    Subtract Points
+                    {t("admin.pointsManagement.modal.subtractPoints")}
                   </Button>
                 </div>
 
                 {pointsToUpdate <= 0 && !badgeToAssign && (
                   <div className="mb-2 text-rose-500 text-sm">
-                    Please enter points or select a badge to update
+                    {t("admin.pointsManagement.modal.enterPointsOrBadge")}
                   </div>
                 )}
 
@@ -683,7 +637,8 @@ const PointsManagement = () => {
                   className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                   htmlFor="points"
                 >
-                  Points to {operation === "add" ? "add" : "subtract"}
+                  {t("admin.pointsManagement.modal.pointsTo")}{" "}
+                  {operation === "add" ? "add" : "subtract"}
                 </label>
                 <input
                   type="number"
@@ -697,7 +652,7 @@ const PointsManagement = () => {
                       ? "border-rose-500 focus:ring-rose-500"
                       : "border-[var(--color-border)] hover:border-[var(--color-primary)]/60"
                   } text-[var(--color-text-primary)] shadow-sm transition-all`}
-                  placeholder="Enter points"
+                  placeholder={t("admin.pointsManagement.modal.enterPoints")}
                   disabled={updateUserPoints.isPending}
                 />
               </div>
@@ -707,7 +662,7 @@ const PointsManagement = () => {
                   className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                   htmlFor="badge"
                 >
-                  Assign Badge (Optional)
+                  {t("admin.pointsManagement.modal.assignBadge")} (Optional)
                 </label>
                 <Select
                   id="badge"
@@ -715,17 +670,50 @@ const PointsManagement = () => {
                   value={badgeToAssign}
                   onChange={(e) => setBadgeToAssign(e.target.value)}
                   options={[
-                    { value: "", label: "No badge" },
-                    { value: "gold", label: "Gold Trophy" },
-                    { value: "silver", label: "Silver Medal" },
-                    { value: "bronze", label: "Bronze Medal" },
-                    { value: "star", label: "Star Badge" },
-                    { value: "expert", label: "Expert" },
-                    { value: "contributor", label: "Contributor" },
-                    { value: "influencer", label: "Influencer" },
-                    { value: "teacher", label: "Teacher" },
-                    { value: "innovator", label: "Innovator" },
-                    { value: "veteran", label: "Veteran" },
+                    {
+                      value: "",
+                      label: t("admin.pointsManagement.modal.noBadge"),
+                    },
+                    {
+                      value: "gold",
+                      label: t("admin.pointsManagement.modal.goldTrophy"),
+                    },
+                    {
+                      value: "silver",
+                      label: t("admin.pointsManagement.modal.silverMedal"),
+                    },
+                    {
+                      value: "bronze",
+                      label: t("admin.pointsManagement.modal.bronzeMedal"),
+                    },
+                    {
+                      value: "star",
+                      label: t("admin.pointsManagement.modal.starBadge"),
+                    },
+                    {
+                      value: "expert",
+                      label: t("admin.pointsManagement.modal.expert"),
+                    },
+                    {
+                      value: "contributor",
+                      label: t("admin.pointsManagement.modal.contributor"),
+                    },
+                    {
+                      value: "influencer",
+                      label: t("admin.pointsManagement.modal.influencer"),
+                    },
+                    {
+                      value: "teacher",
+                      label: t("admin.pointsManagement.modal.teacher"),
+                    },
+                    {
+                      value: "innovator",
+                      label: t("admin.pointsManagement.modal.innovator"),
+                    },
+                    {
+                      value: "veteran",
+                      label: t("admin.pointsManagement.modal.veteran"),
+                    },
                   ]}
                   disabled={updateUserPoints.isPending}
                   className={
@@ -742,7 +730,7 @@ const PointsManagement = () => {
                   onClick={closeModal}
                   disabled={updateUserPoints.isPending}
                 >
-                  Cancel
+                  {t("admin.pointsManagement.modal.cancel")}
                 </Button>
                 <Button
                   variant="primary"
@@ -754,7 +742,9 @@ const PointsManagement = () => {
                     (pointsToUpdate <= 0 && !badgeToAssign)
                   }
                 >
-                  {operation === "add" ? "Add Points" : "Subtract Points"}
+                  {operation === "add"
+                    ? t("admin.pointsManagement.modal.addPoints")
+                    : t("admin.pointsManagement.modal.subtractPoints")}
                 </Button>
               </div>
             </div>

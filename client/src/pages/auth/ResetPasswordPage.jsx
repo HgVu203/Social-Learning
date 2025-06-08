@@ -1,16 +1,19 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthInput from "../../components/auth/AuthInput";
 import AuthButton from "../../components/auth/AuthButton";
-import { FaLock, FaCheckCircle } from "react-icons/fa";
+import { FaLock } from "react-icons/fa";
+import { useTranslation } from "react-i18next";
+import { showSuccessToast } from "../../utils/toast";
 
 const ResetPasswordPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { resetPassword, loading } = useAuth();
+  const { resetPassword } = useAuth();
+  const { t } = useTranslation();
 
   const [formData, setFormData] = useState({
     password: "",
@@ -21,6 +24,8 @@ const ResetPasswordPage = () => {
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState("");
   const [resetInfo, setResetInfo] = useState(null);
+  const [error, setError] = useState("");
+  const isSubmittingRef = React.useRef(false);
 
   useEffect(() => {
     // Validate code and email exists in location state
@@ -123,44 +128,132 @@ const ResetPasswordPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!validateForm()) {
-      return;
-    }
+    // Prevent multiple submissions
+    if (resetPassword.isPending || isSubmittingRef.current) return;
 
-    setServerError("");
+    // Validate form before submission
+    if (!validateForm()) return;
 
     try {
-      const response = await resetPassword({
-        code: resetInfo.code,
+      isSubmittingRef.current = true;
+      setError("");
+
+      const result = await resetPassword.mutateAsync({
         email: resetInfo.email,
-        password: formData.password,
+        code: resetInfo.code,
+        newPassword: formData.password,
       });
 
-      if (response.success) {
+      if (result.success) {
+        showSuccessToast(t("auth.passwordResetSuccess"));
         setSuccess(true);
-        // Redirect to login after 3 seconds
-        setTimeout(() => {
-          navigate("/login");
-        }, 3000);
+
+        // Redirect to login page after successful reset
+        setTimeout(() => navigate("/login"), 1000);
+      } else {
+        setError(result.error || t("auth.passwordResetFailed"));
       }
     } catch (err) {
-      console.error("Reset password error:", err);
-      setServerError(
-        err.response?.status === 429
-          ? "Too many attempts, please try again later. Please wait before trying again."
-          : err.response?.data?.error ||
-              "Failed to reset password. The code may be invalid or expired."
-      );
+      console.error("Password reset error:", err);
+
+      // Trích xuất thông báo lỗi từ API response
+      const errorMessage =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        t("auth.passwordResetFailed");
+
+      setError(errorMessage);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
+
+  const clearError = () => {
+    setError("");
+  };
+
+  const renderFormContent = () => (
+    <>
+      <div className="space-y-4">
+        <AuthInput
+          label={t("auth.newPassword")}
+          type="password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          icon={<FaLock />}
+          error={formErrors.password}
+          autoComplete="new-password"
+          disabled={resetPassword.isPending}
+          required
+        />
+
+        {formData.password && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="mt-2"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-[var(--color-text-secondary)]">
+                {t("auth.passwordStrength")}:
+              </span>
+              <span
+                className={`text-xs font-medium ${
+                  passwordStrength <= 1
+                    ? "text-red-500"
+                    : passwordStrength <= 3
+                    ? "text-yellow-500"
+                    : "text-green-500"
+                }`}
+              >
+                {getPasswordStrengthLabel()}
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+              <div
+                className={`h-full ${getPasswordStrengthColor()} transition-all duration-300`}
+                style={{ width: `${(passwordStrength / 5) * 100}%` }}
+              ></div>
+            </div>
+          </motion.div>
+        )}
+
+        <AuthInput
+          label={t("auth.confirmPassword")}
+          type="password"
+          name="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          icon={<FaLock />}
+          error={formErrors.confirmPassword}
+          autoComplete="new-password"
+          disabled={resetPassword.isPending}
+          required
+        />
+      </div>
+
+      <AuthButton
+        type="submit"
+        isLoading={resetPassword.isPending}
+        disabled={resetPassword.isPending}
+        variant="primary"
+        fullWidth
+        className="mt-6"
+      >
+        {t("auth.resetPassword")}
+      </AuthButton>
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="max-w-md w-full"
+        className="w-full max-w-md"
       >
         {!resetInfo ? (
           <AuthForm
@@ -212,7 +305,19 @@ const ResetPasswordPage = () => {
               className="flex flex-col items-center justify-center py-6"
             >
               <div className="mb-4 text-green-500">
-                <FaCheckCircle size={60} />
+                <svg
+                  className="h-16 w-16 text-green-500 mx-auto"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
               </div>
 
               <p className="text-[var(--color-text-secondary)] mb-6 text-center">
@@ -226,115 +331,14 @@ const ResetPasswordPage = () => {
           </AuthForm>
         ) : (
           <AuthForm
-            title="Reset Password"
-            subtitle="Create a new secure password for your account"
+            title={t("auth.resetPassword")}
+            subtitle={t("auth.resetPasswordSubtitle")}
             onSubmit={handleSubmit}
             className="space-y-5"
+            error={error}
+            clearError={clearError}
           >
-            {serverError && (
-              <motion.div
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700"
-              >
-                <div className="flex">
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  <span>{serverError}</span>
-                </div>
-              </motion.div>
-            )}
-
-            <div className="space-y-1">
-              <AuthInput
-                label="New Password"
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter your new password"
-                error={formErrors.password}
-                icon={<FaLock />}
-                autoComplete="new-password"
-                disabled={loading}
-                required
-              />
-
-              {formData.password && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="mt-2"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-[var(--color-text-secondary)]">
-                      Password Strength:
-                    </span>
-                    <span
-                      className={`text-xs font-medium ${
-                        passwordStrength <= 1
-                          ? "text-red-500"
-                          : passwordStrength <= 3
-                          ? "text-yellow-500"
-                          : "text-green-500"
-                      }`}
-                    >
-                      {getPasswordStrengthLabel()}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${getPasswordStrengthColor()} transition-all duration-300`}
-                      style={{ width: `${(passwordStrength / 5) * 100}%` }}
-                    ></div>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            <AuthInput
-              label="Confirm Password"
-              type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              placeholder="Confirm your new password"
-              error={formErrors.confirmPassword}
-              icon={<FaLock />}
-              autoComplete="new-password"
-              disabled={loading}
-              required
-            />
-
-            <AuthButton
-              type="submit"
-              isLoading={loading}
-              disabled={loading}
-              variant="primary"
-              fullWidth
-            >
-              Reset Password
-            </AuthButton>
-
-            <div className="text-center mt-4">
-              <p className="text-[var(--color-text-secondary)]">
-                <Link
-                  to="/login"
-                  className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
-                >
-                  Return to login
-                </Link>
-              </p>
-            </div>
+            {renderFormContent()}
           </AuthForm>
         )}
       </motion.div>

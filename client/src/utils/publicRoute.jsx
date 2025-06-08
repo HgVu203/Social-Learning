@@ -1,5 +1,5 @@
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 /**
  * Higher-order component cho các route chỉ hiển thị khi chưa đăng nhập
@@ -8,12 +8,12 @@ import { useAuth } from '../contexts/AuthContext';
  */
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return <div>Loading...</div>; // Hoặc component Loading
   }
-  
+
   return !isAuthenticated ? children : <Navigate to="/" />;
 };
 
-export default PublicRoute; 
+export default PublicRoute;

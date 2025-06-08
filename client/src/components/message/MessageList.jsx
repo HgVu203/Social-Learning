@@ -1,24 +1,22 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiSearch, FiMessageSquare, FiUsers, FiUserPlus } from "react-icons/fi";
+import { FiSearch, FiMessageSquare, FiUsers } from "react-icons/fi";
 import { useConversations } from "../../hooks/queries/useMessageQueries.js";
 import {
   useFriends,
-  useFriendRequests,
+  // useFriendRequests,
 } from "../../hooks/queries/useFriendQueries";
 import { useAuth } from "../../contexts/AuthContext";
 import Avatar from "../common/Avatar";
-import Loading from "../common/Loading";
 import { formatTime } from "../../utils/format";
 import EmptyPlaceholder from "../common/EmptyPlaceholder";
-import { useMessageContext } from "../../contexts/MessageContext";
 import { useFriend } from "../../contexts/FriendContext";
 import { SkeletonList } from "../skeleton";
+import { useTranslation } from "react-i18next";
 
-const MessageList = ({ onSelectFriend }) => {
+const MessageList = ({ onSelectConversation, selectedUserId }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
-  const { isConversationActive } = useMessageContext();
   const { friends: contextFriends, fetchFriends } = useFriend();
 
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -33,7 +31,7 @@ const MessageList = ({ onSelectFriend }) => {
   const { data: conversationsData, isLoading: isConversationsLoading } =
     useConversations();
   const { data: friendsData, isLoading: isFriendsLoading } = useFriends();
-  const { data: friendRequestsData } = useFriendRequests();
+  // const { data: friendRequestsData } = useFriendRequests();
 
   // Tìm kiếm cục bộ không cần API
   const filteredResults = useMemo(() => {
@@ -104,24 +102,10 @@ const MessageList = ({ onSelectFriend }) => {
   // Fetch friends data when component mounts
   useEffect(() => {
     if (fetchFriends && !initialDataLoaded) {
-      console.log("Explicitly fetching friends data for MessageList");
       fetchFriends();
       setInitialDataLoaded(true);
     }
   }, [fetchFriends, initialDataLoaded]);
-
-  // Log friend requests for debugging
-  useEffect(() => {
-    if (
-      friendRequestsData?.received &&
-      Array.isArray(friendRequestsData.received)
-    ) {
-      console.log(
-        "Friend requests received:",
-        friendRequestsData.received.length
-      );
-    }
-  }, [friendRequestsData]);
 
   useEffect(() => {
     // Check if friendsData is valid array data
@@ -131,16 +115,8 @@ const MessageList = ({ onSelectFriend }) => {
     const isDirectArray = Array.isArray(friendsData);
 
     if (hasFriendsData) {
-      console.log(
-        "Updating localFriends from friendsData.data:",
-        friendsData.data
-      );
       setLocalFriends(friendsData.data);
     } else if (isDirectArray && friendsData.length > 0) {
-      console.log(
-        "Updating localFriends from direct friendsData array:",
-        friendsData
-      );
       setLocalFriends(friendsData);
     }
   }, [friendsData]);
@@ -153,7 +129,6 @@ const MessageList = ({ onSelectFriend }) => {
       contextFriends.length > 0 &&
       localFriends.length === 0
     ) {
-      console.log("Updating localFriends from contextFriends:", contextFriends);
       setLocalFriends(contextFriends);
     }
   }, [contextFriends, localFriends.length]);
@@ -169,17 +144,7 @@ const MessageList = ({ onSelectFriend }) => {
           friend._id === userId ? { ...friend, isOnline } : friend
         )
       );
-
-      // Also update conversations if they include this user
-      if (Array.isArray(conversationsData)) {
-        // This will trigger re-render of conversations with updated online status
-        // The actual data update happens in the backend and will be reflected on next data fetch
-        console.log(
-          `User ${userId} is now ${
-            isOnline ? "online" : "offline"
-          } - UI will update on next render`
-        );
-      }
+    
     };
 
     // Add event listener
@@ -211,16 +176,6 @@ const MessageList = ({ onSelectFriend }) => {
     },
   };
 
-  const staggerListVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-      },
-    },
-  };
-
   // Handle search input
   const handleSearchChange = (e) => {
     setSearchQuery(e.target.value);
@@ -234,142 +189,65 @@ const MessageList = ({ onSelectFriend }) => {
 
   // Render empty state
   const renderEmptyState = (title, description, icon) => (
-    <EmptyPlaceholder title={title} description={description} icon={icon} />
+    <EmptyPlaceholder
+      title={title}
+      description={description}
+      icon={icon}
+      iconSize={40}
+      titleClassName="text-sm"
+      descriptionClassName="text-xs"
+    />
   );
 
   // Render search results
   const renderSearchResults = () => {
-    if (!filteredResults?.length) {
+    if (searchQuery.trim() === "") {
+      return null;
+    }
+
+    if (filteredResults.length === 0) {
       return renderEmptyState(
-        "No matches found",
-        "Try a different search term or check your friend list.",
-        <FiSearch size={40} className="text-gray-400" />
+        t("message.noResults"),
+        t("message.noConversation"),
+        <FiSearch />
       );
     }
 
-    // Phân tách kết quả thành các cuộc trò chuyện và bạn bè
-    const conversations = filteredResults.filter(
-      (r) => r.resultType === "conversation"
-    );
-    const friends = filteredResults.filter(
-      (r) =>
-        r.resultType === "friend" && !conversations.some((c) => c._id === r._id)
-    );
-
     return (
-      <div className="space-y-4">
-        {/* Phần conversations */}
-        {conversations.length > 0 && (
-          <div>
-            <div className="px-2 py-1 mb-1 text-xs font-medium text-[var(--color-text-secondary)]">
-              Conversations
-            </div>
-            <motion.div
-              variants={staggerListVariants}
-              initial="hidden"
-              animate="visible"
-              className="space-y-1 px-2"
+      <div className="mt-2">
+        <div className="text-xs uppercase text-[var(--color-text-secondary)] px-4 py-2">
+          {t("message.search")}
+        </div>
+        <ul>
+          {filteredResults.map((result) => (
+            <li
+              key={`search-${result._id}`}
+              className={`px-4 py-2 hover:bg-[var(--color-bg-hover)] cursor-pointer ${
+                selectedUserId === result._id
+                  ? "bg-[var(--color-bg-active)]"
+                  : ""
+              }`}
+              onClick={() => onSelectConversation?.(result)}
             >
-              {conversations.map((result) => (
-                <Link to={`/messages/${result._id}`} key={result._id}>
-                  <motion.div
-                    variants={listItemVariants}
-                    className={`p-2 rounded-lg hover:bg-[var(--color-card-bg-hover)] transition-all duration-200 flex items-center relative ${
-                      isConversationActive(result._id)
-                        ? "bg-[var(--color-card-bg-hover)]"
-                        : "bg-[var(--color-card-bg-secondary)]"
-                    }`}
-                  >
-                    <div className="relative">
-                      <Avatar
-                        src={result.profilePicture}
-                        size="sm"
-                        alt={result.username}
-                      />
-                      {result.isOnline && (
-                        <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border-2 border-[var(--color-card-bg-secondary)] rounded-full"></span>
-                      )}
-                    </div>
-                    <div className="ml-2 flex-1 min-w-0">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-medium text-[var(--color-text-primary)] truncate max-w-[70%]">
-                          {result.fullname || result.username}
-                        </h3>
-                        <span className="text-[9px] text-[var(--color-text-secondary)] ml-1 opacity-80">
-                          {formatTime(result.lastMessage?.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-[var(--color-text-secondary)] truncate mt-0.5">
-                        {result.lastMessage ? (
-                          <>
-                            {result.lastMessage.sender === user._id
-                              ? "You: "
-                              : ""}
-                            {result.lastMessage.type === "image"
-                              ? "🖼️ Photo"
-                              : result.lastMessage.content}
-                          </>
-                        ) : (
-                          "Start a conversation"
-                        )}
-                      </p>
-                      {result.unreadCount > 0 && (
-                        <span className="absolute right-2 bg-[var(--color-primary)] text-white text-[9px] font-medium px-1.5 py-0.5 rounded-full">
-                          {result.unreadCount}
-                        </span>
-                      )}
-                    </div>
-                  </motion.div>
-                </Link>
-              ))}
-            </motion.div>
-          </div>
-        )}
-
-        {/* Phần friends */}
-        {friends.length > 0 && (
-          <div>
-            <div className="px-2 py-1 mb-1 text-xs font-medium text-[var(--color-text-secondary)]">
-              Friends
-            </div>
-            <motion.div
-              variants={staggerListVariants}
-              initial="hidden"
-              animate="visible"
-              className="space-y-1"
-            >
-              {friends.map((friend) => (
-                <motion.div
-                  key={friend._id}
-                  variants={listItemVariants}
-                  className="px-2 py-2 hover:bg-[var(--color-card-bg-hover)] rounded-lg cursor-pointer transition-colors flex items-center justify-between"
-                  onClick={() => onSelectFriend && onSelectFriend(friend)}
-                >
-                  <div className="flex items-center">
-                    <div className="relative">
-                      <Avatar
-                        src={friend.profilePicture || friend.avatar}
-                        alt={friend.username || "User"}
-                        size="sm"
-                      />
-                      {friend.isOnline && (
-                        <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-[var(--color-bg-secondary)]"></span>
-                      )}
-                    </div>
-                    <div className="ml-2">
-                      <h3 className="text-xs font-medium text-[var(--color-text-primary)]">
-                        {friend.fullname || friend.username || "User"}
-                      </h3>
-                      <p className="text-[10px] text-[var(--color-text-secondary)]">
-                        {friend.isOnline ? "Online" : "Offline"}
-                      </p>
-                    </div>
+              <div className="flex items-center">
+                <Avatar
+                  src={result.profilePicture}
+                  alt={result.fullname || result.username}
+                  size="sm"
+                  status={result.isOnline ? "online" : "offline"}
+                />
+                <div className="ml-2.5 flex-1 min-w-0">
+                  <div className="font-medium text-[var(--color-text-primary)] text-xs">
+                    {result.fullname || result.username}
                   </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-        )}
+                  <div className="text-[11px] text-[var(--color-text-secondary)]">
+                    {result.username}
+                  </div>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   };
@@ -377,229 +255,223 @@ const MessageList = ({ onSelectFriend }) => {
   // Render conversations list
   const renderConversations = () => {
     if (isConversationsLoading) {
-      return <Loading />;
+      return <SkeletonList count={5} />;
     }
 
-    if (!conversationsData?.length) {
+    if (!conversationsData || conversationsData.length === 0) {
       return renderEmptyState(
-        "No conversations yet",
-        "Start chatting with your friends to see conversations here.",
-        <FiMessageSquare size={40} className="text-gray-400" />
+        t("message.noConversation"),
+        t("message.selectFriend"),
+        <FiMessageSquare />
       );
     }
 
     return (
-      <motion.div
-        variants={staggerListVariants}
+      <motion.ul
         initial="hidden"
         animate="visible"
-        className="space-y-1 px-2"
+        variants={{
+          visible: {
+            transition: {
+              staggerChildren: 0.05,
+            },
+          },
+        }}
       >
-        {conversationsData.map((conversation) => (
-          <Link
-            to={`/messages/${conversation.participant._id}`}
-            key={conversation._id}
-          >
-            <motion.div
+        {conversationsData.map((conversation) => {
+          const participant = conversation.participant;
+          if (!participant) return null;
+
+          const lastMessage = conversation.lastMessage;
+          const isUnread = conversation.unreadCount > 0;
+
+          return (
+            <motion.li
+              key={`conversation-${participant._id}`}
               variants={listItemVariants}
-              className={`p-2 rounded-lg hover:bg-[var(--color-card-bg-hover)] transition-all duration-200 flex items-center relative ${
-                isConversationActive(conversation.participant._id)
-                  ? "bg-[var(--color-card-bg-hover)]"
-                  : "bg-[var(--color-card-bg-secondary)]"
+              className={`px-4 py-2 hover:bg-[var(--color-bg-hover)] cursor-pointer transition-colors ${
+                selectedUserId === participant._id
+                  ? "bg-[var(--color-bg-active)]"
+                  : ""
               }`}
+              onClick={() => onSelectConversation?.(participant)}
             >
-              <div className="relative">
+              <div className="flex items-center">
                 <Avatar
-                  src={conversation.participant.profilePicture}
+                  src={participant.profilePicture}
+                  alt={participant.fullname || participant.username}
                   size="sm"
-                  alt={conversation.participant.username}
+                  status={participant.isOnline ? "online" : "offline"}
                 />
-                {conversation.participant.isOnline && (
-                  <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border-2 border-[var(--color-card-bg-secondary)] rounded-full"></span>
-                )}
-              </div>
-              <div className="ml-2 flex-1 min-w-0">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-xs font-medium text-[var(--color-text-primary)] truncate max-w-[70%]">
-                    {conversation.participant.fullname ||
-                      conversation.participant.username}
-                  </h3>
-                  <span className="text-[9px] text-[var(--color-text-secondary)] ml-1 opacity-80">
-                    {formatTime(conversation.lastMessage?.createdAt)}
-                  </span>
+                <div className="ml-2.5 flex-1 min-w-0">
+                  <div className="flex justify-between items-center">
+                    <span
+                      className={`font-medium truncate text-xs ${
+                        isUnread
+                          ? "text-[var(--color-text-primary)] font-semibold"
+                          : "text-[var(--color-text-primary)]"
+                      }`}
+                    >
+                      {participant.fullname || participant.username}
+                    </span>
+                    {lastMessage && (
+                      <span className="text-[10px] text-[var(--color-text-secondary)]">
+                        {formatTime(lastMessage.createdAt)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <p
+                      className={`text-[11px] truncate ${
+                        isUnread
+                          ? "text-[var(--color-text-primary)] font-medium"
+                          : "text-[var(--color-text-secondary)]"
+                      }`}
+                    >
+                      {lastMessage
+                        ? lastMessage.isDeleted
+                          ? `${t("message.messageDeleted")}`
+                          : lastMessage.sender === user?._id
+                          ? `${t("message.you")}: ${lastMessage.content}`
+                          : lastMessage.content
+                        : t("message.noMessages")}
+                    </p>
+                    {isUnread && conversation.unreadCount > 0 && (
+                      <span className="bg-[var(--color-primary)] text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-medium ml-1">
+                        {conversation.unreadCount > 9
+                          ? "9+"
+                          : conversation.unreadCount}
+                      </span>
+                    )}
+                    {participant.isOnline && !isUnread && (
+                      <span className="w-2 h-2 bg-green-500 rounded-full ml-1"></span>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[10px] text-[var(--color-text-secondary)] truncate mt-0.5">
-                  {conversation.lastMessage ? (
-                    <>
-                      {conversation.lastMessage.sender === user._id
-                        ? "You: "
-                        : ""}
-                      {conversation.lastMessage.type === "image"
-                        ? "🖼️ Photo"
-                        : conversation.lastMessage.content}
-                    </>
-                  ) : (
-                    "Start a conversation"
-                  )}
-                </p>
-                {conversation.unreadCount > 0 && (
-                  <span className="absolute right-2 bg-[var(--color-primary)] text-white text-[9px] font-medium px-1.5 py-0.5 rounded-full">
-                    {conversation.unreadCount}
-                  </span>
-                )}
               </div>
-            </motion.div>
-          </Link>
-        ))}
-      </motion.div>
+            </motion.li>
+          );
+        })}
+      </motion.ul>
     );
   };
 
   // Render friends list
   const renderFriends = () => {
-    // Check for loading and error states first
     if (isFriendsLoading) {
       return <SkeletonList count={5} />;
     }
 
-    // Ensure localFriends is an array (defensive programming)
-    const friendsList = Array.isArray(localFriends) ? localFriends : [];
-
-    // If we have no friends after ensuring it's an array
-    if (friendsList.length === 0) {
+    if (localFriends.length === 0) {
       return renderEmptyState(
-        "No friends yet",
-        "Add friends to start messaging",
-        <FiUserPlus size={32} />
+        t("rightpanel.noFriendsOnline"),
+        t("message.noFriends"),
+        <FiUsers />
       );
     }
 
-    try {
-      return (
-        <motion.div
-          variants={staggerListVariants}
-          initial="hidden"
-          animate="visible"
-          className="space-y-1"
-        >
-          {friendsList.map((friend) => {
-            // Skip invalid friend data
-            if (!friend || !friend._id) {
-              console.warn("Invalid friend data encountered:", friend);
-              return null;
-            }
-
-            return (
-              <motion.div
-                key={friend._id}
-                variants={listItemVariants}
-                className="px-2 py-2 hover:bg-[var(--color-card-bg-hover)] rounded-lg cursor-pointer transition-colors flex items-center justify-between"
-                onClick={() => onSelectFriend && onSelectFriend(friend)}
-              >
-                <div className="flex items-center">
-                  <div className="relative">
-                    <Avatar
-                      src={friend.profilePicture || friend.avatar}
-                      alt={friend.username || "User"}
-                      size="sm"
-                    />
-                    {friend.isOnline && (
-                      <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-[var(--color-bg-secondary)]"></span>
-                    )}
-                  </div>
-                  <div className="ml-2">
-                    <h3 className="text-xs font-medium text-[var(--color-text-primary)]">
-                      {friend.fullname || friend.username || "User"}
-                    </h3>
-                    <p className="text-[10px] text-[var(--color-text-secondary)]">
-                      {friend.isOnline ? "Online" : "Offline"}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      );
-    } catch (error) {
-      console.error("Error rendering friends list:", error);
-      return (
-        <div className="p-4 text-[var(--color-text-error)]">
-          <p>Error displaying friends list. Please try refreshing the page.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-2 px-3 py-1 bg-[var(--color-primary)] text-white rounded"
+    return (
+      <motion.ul
+        initial="hidden"
+        animate="visible"
+        variants={{
+          visible: {
+            transition: {
+              staggerChildren: 0.05,
+            },
+          },
+        }}
+      >
+        {localFriends.map((friend) => (
+          <motion.li
+            key={`friend-${friend._id}`}
+            variants={listItemVariants}
+            className={`px-4 py-2 hover:bg-[var(--color-bg-hover)] cursor-pointer transition-colors ${
+              selectedUserId === friend._id ? "bg-[var(--color-bg-active)]" : ""
+            }`}
+            onClick={() => onSelectConversation?.(friend)}
           >
-            Refresh
-          </button>
-        </div>
-      );
-    }
+            <div className="flex items-center">
+              <Avatar
+                src={friend.profilePicture}
+                alt={friend.fullname || friend.username}
+                size="sm"
+                status={friend.isOnline ? "online" : "offline"}
+              />
+              <div className="ml-2.5">
+                <div className="font-medium text-[var(--color-text-primary)] text-xs">
+                  {friend.fullname || friend.username}
+                </div>
+                <div className="text-[11px] text-[var(--color-text-secondary)]">
+                  {friend.isOnline ? t("message.online") : t("message.offline")}
+                </div>
+              </div>
+            </div>
+          </motion.li>
+        ))}
+      </motion.ul>
+    );
   };
 
   // Main render
   return (
-    <div className="relative flex flex-col h-full">
-      {/* Fixed Search Header */}
-      <div className="sticky top-0 z-10 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] shadow-sm p-2">
-        <div className="relative mb-2">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Search and tabs */}
+      <div className="p-4 border-b border-[var(--color-border)]">
+        {/* Search bar */}
+        <div
+          className={`flex items-center bg-[var(--color-bg-primary)] rounded-[0.35rem] px-3 py-1.5 border ${
+            isSearchFocused
+              ? "border-[var(--color-primary)]"
+              : "border-[var(--color-border)]"
+          } transition-colors`}
+        >
+          <FiSearch className="text-[var(--color-text-secondary)] text-sm" />
           <input
             type="text"
-            placeholder="Search contacts..."
+            className="ml-2 bg-transparent outline-none w-full text-[var(--color-text-primary)] text-xs"
+            placeholder={t("message.search")}
             value={searchQuery}
             onChange={handleSearchChange}
             onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-            className="w-full p-2 pl-8 bg-[var(--color-card-bg)] text-[var(--color-text-primary)] rounded-lg border border-[var(--color-border)] outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-sm"
-          />
-          <FiSearch
-            className="absolute left-2.5 top-2.5 text-[var(--color-text-secondary)]"
-            size={16}
+            onBlur={() => setIsSearchFocused(false)}
           />
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-1">
+        {/* Improved Tabs - better spacing and flexibility for different languages */}
+        <div className="flex mt-4 gap-2">
           <button
-            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-colors flex items-center justify-center ${
+            className={`flex items-center justify-center flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-all ${
               activeTab === "chats"
-                ? "bg-[var(--color-primary)] text-white"
-                : "bg-[var(--color-card-bg-hover)] text-[var(--color-text-secondary)]"
+                ? "bg-[var(--color-primary-light)] text-white border-b-2 border-[var(--color-primary)] font-bold shadow-sm"
+                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
             }`}
             onClick={() => setActiveTab("chats")}
           >
-            <FiMessageSquare className="mr-1" />
-            <span>Chats</span>
+            <FiMessageSquare className="mr-1 flex-shrink-0" />
+            <span className="truncate">{t("message.chats")}</span>
           </button>
           <button
-            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-colors flex items-center justify-center ${
+            className={`flex items-center justify-center flex-1 py-1.5 px-2 text-xs font-medium rounded-md transition-all ${
               activeTab === "friends"
-                ? "bg-[var(--color-primary)] text-white"
-                : "bg-[var(--color-card-bg-hover)] text-[var(--color-text-secondary)]"
+                ? "bg-[var(--color-primary-light)] text-white border-b-2 border-[var(--color-primary)] font-bold shadow-sm"
+                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
             }`}
             onClick={() => setActiveTab("friends")}
           >
-            <FiUsers className="mr-1" />
-            <span>Friends</span>
+            <FiUsers className="mr-1 flex-shrink-0" />
+            <span className="truncate">{t("message.friends")}</span>
           </button>
         </div>
       </div>
 
-      {/* Main content - scrollable */}
+      {/* Conversation list with scrolling */}
       <div className="flex-1 overflow-y-auto">
-        {/* Content based on state */}
-        {isSearchFocused && searchQuery ? (
-          <div className="py-2 px-2">
-            <p className="text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider pb-2">
-              Search Results
-            </p>
-            {renderSearchResults()}
-          </div>
-        ) : activeTab === "chats" ? (
-          <div className="py-2 px-2">{renderConversations()}</div>
-        ) : (
-          <div className="py-2 px-2">{renderFriends()}</div>
-        )}
+        {searchQuery
+          ? renderSearchResults()
+          : activeTab === "chats"
+          ? renderConversations()
+          : renderFriends()}
       </div>
     </div>
   );

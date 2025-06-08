@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import MessageList from "./MessageList";
 import MessageChat from "./MessageChat";
 import { useMessageContext } from "../../contexts/MessageContext";
@@ -8,17 +8,20 @@ import { useFriends } from "../../hooks/queries/useFriendQueries";
 import { useFriend } from "../../contexts/FriendContext";
 import { connectSocket, disconnectSocket } from "../../services/socket";
 import { useSocket } from "../../contexts/SocketContext";
+import { useTranslation } from "react-i18next";
+import { FiMessageSquare } from "react-icons/fi";
+import { BsPersonCircle } from "react-icons/bs";
 
 const MessagesContainer = ({ userId }) => {
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
   const { setCurrentConversation, currentConversation } = useMessageContext();
-  const navigate = useNavigate();
   const location = useLocation();
   const { data: friendsData } = useFriends();
   const { friends: contextFriends } = useFriend();
   const [previousUserId, setPreviousUserId] = useState(null);
   const socket = useSocket();
   const isConnected = socket?.isConnected || false;
+  const { t } = useTranslation();
 
   // Combine friend sources to ensure we have data
   const allFriends = useMemo(() => {
@@ -35,21 +38,17 @@ const MessagesContainer = ({ userId }) => {
     return dataFromQuery.length > 0 ? dataFromQuery : dataFromContext;
   }, [friendsData, contextFriends]);
 
-  // Cải thiện kết nối socket khi component khởi tạo
-  useEffect(() => {
-    console.log("MessagesContainer mounted, ensuring socket connection");
 
-    // Đảm bảo socket đã kết nối khi xem tin nhắn
+  useEffect(() => {
     connectSocket();
 
     // Thử kết nối lại ngay nếu chưa kết nối
     if (!isConnected) {
-      console.log("Socket not connected yet, forcing immediate reconnect");
       // Thử kết nối lại ngay lập tức
       if (socket && typeof socket.forceReconnect === "function") {
         socket.forceReconnect();
       } else {
-        connectSocket(); // Fallback nếu không có forceReconnect
+        connectSocket();
       }
 
       // Thử kết nối lại nhiều lần trong 10 giây đầu tiên
@@ -57,7 +56,6 @@ const MessagesContainer = ({ userId }) => {
       quickReconnectAttempts.forEach((delay) => {
         setTimeout(() => {
           if (!isConnected) {
-            console.log(`Retry connection after ${delay}ms`);
             if (socket && typeof socket.forceReconnect === "function") {
               socket.forceReconnect();
             } else {
@@ -71,7 +69,6 @@ const MessagesContainer = ({ userId }) => {
     // Thiết lập interval để kiểm tra kết nối và thử lại nếu bị mất
     const checkInterval = setInterval(() => {
       if (!isConnected && currentConversation?._id) {
-        console.log("Connection lost, attempting to reconnect...");
         // Thử kết nối lại socket
         if (socket && typeof socket.forceReconnect === "function") {
           socket.forceReconnect();
@@ -156,10 +153,6 @@ const MessagesContainer = ({ userId }) => {
       currentConversation &&
       previousUserId !== currentConversation._id
     ) {
-      // When changing conversation partners
-      console.log("Switching conversation, refreshing messages");
-
-      // Just trigger a refresh for messages rather than reconnect socket
       if (currentConversation._id) {
         setTimeout(() => {
           window.dispatchEvent(
@@ -199,62 +192,77 @@ const MessagesContainer = ({ userId }) => {
       transition={{ duration: 0.4 }}
       className="h-full card shadow-md overflow-hidden border border-[var(--color-border)] bg-[var(--color-card-bg)] rounded-lg"
     >
-      {/* Alert for disconnected socket */}
-      {/* Ẩn banner mất kết nối socket */}
-      {/*
-      {!isConnected && (
-        <div className="w-full bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200 py-1 px-3 sm:px-4 text-xs sm:text-sm flex justify-between items-center">
-          <span className="line-clamp-1">
-            Connection lost. Messages will still load via API.
+      {/* Mobile buttons to navigate between list and conversation */}
+      <div className="flex lg:hidden bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)]">
+        <button
+          onClick={() => setIsMobileListVisible(true)}
+          className={`w-1/2 text-center py-1.5 px-1 text-xs font-medium flex items-center justify-center ${
+            isMobileListVisible
+              ? "text-white bg-[var(--color-primary)] border-b-2 border-[var(--color-primary)] font-bold shadow-sm"
+              : "text-[var(--color-text-primary)]"
+          }`}
+        >
+          <FiMessageSquare className="mr-1 sm:mr-1.5" />
+          <span className="truncate">{t("message.chats")}</span>
+        </button>
+        <button
+          onClick={() => setIsMobileListVisible(false)}
+          className={`w-1/2 text-center py-1.5 px-1 text-xs font-medium flex items-center justify-center ${
+            !isMobileListVisible && currentConversation
+              ? "text-white bg-[var(--color-primary)] border-b-2 border-[var(--color-primary)] font-bold shadow-sm"
+              : "text-[var(--color-text-primary)]"
+          }`}
+          disabled={!currentConversation}
+        >
+          <BsPersonCircle className="mr-1 sm:mr-1.5" />
+          <span className="truncate">
+            {currentConversation
+              ? currentConversation.fullname || currentConversation.username
+              : t("message.chat")}
           </span>
-          <button
-            onClick={() => {
-              if (socket && typeof socket.forceReconnect === "function") {
-                socket.forceReconnect();
-              } else {
-                connectSocket();
-              }
-              handleRefreshConversation();
-            }}
-            className="text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 font-medium ml-2 sm:ml-4 py-0.5 px-2 text-xs rounded bg-amber-100 dark:bg-amber-900 hover:bg-amber-200 dark:hover:bg-amber-800 whitespace-nowrap"
-          >
-            Reconnect
-          </button>
-        </div>
-      )}
-      */}
+        </button>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 h-full">
-        {/* Contact list - hidden on mobile when chat is active */}
+      {/* Main container */}
+      <div className="flex h-full">
+        {/* Message list (conditional for mobile) */}
         <div
-          className={`md:col-span-1 h-full border-r border-[var(--color-border)] ${
-            !isMobileListVisible && "hidden md:block"
-          } flex flex-col bg-[var(--color-bg-secondary)] overflow-hidden`}
+          className={`${
+            isMobileListVisible ? "block" : "hidden"
+          } lg:block lg:w-1/3 border-r border-[var(--color-border)] h-full bg-[var(--color-bg-secondary)]`}
         >
-          <div className="flex-1 overflow-hidden">
-            <MessageList
-              onSelectFriend={(friend) => {
-                if (!friend || !friend._id) return;
-                selectConversation(friend);
-                // Update URL to reflect the selected conversation
-                navigate(`/messages/${friend._id}`, { replace: true });
-              }}
-            />
-          </div>
+          <MessageList
+            onSelectConversation={selectConversation}
+            selectedUserId={currentConversation?._id}
+          />
         </div>
 
-        {/* Chat area - hidden on mobile when contact list is active */}
+        {/* Message chat (conditional for mobile) */}
         <div
-          className={`md:col-span-2 h-full ${
-            isMobileListVisible && "hidden md:block"
-          } overflow-hidden flex flex-col`}
+          className={`${
+            !isMobileListVisible ? "block" : "hidden"
+          } lg:block lg:w-2/3 h-full`}
         >
-          <div className="flex-1 overflow-hidden">
+          {currentConversation ? (
             <MessageChat
-              key={currentConversation?._id || "no-conversation"}
-              onBackToList={() => setIsMobileListVisible(true)}
+              recipientId={currentConversation._id}
+              recipientName={
+                currentConversation.fullname || currentConversation.username
+              }
+              recipientAvatar={currentConversation.avatar}
+              onBack={() => setIsMobileListVisible(true)}
             />
-          </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-center p-4 text-[var(--color-text-secondary)]">
+              <div>
+                <div className="text-5xl mb-3">💬</div>
+                <h2 className="text-sm font-semibold mb-1.5 text-[var(--color-text-primary)]">
+                  {t("message.noConversation")}
+                </h2>
+                <p className="text-xs">{t("message.selectFriend")}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

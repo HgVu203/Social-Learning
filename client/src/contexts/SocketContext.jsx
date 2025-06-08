@@ -7,8 +7,7 @@ import {
   useRef,
 } from "react";
 import { useAuth } from "./AuthContext";
-import socketService from "../services/socket";
-import { isOnMessagePage } from "../socket";
+import * as socketService from "../socket";
 
 // Tạo Socket Context
 const SocketContext = createContext({
@@ -19,118 +18,136 @@ const SocketContext = createContext({
   leaveChat: () => {},
   sendMessage: () => {},
   markAsRead: () => {},
-  startTyping: () => {},
-  stopTyping: () => {},
   subscribeToMessages: () => () => {},
-  subscribeToTyping: () => () => {},
   subscribeToUserStatus: () => () => {},
 });
 
 export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const { user, isAuthenticated } = useAuth();
-  const reconnectTimerRef = useRef(null);
-  const checkConnectionTimerRef = useRef(null);
+  const connectionCheckTimerRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const lastReconnectAttemptRef = useRef(0);
+  const MIN_RECONNECT_INTERVAL = 5000; // 5 giây giữa các lần thử kết nối
+
+  // Hàm debounce kết nối
+  const debouncedConnect = useCallback(() => {
+    const now = Date.now();
+    // Nếu đã kết nối gần đây, không cố gắng kết nối lại
+    if (now - lastReconnectAttemptRef.current < MIN_RECONNECT_INTERVAL) {
+      console.log("Too soon to reconnect, skipping");
+      return;
+    }
+
+    // Cập nhật thời gian thử kết nối gần nhất
+    lastReconnectAttemptRef.current = now;
+
+    // Xóa timeout cũ nếu có
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    // Thiết lập timeout mới
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (socketService.isOnMessagePage()) {
+        console.log("SocketContext: Attempting reconnect after delay");
+        const socket = socketService.initSocket();
+        setIsConnected(!!socket && socket.connected);
+      }
+    }, 500); // Chờ 500ms trước khi thực sự kết nối
+  }, []);
 
   // Khởi tạo kết nối socket khi user đăng nhập và ở trang message
   useEffect(() => {
-    let unsubscribe = null;
+    // Nếu chưa đăng nhập hoặc không có user, không làm gì cả
+    if (!isAuthenticated || !user) {
+      setIsConnected(false);
+      return;
+    }
 
-    const setupSocket = () => {
-      try {
-        if (isAuthenticated && user) {
-          console.log("Initializing socket connection from context");
+    // Theo dõi sự kiện kết nối/ngắt kết nối
+    const handleConnected = () => {
+      console.log("Socket connected event received in context");
+      setIsConnected(true);
+    };
 
-          // Kiểm tra nếu đang ở trang message thì kết nối ngay
-          if (isOnMessagePage()) {
-            console.log("On messages page, connecting socket immediately");
-            // Kết nối socket
-            const socket = socketService.connectSocket();
-            // Cập nhật trạng thái kết nối
-            setIsConnected(!!socket);
+    const handleDisconnected = () => {
+      console.log("Socket disconnected event received in context");
+      setIsConnected(false);
+    };
 
-            // Thử kết nối lại sau 2 giây nếu không thành công
-            if (!socket) {
-              setTimeout(() => {
-                console.log("Trying to reconnect after 2 seconds...");
-                const reconnected = socketService.forceReconnect();
-                setIsConnected(reconnected);
-              }, 2000);
-            }
-          }
+    // Đăng ký lắng nghe sự kiện kết nối/ngắt kết nối
+    window.addEventListener("socket_connected", handleConnected);
+    window.addEventListener("socket_disconnected", handleDisconnected);
 
-          // Theo dõi sự kiện kết nối/ngắt kết nối
-          const handleConnected = () => {
-            console.log("Socket connected - Context updated");
-            setIsConnected(true);
-          };
+    // Kiểm tra và kết nối socket nếu đang ở trang message
+    const checkAndConnect = () => {
+      if (socketService.isOnMessagePage()) {
+        console.log("SocketContext: On message page, checking connection");
+        const currentStatus = socketService.isSocketConnected();
 
-          const handleDisconnected = () => {
-            console.log("Socket disconnected - Context updated");
-            setIsConnected(false);
-          };
-
-          window.addEventListener("socket_connected", handleConnected);
-          window.addEventListener("socket_disconnected", handleDisconnected);
-
-          unsubscribe = () => {
-            window.removeEventListener("socket_connected", handleConnected);
-            window.removeEventListener(
-              "socket_disconnected",
-              handleDisconnected
-            );
-          };
+        // Nếu không kết nối, thử kết nối lại
+        if (!currentStatus) {
+          console.log("SocketContext: Not connected, attempting to connect");
+          debouncedConnect();
+        } else {
+          setIsConnected(true);
         }
-      } catch (error) {
-        console.error("Lỗi khởi tạo socket từ context:", error);
-        setIsConnected(false);
       }
     };
 
-    setupSocket();
+    // Kiểm tra kết nối ban đầu
+    checkAndConnect();
 
-    // Kiểm tra kết nối định kỳ
-    checkConnectionTimerRef.current = setInterval(() => {
-      if (isAuthenticated && user && isOnMessagePage()) {
-        const socketActive = socketService.isSocketConnected();
+    // Thiết lập kiểm tra định kỳ - giảm tần suất kiểm tra xuống 60 giây
+    connectionCheckTimerRef.current = setInterval(() => {
+      if (socketService.isOnMessagePage()) {
+        const currentStatus = socketService.isSocketConnected();
+        if (isConnected !== currentStatus) {
+          setIsConnected(currentStatus);
 
-        // Cập nhật trạng thái nếu có sự khác biệt
-        if (isConnected !== socketActive) {
-          console.log(
-            `[SocketContext] Connection status: ${
-              socketActive ? "connected" : "disconnected"
-            }`
-          );
-          setIsConnected(socketActive);
+          // Nếu không còn kết nối, thử kết nối lại
+          if (!currentStatus) {
+            console.log("SocketContext: Connection lost, trying to reconnect");
+            debouncedConnect();
+          }
         }
-
-        // Thử kết nối lại nếu chưa được kết nối
-        if (!socketActive) {
-          console.log("[SocketContext] Attempting to reconnect...");
-          socketService.connectSocket();
-        }
+      } else if (isConnected) {
+        // Không ở trang message, ngắt kết nối nếu đang kết nối
+        console.log("SocketContext: Left message page, disconnecting");
+        socketService.disconnect();
+        setIsConnected(false);
       }
-    }, 60000); // Kiểm tra mỗi 1 phút
+    }, 60000); // Kiểm tra mỗi 60 giây thay vì 30 giây
 
-    // Kiểm tra kết nối khi tab trở nên active
+    // Kiểm tra khi tab trở nên active
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === "visible" &&
-        isAuthenticated &&
-        user &&
-        isOnMessagePage()
+        socketService.isOnMessagePage()
       ) {
-        checkConnection(true);
+        const currentStatus = socketService.isSocketConnected();
+        setIsConnected(currentStatus);
+
+        if (!currentStatus) {
+          console.log("SocketContext: Tab active, reconnecting socket");
+          debouncedConnect();
+        }
       }
     };
 
     // Kiểm tra khi có thay đổi về network
     const handleNetworkChange = () => {
-      if (navigator.onLine && isAuthenticated && user && isOnMessagePage()) {
-        console.log("Network change detected, checking connection");
+      if (navigator.onLine && socketService.isOnMessagePage()) {
+        console.log("SocketContext: Network changed, checking connection");
+        // Tăng delay để đảm bảo network đã ổn định
         setTimeout(() => {
-          checkConnection(true);
-        }, 2000);
+          const currentStatus = socketService.isSocketConnected();
+          if (!currentStatus) {
+            console.log("SocketContext: Network recovered, reconnecting");
+            debouncedConnect();
+          }
+        }, 3000); // Tăng từ 1s lên 3s
       }
     };
 
@@ -139,101 +156,99 @@ export const SocketProvider = ({ children }) => {
 
     // Cleanup khi unmount
     return () => {
-      if (unsubscribe) unsubscribe();
-
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
-
-      if (checkConnectionTimerRef.current) {
-        clearInterval(checkConnectionTimerRef.current);
-      }
-
+      window.removeEventListener("socket_connected", handleConnected);
+      window.removeEventListener("socket_disconnected", handleDisconnected);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleNetworkChange);
+
+      if (connectionCheckTimerRef.current) {
+        clearInterval(connectionCheckTimerRef.current);
+      }
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
+      // Ngắt kết nối socket khi unmount
+      socketService.disconnect();
     };
-  }, [isAuthenticated, user, isConnected]);
-
-  // Kiểm tra kết nối
-  const checkConnection = useCallback(
-    (forceReconnect = false) => {
-      if (!isOnMessagePage()) return false;
-
-      const socketActive = socketService.isSocketConnected();
-
-      // Cập nhật trạng thái nếu có sự khác biệt
-      if (isConnected !== socketActive) {
-        setIsConnected(socketActive);
-      }
-
-      // Kết nối lại nếu cần
-      if (forceReconnect || !socketActive) {
-        console.log("[SocketContext] Reconnecting socket");
-        socketService.forceReconnect();
-      }
-
-      return socketActive;
-    },
-    [isConnected]
-  );
+  }, [isAuthenticated, user, isConnected, debouncedConnect]);
 
   // Kết nối socket
   const connect = useCallback(() => {
-    if (!isOnMessagePage()) return false;
+    if (!socketService.isOnMessagePage()) return false;
 
     try {
-      const connected = socketService.connectSocket();
-      setIsConnected(connected);
-      return connected;
+      debouncedConnect();
+      // Trả về trạng thái hiện tại, debouncedConnect sẽ cập nhật sau
+      return isConnected;
     } catch (error) {
       console.error("Error connecting socket from context:", error);
+      setIsConnected(false);
       return false;
     }
-  }, []);
+  }, [debouncedConnect, isConnected]);
 
   // Ngắt kết nối socket
   const disconnect = useCallback(() => {
     try {
-      const result = socketService.disconnectSocket();
+      const result = socketService.disconnect();
       setIsConnected(false);
       return result;
     } catch (error) {
       console.error("Error disconnecting socket from context:", error);
+      setIsConnected(false);
       return false;
     }
   }, []);
 
   // Tham gia phòng chat
-  const joinChat = useCallback((chatId) => {
-    if (!chatId) return false;
-    return socketService.joinChatRoom(chatId);
-  }, []);
+  const joinChat = useCallback(
+    (chatId) => {
+      if (!chatId) return false;
+
+      // Đảm bảo đã kết nối trước khi tham gia phòng chat
+      if (!isConnected) {
+        const connected = connect();
+        if (!connected) return false;
+      }
+
+      return socketService.joinChatRoom(chatId);
+    },
+    [isConnected, connect]
+  );
 
   // Rời phòng chat
-  const leaveChat = useCallback((chatId) => {
-    if (!chatId) return false;
-    return socketService.leaveChatRoom(chatId);
-  }, []);
+  const leaveChat = useCallback(
+    (chatId) => {
+      if (!chatId || !isConnected) return false;
+      return socketService.leaveChatRoom(chatId);
+    },
+    [isConnected]
+  );
 
   // Gửi tin nhắn
-  const sendMessage = useCallback((message) => {
-    return socketService.sendMessage(message);
-  }, []);
+  const sendMessage = useCallback(
+    (message) => {
+      // Đảm bảo đã kết nối trước khi gửi tin nhắn
+      if (!isConnected) {
+        const connected = connect();
+        if (!connected) return null;
+      }
+
+      return socketService.sendMessage(message);
+    },
+    [isConnected, connect]
+  );
 
   // Đánh dấu tin nhắn đã đọc
-  const markAsRead = useCallback((data) => {
-    return socketService.markMessageAsRead(data);
-  }, []);
-
-  // Bắt đầu gõ tin nhắn
-  const startTyping = useCallback((chatId) => {
-    return socketService.startTyping(chatId);
-  }, []);
-
-  // Dừng gõ tin nhắn
-  const stopTyping = useCallback((chatId) => {
-    return socketService.stopTyping(chatId);
-  }, []);
+  const markAsRead = useCallback(
+    (data) => {
+      if (!isConnected) return false;
+      return socketService.markMessageAsRead(data);
+    },
+    [isConnected]
+  );
 
   // Lắng nghe tin nhắn mới
   const subscribeToMessages = useCallback((chatId, callback) => {
@@ -241,19 +256,14 @@ export const SocketProvider = ({ children }) => {
     return socketService.subscribeToMessages(chatId, callback);
   }, []);
 
-  // Lắng nghe trạng thái đang gõ
-  const subscribeToTyping = useCallback((chatId, callback) => {
-    if (!chatId) return () => {};
-    return socketService.subscribeToTyping(chatId, callback);
-  }, []);
-
   // Lắng nghe trạng thái online/offline
   const subscribeToUserStatus = useCallback((callback) => {
+    if (!callback) return () => {};
     return socketService.subscribeToUserStatus(callback);
   }, []);
 
-  // Giá trị context
-  const contextValue = {
+  // Value object cho context
+  const value = {
     isConnected,
     connect,
     disconnect,
@@ -261,23 +271,15 @@ export const SocketProvider = ({ children }) => {
     leaveChat,
     sendMessage,
     markAsRead,
-    startTyping,
-    stopTyping,
     subscribeToMessages,
-    subscribeToTyping,
     subscribeToUserStatus,
-    checkConnection,
-    forceReconnect: () => socketService.forceReconnect(),
   };
 
   return (
-    <SocketContext.Provider value={contextValue}>
-      {children}
-    </SocketContext.Provider>
+    <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
   );
 };
 
-// Hook để sử dụng Socket Context
 export const useSocket = () => useContext(SocketContext);
 
 export default SocketContext;

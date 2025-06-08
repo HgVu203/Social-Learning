@@ -1,175 +1,172 @@
-import { useNotification } from "../../contexts/NotificationContext";
+import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { formatDistanceToNow } from "date-fns";
-import { motion } from "framer-motion";
-import { IoMdCheckmarkCircleOutline, IoMdTrash } from "react-icons/io";
+import { vi, enUS } from "date-fns/locale";
 import { Link } from "react-router-dom";
+import { FiMoreHorizontal, FiCheck, FiX } from "react-icons/fi";
+import { useNotification } from "../../contexts/NotificationContext";
+import Avatar from "../common/Avatar";
 
 const NotificationDropdown = ({ onClose }) => {
-  const {
-    notifications,
-    loading,
-    markAsRead,
-    markAllAsRead,
-    deleteNotification,
-  } = useNotification();
+  const { t, i18n } = useTranslation();
+  const { notifications, markAsRead, markAllAsRead, loading } =
+    useNotification();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
-  // Extract username from notification message (fallback for older notifications)
-  const extractUsername = (message) => {
-    const match = message.match(/^([^\s]+)/);
-    return match ? match[1] : null;
+  const currentLocale = i18n.language === "vi" ? vi : enUS;
+
+  const formatTimeDistance = (date) => {
+    const distance = formatDistanceToNow(new Date(date), {
+      addSuffix: true,
+      locale: currentLocale,
+    });
+    return distance;
   };
 
-  // Handle notification click
-  const handleNotificationClick = (notification) => {
-    if (!notification.read) {
-      markAsRead(notification._id);
-    }
-    onClose();
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        !event.target.classList.contains("notification-more-button")
+      ) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleReadNotification = async (notificationId) => {
+    await markAsRead(notificationId);
   };
 
-  // Generate link based on notification type
-  const getNotificationLink = (notification) => {
-    // If notification has sender info, link to their profile
-    if (notification.sender && notification.sender._id) {
-      return `/profile/${notification.sender._id}`;
-    }
-
-    // Otherwise use default routes based on type
-    switch (notification.type) {
-      case "friend_request":
-        return "/friends";
-      case "friend_accepted":
-        return "/friends";
-      case "comment":
-        return `/posts/${notification.relatedId}`;
-      case "like":
-        return `/posts/${notification.relatedId}`;
-      default:
-        return "/";
-    }
+  const handleMarkAllAsRead = async () => {
+    await markAllAsRead();
   };
 
   return (
-    <div className="h-full">
-      {/* Filter options */}
-      <div className="px-4 py-2 border-b border-[var(--color-border)] flex justify-between items-center">
-        <div className="flex items-center space-x-4">
-          <button className="text-sm font-medium text-[var(--color-primary)]">
-            All
+    <div
+      className="bg-[var(--color-bg-primary)] rounded-lg shadow-lg border border-[var(--color-border)] overflow-hidden"
+      style={{ width: "360px" }}
+    >
+      <div className="p-4 border-b border-[var(--color-border)] flex justify-between items-center sticky top-0 bg-[var(--color-bg-primary)] z-10">
+        <h3 className="text-xl font-bold text-[var(--color-text-primary)]">
+          {t("notifications.title")}
+        </h3>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
+            title={t("common.close")}
+          >
+            <FiX className="w-5 h-5" />
           </button>
-          <button className="text-sm text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]">
-            Unread
-          </button>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="p-1.5 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)] notification-more-button"
+            >
+              <FiMoreHorizontal className="w-5 h-5" />
+            </button>
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-1 w-48 bg-[var(--color-bg-primary)] rounded-md shadow-lg border border-[var(--color-border)] z-10">
+                <div className="py-1">
+                  <button
+                    onClick={handleMarkAllAsRead}
+                    className="block w-full text-left px-4 py-2 text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                  >
+                    {t("notifications.markAllRead")}
+                  </button>
+                  <Link
+                    to="/settings/notifications"
+                    className="block px-4 py-2 text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                    onClick={onClose}
+                  >
+                    {t("notifications.settings")}
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <button
-          onClick={markAllAsRead}
-          className="text-sm text-[var(--color-primary)] hover:underline"
-        >
-          Mark all as read
-        </button>
       </div>
 
-      {/* Notifications content */}
-      <div className="overflow-y-auto">
+      <div className="max-h-[calc(100vh-120px)] overflow-y-auto">
         {loading ? (
-          <div className="py-4 px-4 text-center">
-            <div className="animate-pulse w-full h-4 bg-[var(--color-bg-tertiary)] rounded mb-2"></div>
-            <div className="animate-pulse w-3/4 h-4 bg-[var(--color-bg-tertiary)] rounded mb-2"></div>
-            <div className="animate-pulse w-1/2 h-4 bg-[var(--color-bg-tertiary)] rounded"></div>
+          <div className="p-4 flex justify-center">
+            <div className="animate-spin h-5 w-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full"></div>
           </div>
         ) : notifications.length === 0 ? (
-          <div className="py-16 px-4 text-center text-[var(--color-text-secondary)]">
-            <p className="text-4xl mb-3">📭</p>
-            <p className="font-medium text-[var(--color-text-primary)]">
-              No notifications yet
-            </p>
-            <p className="text-sm mt-1">
-              We'll notify you when something happens
+          <div className="p-6 text-center">
+            <p className="text-[var(--color-text-secondary)]">
+              {t("notifications.noNotifications")}
             </p>
           </div>
         ) : (
-          <ul>
+          <div>
             {notifications.map((notification) => (
-              <motion.li
+              <div
                 key={notification._id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className={`border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg-hover)] transition-colors ${
-                  !notification.read ? "bg-[var(--color-bg-tertiary)]" : ""
+                className={`p-4 hover:bg-[var(--color-bg-hover)] transition-colors ${
+                  !notification.read ? "bg-[var(--color-bg-unread)]" : ""
                 }`}
               >
-                <Link
-                  to={getNotificationLink(notification)}
-                  onClick={() => handleNotificationClick(notification)}
-                  className="block px-4 py-3"
-                >
-                  <div className="flex items-start">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg mr-3 mt-0.5 overflow-hidden">
-                      {notification.sender ? (
-                        <img
-                          src={
-                            notification.sender.avatar ||
-                            `https://ui-avatars.com/api/?name=${
-                              notification.sender.username || "U"
-                            }&background=random`
+                <div className="flex items-start space-x-3">
+                  <Avatar
+                    url={notification.sender?.avatar}
+                    size="md"
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <Link
+                        to={notification.link || "#"}
+                        className="block flex-1"
+                        onClick={() => {
+                          if (!notification.read) {
+                            handleReadNotification(notification._id);
                           }
-                          alt={notification.sender.username || "User"}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={`https://ui-avatars.com/api/?name=${
-                            extractUsername(notification.message) || "U"
-                          }&background=random`}
-                          alt="User"
-                          className="w-full h-full object-cover"
-                        />
+                          onClose();
+                        }}
+                      >
+                        <div className="text-[var(--color-text-primary)]">
+                          {notification.sender?.username ? (
+                            <>
+                              <span className="font-semibold">
+                                {notification.sender.username}
+                              </span>{" "}
+                              <span>{notification.message}</span>
+                            </>
+                          ) : (
+                            <span>{notification.message}</span>
+                          )}
+                        </div>
+                      </Link>
+                      {!notification.read && (
+                        <button
+                          onClick={() =>
+                            handleReadNotification(notification._id)
+                          }
+                          className="ml-2 p-1 rounded-full hover:bg-[var(--color-bg-tertiary)] text-[var(--color-primary)]"
+                          title={t("notifications.markAsRead")}
+                        >
+                          <FiCheck className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm text-[var(--color-text-primary)]">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-                        {formatDistanceToNow(new Date(notification.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center space-x-1 ml-2 self-center">
-                      {!notification.read ? (
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            markAsRead(notification._id);
-                          }}
-                          className="p-1 text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-full"
-                          title="Mark as read"
-                        >
-                          <IoMdCheckmarkCircleOutline className="w-5 h-5" />
-                        </button>
-                      ) : null}
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          deleteNotification(notification._id);
-                        }}
-                        className="p-1 text-[var(--color-text-tertiary)] hover:text-red-500 hover:bg-[var(--color-bg-tertiary)] rounded-full"
-                        title="Delete notification"
-                      >
-                        <IoMdTrash className="w-5 h-5" />
-                      </button>
-                    </div>
+                    <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+                      {formatTimeDistance(notification.createdAt)}
+                    </p>
                   </div>
-                </Link>
-              </motion.li>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>

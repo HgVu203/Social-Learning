@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../contexts/ThemeContext";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 interface GameCardProps {
   id: string;
@@ -25,6 +26,7 @@ const GameCard: React.FC<GameCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <motion.div
@@ -57,7 +59,7 @@ const GameCard: React.FC<GameCardProps> = ({
           className={`select-none rounded-lg bg-gradient-to-r ${color} py-3 px-6 text-center align-middle font-sans text-xs font-bold uppercase text-white shadow-md transition-all hover:shadow-lg focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none w-full cursor-pointer`}
           type="button"
         >
-          Play Now
+          {t("game.playNow")}
         </button>
       </div>
     </motion.div>

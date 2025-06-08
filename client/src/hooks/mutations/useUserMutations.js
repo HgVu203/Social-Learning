@@ -2,46 +2,44 @@ import axiosService from "../../services/axiosService";
 import { USER_QUERY_KEYS } from "../queries/useUserQueries";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AUTH_QUERY_KEYS } from "../queries/useAuthQueries";
-import { showSuccessToast } from "../../utils/toast";
+import { showSuccessToast, showErrorToast } from "../../utils/toast";
 import { userService } from "../../services/userService";
+import { useTranslation } from "react-i18next";
 
 export const useUpdateProfile = () => {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: async (userData) => {
-      console.log("Updating profile with data:", userData);
       const response = await axiosService.patch(
         "/users/update-profile",
         userData
       );
-      console.log("Profile update API response:", response.data);
       return response.data;
     },
     onSuccess: (data) => {
-      console.log("Profile update successful, invalidating queries");
-      // Show success toast
-      showSuccessToast("Profile updated successfully");
+      showSuccessToast(t("profile.updateSuccess"));
 
-      // Invalidate all user profile queries
-      queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.me });
+      const currentUser = queryClient.getQueryData(AUTH_QUERY_KEYS.session);
+      const userId = data?.data?._id || currentUser?._id;
 
-      // Also invalidate current user profile
-      const userId = data?.data?._id;
       if (userId) {
-        queryClient.invalidateQueries({
+        queryClient.invalidateQueries({ queryKey: USER_QUERY_KEYS.all });
+
+        queryClient.refetchQueries({
           queryKey: USER_QUERY_KEYS.userProfile(userId),
+          exact: false,
         });
       }
 
-      // Invalidate auth session as user data might have changed
-      queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEYS.session });
-
-      // Force refetch the data
-      queryClient.refetchQueries({ queryKey: USER_QUERY_KEYS.all });
-      queryClient.refetchQueries({ queryKey: AUTH_QUERY_KEYS.session });
+    },
+    onError: (error) => {
+      console.error("Update profile error:", error);
+      const errorMessage =
+        error?.response?.data?.message || t("profile.updateError");
+      showErrorToast(errorMessage);
     },
   });
 };
@@ -91,133 +89,136 @@ export const useUpdateCoverPhoto = () => {
 };
 
 export const useChangePassword = () => {
+  const { t } = useTranslation();
+
   return useMutation({
     mutationFn: async (data) => {
       const response = await axiosService.post("/auth/change-password", data);
       return response.data;
     },
     onSuccess: () => {
-      showSuccessToast("Password changed successfully");
+      showSuccessToast(t("password.changeSuccess"));
     },
   });
 };
 
-// Hàm duy nhất để xử lý cả follow/unfollow
 export const useUserFollow = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (userId) => {
-      const response = await userService.toggleFollow(userId);
+    mutationFn: async ({ userId, isFollowing }) => {
+      let response;
+
+      console.log("[useUserFollow] Starting mutation", { userId, isFollowing });
+
+      // Dựa vào trạng thái follow hiện tại để gọi API phù hợp
+      if (isFollowing !== undefined) {
+        if (isFollowing) {
+          // Nếu đang follow, gọi API unfollow
+          console.log("[useUserFollow] Calling unfollowUser API");
+          response = await userService.unfollowUser(userId);
+        } else {
+          // Nếu chưa follow, gọi API follow
+          console.log("[useUserFollow] Calling followUser API");
+          response = await userService.followUser(userId);
+        }
+      } else {
+        // Nếu không xác định trạng thái, sử dụng API toggle
+        console.log("[useUserFollow] Calling toggleFollow API");
+        response = await userService.toggleFollow(userId);
+      }
       return response;
     },
-
-    onMutate: async (userId) => {
-      // Hủy các query đang chạy để tránh race condition
-      await queryClient.cancelQueries({
-        queryKey: USER_QUERY_KEYS.userProfile(userId),
-      });
-      await queryClient.cancelQueries({
-        queryKey: USER_QUERY_KEYS.me,
-      });
-
-      // Lưu trạng thái trước khi update
-      const previousUserProfile = queryClient.getQueryData(
-        USER_QUERY_KEYS.userProfile(userId)
+    onSuccess: (data, variables) => {
+      const { userId } = variables;
+      console.log(
+        "[useUserFollow] Mutation successful, invalidating queries for user:",
+        userId
       );
-      const previousCurrentUser = queryClient.getQueryData(USER_QUERY_KEYS.me);
 
-      return { previousUserProfile, previousCurrentUser };
-    },
+      if (userId) {
+        // Xóa bộ nhớ cache của React Query
+        queryClient.invalidateQueries({
+          queryKey: USER_QUERY_KEYS.userProfile(userId),
+        });
 
-    onError: (err, userId, context) => {
-      // Khôi phục cache nếu có lỗi
-      if (context?.previousUserProfile) {
-        queryClient.setQueryData(
-          USER_QUERY_KEYS.userProfile(userId),
-          context.previousUserProfile
-        );
-      }
+        // Xóa bộ nhớ cache cho tất cả các query liên quan đến user
+        queryClient.invalidateQueries({
+          queryKey: USER_QUERY_KEYS.all,
+        });
 
-      if (context?.previousCurrentUser) {
-        queryClient.setQueryData(
-          USER_QUERY_KEYS.me,
-          context.previousCurrentUser
-        );
-      }
-    },
+        // Force refetch dữ liệu profile ngay lập tức
+        queryClient.refetchQueries({
+          queryKey: USER_QUERY_KEYS.userProfile(userId),
+          exact: false,
+          type: "active",
+          stale: true,
+        });
 
-    onSuccess: (data, userId) => {
-      if (!data || !data.success) {
-        return;
-      }
-
-      // Lấy thông tin từ response
-      const { isFollowing, followersCount, followingCount } = data.data || {};
-
-      // Cập nhật cache trực tiếp với giá trị chính xác từ server
-      queryClient.setQueryData(USER_QUERY_KEYS.userProfile(userId), (old) => {
-        if (!old) return old;
-
-        // Xử lý cả hai trường hợp cấu trúc dữ liệu
-        if (old.data) {
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              isFollowing,
-              followersCount,
-            },
-          };
-        } else {
-          return {
-            ...old,
-            isFollowing,
-            followersCount,
-          };
+        // Clear userProfileCache trong userService
+        try {
+          userService.clearUserCache(userId);
+        } catch (err) {
+          console.error("[useUserFollow] Failed to clear user cache:", err);
         }
-      });
-
-      // Cập nhật cache current user nếu cần
-      queryClient.setQueryData(USER_QUERY_KEYS.me, (old) => {
-        if (!old) return old;
-
-        // Xử lý cả hai trường hợp cấu trúc dữ liệu
-        if (old.data) {
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              followingCount,
-            },
-          };
-        } else {
-          return {
-            ...old,
-            followingCount,
-          };
-        }
-      });
-
-      // Invalidate queries để đảm bảo dữ liệu được refresh từ server
-      queryClient.invalidateQueries({
-        queryKey: USER_QUERY_KEYS.userProfile(userId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: USER_QUERY_KEYS.me,
-      });
+      }
+    },
+    onError: (error, variables) => {
+      console.error(
+        "[useUserFollow] Error in mutation:",
+        error,
+        "Variables:",
+        variables
+      );
     },
   });
 };
 
-// Combined hook that exports all mutations
+export const useFollowUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId) => {
+      const response = await userService.followUser(userId);
+      return response;
+    },
+    onSuccess: (data, userId) => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: USER_QUERY_KEYS.userProfile(userId),
+        });
+      }
+    },
+  });
+};
+
+export const useUnfollowUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId) => {
+      const response = await userService.unfollowUser(userId);
+      return response;
+    },
+    onSuccess: (data, userId) => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: USER_QUERY_KEYS.userProfile(userId),
+        });
+      }
+    },
+  });
+};
+
 export const useUserMutations = () => {
   return {
     updateProfile: useUpdateProfile(),
     updateProfilePicture: useUpdateProfilePicture(),
     updateCoverPhoto: useUpdateCoverPhoto(),
     changePassword: useChangePassword(),
-    userFollow: useUserFollow(), // Thay thế 3 hàm cũ bằng 1 hàm duy nhất
+    userFollow: useUserFollow(),
+    followUser: useFollowUser(),
+    unfollowUser: useUnfollowUser(),
   };
 };
 

@@ -34,11 +34,30 @@ export const MessageProvider = ({ children }) => {
       if (!isOnMessagePage()) return;
 
       const connected = isSocketConnected();
-      setSocketConnected(connected);
+
+      // Nếu trạng thái kết nối thay đổi, cập nhật state
+      if (connected !== socketConnected) {
+        setSocketConnected(connected);
+
+        // Nếu mất kết nối, thử kết nối lại sau một khoảng thời gian
+        if (!connected) {
+          console.log(
+            "[MessageContext] Socket disconnected, scheduling reconnect..."
+          );
+
+          // Tránh nhiều lần thử kết nối đồng thời
+          clearTimeout(window._messageReconnectTimer);
+          window._messageReconnectTimer = setTimeout(() => {
+            reconnectSocket();
+          }, 3000);
+        } else {
+          console.log("[MessageContext] Socket connected successfully");
+        }
+      }
     };
 
-    // Check connection status every 5 seconds
-    const intervalId = setInterval(checkSocketConnection, 5000);
+    // Check connection status every 8 seconds thay vì 10 seconds
+    const intervalId = setInterval(checkSocketConnection, 8000);
 
     // Also check on mount and when visibility changes
     checkSocketConnection();
@@ -100,6 +119,17 @@ export const MessageProvider = ({ children }) => {
   // Manually reconnect socket if needed
   const reconnectSocket = useCallback(() => {
     if (!isOnMessagePage()) return false;
+
+    // Thêm flag để tránh kết nối nhiều lần
+    const lastReconnectAttempt = window._lastSocketReconnect || 0;
+    const now = Date.now();
+
+    // Đảm bảo cách nhau ít nhất 5 giây giữa các lần thử kết nối
+    if (now - lastReconnectAttempt < 5000) {
+      return false;
+    }
+
+    window._lastSocketReconnect = now;
 
     if (!isSocketConnected()) {
       const socket = getSocket();

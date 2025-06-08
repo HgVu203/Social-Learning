@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { GROUP_QUERY_KEYS } from "../../hooks/queries/useGroupQueries";
 import LazyImage from "../common/LazyImage";
 import { prefetchImages } from "../../utils/prefetch";
+import { useTranslation } from "react-i18next";
 
 const GroupCard = ({
   group,
@@ -16,6 +17,7 @@ const GroupCard = ({
   showJoinedBadge = false,
   isCompact = false,
 }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [joining, setJoining] = useState(false);
   const { joinGroup, leaveGroup } = useGroupMutations();
@@ -73,7 +75,7 @@ const GroupCard = ({
     if (joining) return;
 
     showConfirmToast(
-      "Are you sure you want to leave this group?",
+      t("common.confirmLeaveGroup"),
       async () => {
         setJoining(true);
         try {
@@ -103,7 +105,7 @@ const GroupCard = ({
       null,
       {
         icon: "logout",
-        confirmText: "Leave Group",
+        confirmText: t("common.leaveGroup"),
         confirmColor: "purple",
       }
     );
@@ -111,7 +113,7 @@ const GroupCard = ({
 
   return (
     <div
-      className={`group flex flex-col bg-[#1E2024] rounded-xl border border-gray-800 hover:border-blue-700/50 transition-all duration-300 shadow-md hover:shadow-xl h-full ${
+      className={`group flex flex-col bg-[var(--color-bg-secondary)] rounded-xl border border-[var(--color-border)] hover:border-blue-700/50 transition-all duration-300 shadow-md hover:shadow-xl h-full ${
         isCompact ? "p-3" : "p-3"
       }`}
     >
@@ -136,7 +138,7 @@ const GroupCard = ({
           )}
           {showJoinedBadge && (
             <span className="absolute top-2 left-2 bg-green-600/90 text-white text-xs px-1.5 py-0.5 rounded-lg flex items-center shadow-lg">
-              <FiCheck className="mr-0.5 w-3 h-3" /> Joined
+              <FiCheck className="mr-0.5 w-3 h-3" /> {t("group.joinedBadge")}
             </span>
           )}
         </div>
@@ -147,23 +149,25 @@ const GroupCard = ({
         <div>
           <Link
             to={`/groups/${group._id}`}
-            className="block text-white font-bold hover:text-blue-400 transition-colors text-base truncate mb-1 leading-tight"
+            className="block text-[var(--color-text-primary)] font-bold hover:text-blue-400 transition-colors text-base truncate mb-1 leading-tight"
           >
             {group.name}
           </Link>
 
-          <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
-            <span>{group.isPrivate ? "Private" : "Public"}</span>
-            <span className="text-gray-600">•</span>
+          <div className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)] mb-2">
+            <span>
+              {group.isPrivate ? t("group.private") : t("group.public")}
+            </span>
+            <span className="text-[var(--color-text-tertiary)]">•</span>
             <span className="flex items-center gap-0.5">
               <FiUsers className="w-3 h-3" />
-              {group.memberCount || 0}
+              {group.memberCount || 0} {t("group.members")}
             </span>
           </div>
 
           {!isCompact && (
-            <p className="text-gray-300 text-xs mb-2 line-clamp-2 h-8">
-              {group.description || "No description provided"}
+            <p className="text-[var(--color-text-secondary)] text-xs mb-2 line-clamp-2 h-8">
+              {group.description || t("group.noDescription")}
             </p>
           )}
         </div>
@@ -172,41 +176,41 @@ const GroupCard = ({
           {!isMember ? (
             hasRequestedJoin ? (
               <button
-                className="px-3 py-1.5 rounded-lg bg-gray-800/80 text-gray-400 text-xs font-medium disabled:opacity-50 w-full"
+                className="px-3 py-1.5 rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] text-xs font-medium disabled:opacity-50 w-full truncate whitespace-nowrap overflow-hidden text-ellipsis"
                 disabled={true}
               >
-                Request Sent
+                {t("group.requestSent")}
               </button>
             ) : (
               <button
                 onClick={handleJoinGroup}
-                className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-medium transition-all disabled:opacity-50 flex-1 shadow-lg hover:shadow-blue-700/20 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium transition-all disabled:opacity-50 flex-1 shadow-lg hover:shadow-blue-700/20 cursor-pointer truncate whitespace-nowrap overflow-hidden text-ellipsis"
                 disabled={joining}
               >
-                {joining ? "..." : "Join"}
+                {joining ? "..." : t("group.join")}
               </button>
             )
           ) : isCreator ? (
             <Link
               to={`/groups/${group._id}/manage`}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white text-sm font-medium transition-all flex-1 text-center shadow-lg cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800 text-white text-xs font-medium transition-all flex-1 text-center shadow-lg cursor-pointer truncate whitespace-nowrap overflow-hidden text-ellipsis"
             >
-              Manage
+              {t("group.manage")}
             </Link>
           ) : (
             <button
               onClick={handleLeaveGroup}
-              className="px-4 py-2 rounded-lg bg-gray-700/80 hover:bg-gray-600 text-white text-sm font-medium transition-colors disabled:opacity-50 flex-1 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-gray-700/80 hover:bg-gray-600 text-white text-xs font-medium transition-colors disabled:opacity-50 flex-1 cursor-pointer truncate whitespace-nowrap overflow-hidden text-ellipsis"
               disabled={joining}
             >
-              {joining ? "..." : "Leave"}
+              {joining ? "..." : t("group.leave")}
             </button>
           )}
           <Link
             to={`/groups/${group._id}`}
-            className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-sm font-medium transition-all flex-1 text-center shadow-lg hover:shadow-blue-700/20 cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium transition-all flex-1 text-center shadow-lg hover:shadow-blue-700/20 cursor-pointer truncate whitespace-nowrap overflow-hidden text-ellipsis"
           >
-            View
+            {t("group.view")}
           </Link>
         </div>
       </div>

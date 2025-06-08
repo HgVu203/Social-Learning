@@ -31,6 +31,8 @@ import { Link } from "react-router-dom";
 import { useSocket } from "../../contexts/SocketContext";
 import axiosService from "../../services/axiosService";
 import { toast } from "react-hot-toast";
+import { useTranslation } from "react-i18next";
+import OnlineStatus from "../common/OnlineStatus";
 
 // Animation variants outside component
 const messageVariants = {
@@ -39,48 +41,60 @@ const messageVariants = {
 };
 
 // Function for empty message state
-const EmptyMessageState = () => (
-  <div className="flex flex-col items-center justify-center h-64 text-center">
-    <p className="text-[var(--color-text-secondary)] mb-2">No messages yet</p>
-    <p className="text-sm text-[var(--color-text-tertiary)]">
-      Say hello to start the conversation
-    </p>
-  </div>
-);
+const EmptyMessageState = () => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex flex-col items-center justify-center h-64 text-center">
+      <p className="text-[var(--color-text-secondary)] mb-2">
+        {t("message.noMessages")}
+      </p>
+      <p className="text-sm text-[var(--color-text-tertiary)]">
+        {t("message.startConversation")}
+      </p>
+    </div>
+  );
+};
 
 // Function for conversation not selected state
-const NoConversationSelected = () => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    className="flex justify-center items-center h-full bg-[var(--color-card-bg)] text-[var(--color-text-secondary)]"
-  >
-    <div className="text-center max-w-xs p-6">
-      <div className="mb-6 flex justify-center">
-        <FiSend size={46} className="opacity-30 text-[var(--color-primary)]" />
+const NoConversationSelected = () => {
+  const { t } = useTranslation();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="flex justify-center items-center h-full bg-[var(--color-card-bg)] text-[var(--color-text-secondary)]"
+    >
+      <div className="text-center max-w-xs p-6">
+        <div className="mb-6 flex justify-center">
+          <FiSend
+            size={46}
+            className="opacity-30 text-[var(--color-primary)]"
+          />
+        </div>
+        <h3 className="text-xl font-medium text-[var(--color-text-primary)] mb-2">
+          {t("message.noConversation")}
+        </h3>
+        <p className="text-sm mb-6">{t("message.selectFriend")}</p>
+        <div className="flex justify-center">
+          <Link
+            to="/friends"
+            className="px-4 py-2 bg-[var(--color-primary)] rounded-md text-white text-sm font-medium hover:bg-opacity-90 transition-all flex items-center gap-2"
+          >
+            <FiUserPlus size={16} />
+            {t("message.findFriends")}
+          </Link>
+        </div>
       </div>
-      <h3 className="text-xl font-medium text-[var(--color-text-primary)] mb-2">
-        No conversation selected
-      </h3>
-      <p className="text-sm mb-6">
-        Select a friend from the list to start messaging or search for someone
-        new to connect with.
-      </p>
-      <div className="flex justify-center">
-        <Link
-          to="/friends"
-          className="px-4 py-2 bg-[var(--color-primary)] rounded-md text-white text-sm font-medium hover:bg-opacity-90 transition-all flex items-center gap-2"
-        >
-          <FiUserPlus size={16} />
-          Find friends
-        </Link>
-      </div>
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
 // Prevent infinite render loops by memoizing the MessageChat component
 const MessageChat = React.memo(function MessageChat({ onBackToList }) {
+  const { t } = useTranslation();
+
   // Refs
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
@@ -105,25 +119,16 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [isShowScrollButton, setIsShowScrollButton] = useState(false);
   const [hasMarkedRead, setHasMarkedRead] = useState(false);
-  const [optimisticMessages, setOptimisticMessages] = useState([]);
+  // Tin nhắn cục bộ (chưa xác nhận từ server)
+  const [localMessages, setLocalMessages] = useState([]);
   const [errorState, setErrorState] = useState(null);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
-  const [tempAttachments, setTempAttachments] = useState([]);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
 
   // Context
   const { user } = useAuth();
   const { currentConversation, setCurrentConversation } = useMessageContext();
-  const {
-    isConnected,
-    sendMessage: socketSendMessage,
-    markAsRead: socketMarkAsRead,
-    startTyping: socketStartTyping,
-    stopTyping: socketStopTyping,
-    subscribeToMessages,
-    subscribeToTyping,
-  } = useSocket();
+  const { markAsRead: socketMarkAsRead, subscribeToMessages } = useSocket();
 
   // Derived values
   const conversationId = currentConversation?._id;
@@ -230,7 +235,6 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
     // Handle socket connection issues
     const handleSocketError = () => {
-      console.log("Socket connection lost, attempting to reconnect...");
       setErrorState("Connection lost. Reconnecting...");
 
       if (conversationId) {
@@ -273,17 +277,9 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         // Nếu lỗi API, thử tải lại sau 3 giây
         setTimeout(() => {
           if (conversationId && isComponentMounted.current) {
-            console.log("Retrying to fetch messages for:", conversationId);
             refetch();
           }
         }, 3000);
-      },
-      onSuccess: (data) => {
-        console.log(
-          "Messages loaded successfully:",
-          data?.messages?.length || 0,
-          "messages"
-        );
       },
     }
   );
@@ -299,12 +295,12 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         "Processing messages:",
         serverMessages.length,
         "server messages,",
-        optimisticMessages.length,
-        "optimistic messages"
+        localMessages.length,
+        "local messages"
       );
 
-      // If we have optimistic messages, merge them with server messages
-      if (optimisticMessages.length > 0) {
+      // If we have local messages, merge them with server messages
+      if (localMessages.length > 0) {
         const serverMessageIds = new Set(serverMessages.map((msg) => msg._id));
         const processedTempIds = new Set();
 
@@ -322,8 +318,8 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           }
         });
 
-        // Filter optimistic messages to only include those not yet in server response
-        const pendingOptimisticMessages = optimisticMessages.filter((msg) => {
+        // Filter local messages to only include those not yet in server response
+        const pendingLocalMessages = localMessages.filter((msg) => {
           // Skip if no message content or created time
           if (!msg.message || !msg.createdAt) return false;
 
@@ -365,7 +361,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         // Deduplicate the final combined list as a safety measure
         const deduplicatedMessages = [
           ...serverMessages,
-          ...pendingOptimisticMessages,
+          ...pendingLocalMessages,
         ];
         const finalMessages = [];
         const seenIds = new Set();
@@ -427,7 +423,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       console.error("Error processing messages:", error);
       return messagesData?.messages || [];
     }
-  }, [messagesData?.messages, optimisticMessages]);
+  }, [messagesData?.messages, localMessages]);
 
   const hasMore = useMemo(
     () => messagesData?.hasMore || false,
@@ -487,7 +483,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       setNewMessageCount(0);
       setIsFirstLoad(true);
       setHasMarkedRead(false);
-      setOptimisticMessages([]);
+      setLocalMessages([]);
       processedMessageIds.current.clear();
       countedMessageIds.current.clear();
       setErrorState(null);
@@ -546,21 +542,15 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   useEffect(() => {
     const handleUrgentNewMessage = (event) => {
       try {
-        console.log("🔥 Urgent new message received!", event.detail);
         // Check if this event has detail data with message info
         if (event.detail && event.detail.message && event.detail.partnerId) {
           const { message, partnerId, timestamp } = event.detail;
 
           // Check if this message is for the current conversation
           if (currentConversation && currentConversation._id === partnerId) {
-            console.log(
-              "⚡ PRIORITY: Urgent new message for active conversation:",
-              message
-            );
-
             // CRITICAL FIX: Add to messages immediately
-            setOptimisticMessages((prev) => {
-              // Skip if already in optimistic messages
+            setLocalMessages((prev) => {
+              // Skip if already in local messages
               const alreadyExists = prev.some(
                 (m) =>
                   m._id === message._id ||
@@ -621,18 +611,11 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
           // Check if this message is for the current conversation
           if (currentConversation && currentConversation._id === partnerId) {
-            console.log(
-              "Received new message for current conversation:",
-              message
-            );
-
-            // CRITICAL FIX: Immediately add this message to optimistic messages
-            // to show it in the UI without waiting for refetch
             if (message._id && !message._id.startsWith("temp-")) {
-              setOptimisticMessages((prev) => {
+              setLocalMessages((prev) => {
                 // Avoid duplicates
                 const alreadyExists = prev.some((m) => m._id === message._id);
-                // Skip if already in optimistic messages
+                // Skip if already in local messages
                 if (alreadyExists) return prev;
                 return [...prev, message];
               });
@@ -823,111 +806,147 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     }
   }, [loading, loadingMore, prevScrollHeight]);
 
-  // Send a text message
+  // Gửi tin nhắn văn bản
   const handleSubmitMessage = useCallback(
     async (e) => {
       e?.preventDefault();
 
-      // Skip if no message or no conversation
-      if (
-        (!newMessage.trim() && !tempAttachments.length) ||
-        !currentConversation ||
-        !currentConversation._id
-      ) {
-        return;
-      }
+      const messageText = newMessage.trim();
+      // Bỏ qua nếu không có nội dung tin nhắn hoặc không có người nhận
+      if (!messageText || !currentConversation?._id) return;
 
       try {
-        // Create message object
-        const messageData = {
-          content: newMessage.trim(),
-          attachments: tempAttachments,
-          chatId: currentConversation._id, // Sử dụng conversation ID làm chatId
-          receiverId: currentConversation.participant._id, // Thêm receiverId từ participant
-          messageType: tempAttachments.length ? "media" : "text",
-        };
+        // Lưu nội dung tin nhắn hiện tại và làm sạch input
+        const content = messageText;
+        const receiverId = currentConversation._id;
 
-        // Gửi tin nhắn qua socket thay vì mutation
-        socketSendMessage(messageData);
-
-        // Create optimistic message for UI
-        const optimisticId = `temp-${Date.now()}`;
-        const optimisticMessage = {
-          _id: optimisticId,
-          content: newMessage.trim(),
-          senderId: user._id,
-          receiverId: currentConversation.participant._id,
-          attachments: tempAttachments,
-          status: "sending",
-          createdAt: new Date().toISOString(),
-          isOptimistic: true,
-        };
-
-        // Add optimistic message to state
-        setOptimisticMessages((prev) => [...prev, optimisticMessage]);
-
-        // Reset state
+        // Reset form ngay lập tức để UX tốt hơn
         setNewMessage("");
-        setTempAttachments([]);
         setIsEmojiPickerOpen(false);
 
-        // Ngừng trạng thái đang gõ
-        socketStopTyping(currentConversation._id);
+        // ****** PHẦN QUAN TRỌNG: FIX LỖI HIỂN THỊ TIN NHẮN ĐÚNG VỊ TRÍ ******
+        // Vấn đề gốc rễ: Format senderId của client và server khác nhau
+        // => Phải đảm bảo tin nhắn cục bộ có cấu trúc giống hệt tin nhắn server trả về
+        const currentUserId = user?._id || user?.id;
+        const tempId = `temp-${Date.now()}`; // Đổi sang temp- để nhất quán
 
-        // Scroll to bottom
+        // Log thông tin user hiện tại để debug
+        console.log("CURRENT USER DEBUG:", {
+          id: currentUserId,
+          user: user,
+        });
+
+        // Tạo tin nhắn tạm với định dạng GIỐNG HỆT tin nhắn server
+        const tempMessage = {
+          _id: tempId,
+          message: content,
+          type: "text",
+          // QUAN TRỌNG: SenderID phải là CHÍNH XÁC định dạng server trả về
+          // Từ API hook, đó là một object với _id
+          senderId: {
+            _id: currentUserId,
+            username: user.username,
+            avatar: user.avatar,
+          },
+          receiverId: receiverId,
+          createdAt: new Date().toISOString(),
+          status: "sending",
+          // ĐÁNH DẤU CỨNG tin nhắn này từ user hiện tại
+          // Đây là thuộc tính tùy chỉnh, chỉ cho frontend
+          isFromCurrentUser: true,
+          fromMe: true,
+        };
+
+        // Thêm vào danh sách tin nhắn để hiển thị ngay
+        setLocalMessages((prev) => [...prev, tempMessage]);
+
+        // Debug tin nhắn tạm
+        console.log("DEBUG - Tin nhắn tạm:", {
+          ...tempMessage,
+          senderId: tempMessage.senderId,
+          currentUserId,
+        });
+
+        // Cuộn xuống để hiển thị tin nhắn mới
         setTimeout(() => {
           scrollToBottom();
         }, 50);
-      } catch (error) {
-        console.error("Error sending message:", error);
-        // Handle error state
-        if (error?.response?.data?.message) {
-          toast.error(error.response.data.message);
-        } else {
-          toast.error("Failed to send message. Please try again.");
+
+        // Gửi tin nhắn đến server
+        const response = await sendMessage.mutateAsync({
+          receiverId: receiverId,
+          message: content,
+          type: "text",
+        });
+
+        console.log("DEBUG - Phản hồi từ server:", response);
+
+        if (response && response._id) {
+          // Cập nhật tin nhắn tạm với ID thực
+          setLocalMessages((prev) =>
+            prev.map((msg) =>
+              msg._id === tempId
+                ? {
+                    ...msg,
+                    _id: response._id,
+                    status: "sent",
+                    previousTempId: tempId,
+                    // Tiếp tục đánh dấu cứng
+                    isFromCurrentUser: true,
+                    fromMe: true,
+                  }
+                : msg
+            )
+          );
+
+          // Đảm bảo đánh dấu cứng message ID này là từ người dùng hiện tại
+          // để giúp các lần tải lại trang nhận dạng đúng
+          if (typeof window !== "undefined" && window.localStorage) {
+            try {
+              // Lưu ID tin nhắn đã gửi vào một danh sách trong localStorage
+              const sentMessagesKey = `sent_messages_${currentUserId}`;
+              const existingSentMessages = JSON.parse(
+                localStorage.getItem(sentMessagesKey) || "[]"
+              );
+              existingSentMessages.push(response._id);
+              // Giới hạn số lượng tin nhắn được lưu để tránh quá nhiều dữ liệu
+              if (existingSentMessages.length > 100) {
+                existingSentMessages.shift();
+              }
+              localStorage.setItem(
+                sentMessagesKey,
+                JSON.stringify(existingSentMessages)
+              );
+            } catch (err) {
+              console.error("Lỗi khi lưu ID tin nhắn vào localStorage:", err);
+            }
+          }
         }
+      } catch (error) {
+        console.error("Lỗi khi gửi tin nhắn:", error);
+        toast.error("Không thể gửi tin nhắn. Vui lòng thử lại.");
       }
     },
-    [
-      newMessage,
-      tempAttachments,
-      currentConversation,
-      user?._id,
-      socketSendMessage,
-      socketStopTyping,
-    ]
+    [newMessage, currentConversation, user, sendMessage, scrollToBottom]
   );
 
   // Handle input change
-  const handleInputChange = useCallback(
-    (e) => {
-      const value = e.target.value;
-      setNewMessage(value);
-
-      // Chỉ gửi sự kiện đang gõ khi có giá trị
-      if (value.trim() && currentConversation?._id) {
-        socketStartTyping(currentConversation._id);
-      } else if (!value.trim() && currentConversation?._id) {
-        socketStopTyping(currentConversation._id);
-      }
-    },
-    [currentConversation?._id, socketStartTyping, socketStopTyping]
-  );
+  const handleInputChange = useCallback((e) => {
+    const value = e.target.value;
+    setNewMessage(value);
+  }, []);
 
   // Listen for new messages from socket
   useEffect(() => {
     let unsubscribeMessages;
-    let unsubscribeTyping;
 
     if (currentConversation?._id) {
       // Đăng ký nhận tin nhắn mới qua socket
       unsubscribeMessages = subscribeToMessages(
         currentConversation._id,
         (newMsg) => {
-          console.log("Received new message via socket:", newMsg);
-
           // Cập nhật UI với tin nhắn mới
-          setOptimisticMessages((prev) => {
+          setLocalMessages((prev) => {
             // Kiểm tra tin nhắn đã tồn tại chưa
             const messageExists = prev.some((m) => m._id === newMsg._id);
             if (messageExists) return prev;
@@ -951,28 +970,13 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           }
         }
       );
-
-      // Đăng ký nhận trạng thái đang gõ
-      unsubscribeTyping = subscribeToTyping(
-        currentConversation._id,
-        (usersTyping) => {
-          // Lọc ra những người đang gõ không phải người dùng hiện tại
-          const otherTyping = usersTyping.filter(
-            (userId) => userId !== user._id
-          );
-
-          // Cập nhật state hiển thị trạng thái đang gõ
-          setIsTyping(otherTyping.length > 0);
-        }
-      );
     }
 
     // Cleanup
     return () => {
       if (unsubscribeMessages) unsubscribeMessages();
-      if (unsubscribeTyping) unsubscribeTyping();
     };
-  }, [currentConversation?._id, user?._id, subscribeToMessages, subscribeToTyping, socketMarkAsRead, isAtBottom, scrollToBottom, incrementMessageCount]);
+  }, [currentConversation?._id, user?._id, subscribeToMessages, socketMarkAsRead, isAtBottom, scrollToBottom, incrementMessageCount]);
 
   // Reset mark as read state when conversation has unread messages
   useEffect(() => {
@@ -1004,8 +1008,8 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
     try {
       // Create a temporary message
-      const tempMessageId = `temp-${Date.now()}`;
-      const optimisticMessage = {
+      const tempMessageId = `temp-${Date.now()}`; // Đổi sang temp- để nhất quán
+      const localMessage = {
         _id: tempMessageId,
         message: imageUrl,
         type: "image",
@@ -1014,10 +1018,12 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         createdAt: new Date().toISOString(),
         status: "sending",
         read: false,
+        isFromCurrentUser: true, // Đánh dấu cứng
+        fromMe: true, // Đánh dấu cứng
       };
 
-      // Add to optimistic messages
-      setOptimisticMessages((prev) => [...prev, optimisticMessage]);
+      // Add to local messages
+      setLocalMessages((prev) => [...prev, localMessage]);
 
       // Send the actual message
       const response = await sendMessage.mutateAsync({
@@ -1027,7 +1033,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       });
 
       // Update status and store the previous temp ID
-      setOptimisticMessages((prev) =>
+      setLocalMessages((prev) =>
         prev.map((msg) =>
           msg._id === tempMessageId
             ? {
@@ -1044,7 +1050,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     } catch (error) {
       console.error("Failed to send image:", error);
       // Mark as failed
-      setOptimisticMessages((prev) =>
+      setLocalMessages((prev) =>
         prev.map((msg) =>
           msg._id.startsWith("temp-") ? { ...msg, status: "failed" } : msg
         )
@@ -1061,10 +1067,10 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       setImageUploading(true);
 
       // Create a temporary message with local preview
-      const tempMessageId = `temp-${Date.now()}`;
+      const tempMessageId = `temp-${Date.now()}`; // Đổi sang temp- để nhất quán
       const localPreview = URL.createObjectURL(file);
 
-      const optimisticMessage = {
+      const localMessage = {
         _id: tempMessageId,
         message: localPreview,
         type: "image",
@@ -1073,17 +1079,19 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         createdAt: new Date().toISOString(),
         status: "sending",
         read: false,
+        isFromCurrentUser: true, // Đánh dấu cứng
+        fromMe: true, // Đánh dấu cứng
       };
 
-      // Add to optimistic messages
-      setOptimisticMessages((prev) => [...prev, optimisticMessage]);
+      // Add to local messages
+      setLocalMessages((prev) => [...prev, localMessage]);
 
       // Upload the image
       const imageUrl = await uploadImage(file);
 
       if (isComponentMounted.current) {
         // Update with real URL
-        setOptimisticMessages((prev) =>
+        setLocalMessages((prev) =>
           prev.map((msg) =>
             msg._id === tempMessageId ? { ...msg, message: imageUrl } : msg
           )
@@ -1097,7 +1105,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         });
 
         // Update status and ID, preserving the previous temp ID
-        setOptimisticMessages((prev) =>
+        setLocalMessages((prev) =>
           prev.map((msg) =>
             msg._id === tempMessageId
               ? {
@@ -1113,7 +1121,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     } catch (error) {
       console.error("Error uploading image:", error);
       // Mark as failed
-      setOptimisticMessages((prev) =>
+      setLocalMessages((prev) =>
         prev.map((msg) =>
           msg._id.startsWith("temp-") ? { ...msg, status: "failed" } : msg
         )
@@ -1132,14 +1140,14 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
   const handleRetryMessage = useCallback(
     (messageId) => {
       // Find the failed message
-      const failedMessage = optimisticMessages.find(
+      const failedMessage = localMessages.find(
         (msg) => msg._id === messageId && msg.status === "failed"
       );
 
       if (!failedMessage) return;
 
       // Update status to sending
-      setOptimisticMessages((prev) =>
+      setLocalMessages((prev) =>
         prev.map((msg) =>
           msg._id === messageId ? { ...msg, status: "sending" } : msg
         )
@@ -1155,7 +1163,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           });
 
           // Update status to sent
-          setOptimisticMessages((prev) =>
+          setLocalMessages((prev) =>
             prev.map((msg) =>
               msg._id === messageId
                 ? {
@@ -1169,7 +1177,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         } catch (err) {
           console.error("Failed to retry sending message:", err);
           // Mark as failed again
-          setOptimisticMessages((prev) =>
+          setLocalMessages((prev) =>
             prev.map((msg) =>
               msg._id === messageId ? { ...msg, status: "failed" } : msg
             )
@@ -1177,7 +1185,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         }
       })();
     },
-    [optimisticMessages, sendMessage, conversationId]
+    [localMessages, sendMessage, conversationId]
   );
 
   // Render message content with condition for sending status
@@ -1285,6 +1293,21 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
       (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
     );
 
+    // Log để debug tin nhắn trước khi render
+    console.log(
+      "DEBUG MESSAGES BEFORE RENDER:",
+      uniqueMessages.slice(-3).map((msg) => ({
+        id: msg._id.substring(0, 8),
+        message: msg.message?.substring(0, 10),
+        senderId:
+          typeof msg.senderId === "object" ? msg.senderId._id : msg.senderId,
+        currentUserId: user?._id || user?.id,
+        isFromCurrentUser: msg.isFromCurrentUser,
+        fromMe: msg.fromMe,
+        isTemp: msg._id?.startsWith("temp_"),
+      }))
+    );
+
     // Use a set to track dates that have already been displayed
     const shownDates = new Set();
     const groups = [];
@@ -1320,20 +1343,131 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           );
         }
 
-        // Determine if message is from current user
+        // ****** PHẦN QUAN TRỌNG: XÁC ĐỊNH TIN NHẮN CỦA NGƯỜI DÙNG HIỆN TẠI ******
+        // Quy trình kiểm tra rõ ràng, theo thứ tự ưu tiên
         let isCurrentUser = false;
-        try {
-          if (typeof message.senderId === "object") {
-            isCurrentUser = message.senderId._id === user._id;
-          } else {
-            isCurrentUser = message.senderId === user._id;
+
+        // 0. Kiểm tra tin nhắn từ localStorage trước tiên
+        const currentUserId = user?._id || user?.id;
+        if (
+          currentUserId &&
+          message._id &&
+          typeof window !== "undefined" &&
+          window.localStorage
+        ) {
+          try {
+            const sentMessagesKey = `sent_messages_${currentUserId}`;
+            const sentMessages = JSON.parse(
+              localStorage.getItem(sentMessagesKey) || "[]"
+            );
+            if (sentMessages.includes(message._id)) {
+              isCurrentUser = true;
+              // Log để debug khi tìm thấy tin nhắn trong localStorage
+              if (message.message === "hi" || message.message.length < 5) {
+                console.log(
+                  `DEBUG - Tin nhắn ${
+                    message.message
+                  } (ID: ${message._id.substring(
+                    0,
+                    8
+                  )}) tìm thấy trong localStorage, xác định là tin nhắn của người dùng hiện tại`
+                );
+              }
+            }
+          } catch {
+            // Bỏ qua lỗi nếu có
           }
-        } catch (err) {
-          console.error("Error determining message sender:", err);
-          isCurrentUser = false;
         }
 
-        // Check if messages are from the same sender for grouping
+        // 1. Nếu không tìm thấy trong localStorage, kiểm tra các trường đã được đánh dấu cứng từ frontend
+        if (
+          !isCurrentUser &&
+          (message.isFromCurrentUser === true || message.fromMe === true)
+        ) {
+          isCurrentUser = true;
+        }
+        // 2. Kiểm tra trạng thái sending/status - tin nhắn đang gửi luôn là của người dùng hiện tại
+        else if (message.status === "sending") {
+          isCurrentUser = true;
+        }
+        // 3. Kiểm tra ID tạm thời - ID bắt đầu bằng 'temp_' luôn là của người dùng hiện tại
+        else if (
+          message._id &&
+          typeof message._id === "string" &&
+          (message._id.startsWith("temp-") || message._id.startsWith("temp_"))
+        ) {
+          isCurrentUser = true;
+        }
+        // 4. Cuối cùng, so sánh ID người gửi với ID người dùng hiện tại
+        else {
+          if (currentUserId) {
+            // Đảm bảo chuyển đổi thành chuỗi trước khi so sánh
+            // Nếu senderId là một object (định dạng từ server)
+            if (typeof message.senderId === "object" && message.senderId?._id) {
+              isCurrentUser =
+                String(message.senderId._id) === String(currentUserId);
+            }
+            // Nếu senderId là một chuỗi
+            else if (typeof message.senderId === "string") {
+              isCurrentUser =
+                String(message.senderId) === String(currentUserId);
+            }
+            // Trường hợp khác - senderId có thể là bất kỳ kiểu dữ liệu nào
+            else if (message.senderId) {
+              isCurrentUser =
+                String(message.senderId) === String(currentUserId);
+            }
+          }
+        }
+
+        // 5. Kiểm tra phụ trợ cho tin nhắn mới nhất - chỉ áp dụng cho tin nhắn vừa mới gửi
+        if (
+          !isCurrentUser &&
+          user &&
+          newMessage &&
+          newMessage.trim() === message.message
+        ) {
+          // So sánh thời gian tạo tin nhắn với thời gian hiện tại
+          const messageTime = new Date(message.createdAt).getTime();
+          const currentTime = new Date().getTime();
+          const timeDiff = currentTime - messageTime;
+
+          // Nếu tin nhắn được tạo trong vòng 10 giây gần đây
+          if (timeDiff < 10000) {
+            console.log(
+              `DEBUG - Tin nhắn mới nhất "${message.message}" có nội dung giống với tin nhắn vừa gửi, được xác định là tin nhắn của người dùng hiện tại`
+            );
+            isCurrentUser = true;
+          }
+        }
+
+        // Debug thêm cho tất cả tin nhắn "hi"
+        if (message.message === "hi") {
+          console.log(
+            `DEBUG MESSAGE 'hi' (ID: ${
+              message._id?.substring(0, 8) || "unknown"
+            })`,
+            {
+              id: message._id,
+              senderId:
+                typeof message.senderId === "object"
+                  ? message.senderId._id
+                  : message.senderId,
+              senderIdType: typeof message.senderId,
+              currentUserId: user?._id || user?.id,
+              userIdType: typeof (user?._id || user?.id),
+              isCurrentUser: isCurrentUser,
+              isFromCurrentUser: message.isFromCurrentUser,
+              fromMe: message.fromMe,
+              status: message.status,
+              isTemp:
+                message._id?.startsWith("temp-") ||
+                message._id?.startsWith("temp_"),
+            }
+          );
+        }
+
+        // Check if messages are from the same sender for grouping (affects UI bubbles)
         const getSenderId = (msg) => {
           if (!msg || !msg.senderId) return null;
           return typeof msg.senderId === "object"
@@ -1367,7 +1501,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           );
         }
 
-        // Add the message bubble
+        // Add the message bubble - LUÔN SỬ DỤNG BIẾN isCurrentUser ĐÃ XÁC ĐỊNH
         groups.push(
           <motion.div
             key={message._id}
@@ -1385,7 +1519,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
               ${isNextSameSender ? "mt-1" : "mt-2"} w-full`}
             >
               <div className={`flex flex-row items-start max-w-[85%]`}>
-                {/* Avatar for other user's messages */}
+                {/* Avatar cho tin nhắn của người khác - CHỈ HIỂN THỊ KHI KHÔNG PHẢI NGƯỜI DÙNG HIỆN TẠI */}
                 {!isCurrentUser && (
                   <div className="flex-shrink-0 mr-2">
                     {typeof message.senderId === "object" &&
@@ -1507,9 +1641,9 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     user,
     loading,
     renderMessageContent,
-    formatMessageTime,
     renderMessageStatus,
     handleRetryMessage,
+    formatMessageTime,
   ]);
 
   // Use the new function in place of the old messageListContent
@@ -1527,11 +1661,19 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
           currentConversation &&
           event.detail?.conversationId === currentConversation._id
         ) {
-          console.log(
-            "Forced message refresh for conversation:",
-            currentConversation._id
+          // Invalidate the query cache first to ensure fresh data
+          window.dispatchEvent(
+            new CustomEvent("clear_message_cache", {
+              detail: { conversationId: currentConversation._id },
+            })
           );
-          refetch();
+
+          // Force refetch with a small delay to allow cache clearing
+          setTimeout(() => {
+            if (isComponentMounted.current) {
+              refetch();
+            }
+          }, 100);
         }
       } catch (error) {
         console.error("Error handling force refresh event:", error);
@@ -1552,13 +1694,6 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
 
       // Check if this update is for the current conversation
       if (currentConversation && currentConversation._id === userId) {
-        console.log(
-          `User status update: ${userId} is now ${
-            isOnline ? "online" : "offline"
-          }`
-        );
-
-        // Update the current conversation with the new status
         setCurrentConversation((prev) => {
           if (!prev) return prev;
           return {
@@ -1600,6 +1735,111 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
         >
           Retry
         </button>
+      </div>
+    );
+  };
+
+  // Tạo phần header chat hiển thị thông tin người nhận và trạng thái online
+  const renderHeader = () => {
+    if (!currentConversation) return null;
+
+    return (
+      <div className="flex items-center justify-between p-3 border-b border-[var(--color-border)] bg-[var(--color-card-bg)]">
+        <div className="flex items-center">
+          {/* Mobile back button */}
+          <button
+            onClick={onBackToList}
+            className="lg:hidden mr-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors"
+            aria-label="Back to conversations"
+          >
+            <BsArrowLeft size={20} />
+          </button>
+
+          {/* User avatar */}
+          <Link
+            to={`/profile/${currentConversation.username}`}
+            className="flex items-center"
+          >
+            <Avatar
+              src={currentConversation.avatar || ""}
+              alt={currentConversation.fullname || currentConversation.username}
+              size="md"
+              className="mr-2"
+            />
+            <div>
+              <div className="font-medium text-[var(--color-text-primary)]">
+                {currentConversation.fullname || currentConversation.username}
+              </div>
+              <OnlineStatus
+                userId={currentConversation._id}
+                showText={true}
+                className="mt-0.5"
+              />
+            </div>
+          </Link>
+        </div>
+
+        <div className="flex items-center">
+          {/* Refresh button */}
+          <button
+            onClick={() => {
+              // Force a complete refresh of messages
+              window.dispatchEvent(
+                new CustomEvent("clear_message_cache", {
+                  detail: { conversationId: currentConversation._id },
+                })
+              );
+              setTimeout(() => refetch(), 100);
+              toast.success(t("message.refreshed"));
+            }}
+            className="p-2 mr-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] rounded-full hover:bg-[var(--color-bg-hover)] transition-colors"
+            title={t("message.refresh")}
+          >
+            <FiRefreshCw size={16} />
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
+            >
+              <BsThreeDotsVertical size={18} />
+            </button>
+
+            {/* Dropdown menu */}
+            {showOptions && (
+              <div className="absolute right-0 top-full mt-1 py-1 w-48 bg-[var(--color-card-bg)] rounded-lg shadow-lg border border-[var(--color-border)] z-10">
+                <button
+                  onClick={() => {
+                    setShowOptions(false);
+                    // Đánh dấu tất cả tin nhắn đã đọc
+                    markAllAsRead.mutate(currentConversation._id);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-bg-hover)] text-[var(--color-text-primary)] flex items-center"
+                >
+                  <BsCheckAll className="mr-2" /> {t("message.markAllRead")}
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(t("message.confirmClearChat"))) {
+                      setShowOptions(false);
+                      // Xóa toàn bộ lịch sử chat
+                      window.dispatchEvent(
+                        new CustomEvent("clear_message_cache", {
+                          detail: { conversationId: currentConversation._id },
+                        })
+                      );
+                      refetch();
+                    }
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-bg-hover)] text-[var(--color-text-primary)] flex items-center text-red-500"
+                >
+                  <HiOutlineTrash className="mr-2" /> {t("message.clearChat")}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -1690,118 +1930,15 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
     }
 
     return (
-      <div className="h-full flex flex-col bg-[var(--color-card-bg)] w-full relative">
-        {/* Chat header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-card-bg)]"
-        >
-          <div className="md:hidden">
-            <button
-              onClick={onBackToList}
-              className="p-2 mr-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-card-bg-hover)] rounded-full transition-colors"
-            >
-              <BsArrowLeft />
-            </button>
-          </div>
-          <div className="flex-1 flex items-center">
-            <div className="relative mr-2">
-              {currentConversation?.avatar ? (
-                <Link to={`/profile/${currentConversation._id}`}>
-                  <Avatar
-                    src={currentConversation.avatar}
-                    alt={currentConversation.username || "User"}
-                    size="md"
-                  />
-                </Link>
-              ) : (
-                <Link to={`/profile/${currentConversation._id}`}>
-                  <BsPersonCircle className="w-9 h-9 text-[var(--color-text-secondary)]" />
-                </Link>
-              )}
-              {currentConversation?.isOnline && (
-                <span className="absolute right-0 bottom-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[var(--color-card-bg-secondary)] shadow-sm"></span>
-              )}
-            </div>
-            <div className="ml-3 hidden md:block">
-              <Link
-                to={`/profile/${currentConversation._id}`}
-                className="hover:underline"
-              >
-                <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
-                  {currentConversation?.fullname ||
-                    currentConversation?.username ||
-                    "User"}
-                </h3>
-              </Link>
-              <p className="text-xs text-[var(--color-text-tertiary)]">
-                {currentConversation?.isOnline ? "Active now" : "Offline"}
-              </p>
-            </div>
-            <div className="ml-3 md:hidden">
-              <p className="text-xs text-[var(--color-text-tertiary)]">
-                {currentConversation?.isOnline ? "Active now" : "Offline"}
-              </p>
-            </div>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => {
-                if (currentConversation && currentConversation._id) {
-                  if (conversationId) {
-                    window.dispatchEvent(
-                      new CustomEvent("force_message_refresh", {
-                        detail: { conversationId: currentConversation._id },
-                      })
-                    );
-                  }
-                }
-              }}
-              className="p-2 mr-1 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] rounded-full hover:bg-[var(--color-card-bg-hover)] transition-colors"
-              title="Refresh messages"
-            >
-              <FiRefreshCw size={18} />
-            </button>
-            <button
-              onClick={() => setShowOptions(!showOptions)}
-              className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-card-bg-hover)] transition-colors"
-            >
-              <BsThreeDotsVertical />
-            </button>
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        {renderHeader()}
 
-            <AnimatePresence>
-              {showOptions && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute right-0 mt-2 py-2 w-48 bg-[var(--color-card-bg)] rounded-lg shadow-lg border border-[var(--color-border)] z-20"
-                >
-                  <button
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-card-bg-hover)] text-[var(--color-text-error)] flex items-center"
-                    onClick={() => setShowOptions(false)}
-                  >
-                    <HiOutlineTrash className="mr-2" />
-                    Delete conversation
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* Messages */}
+        {/* Messages container */}
         <div
           ref={chatContainerRef}
-          className="flex-1 overflow-y-auto px-4 py-3 pb-12 bg-[var(--color-card-bg)] no-scrollbar"
+          className="flex-1 overflow-y-auto p-4"
           onScroll={handleScroll}
-          style={{
-            isolation: "isolate",
-            height: "calc(100% - 140px)" /* Giảm độ dài khung chat */,
-            backgroundImage:
-              "linear-gradient(to bottom, rgba(40, 40, 50, 0.2) 0%, rgba(30, 30, 40, 0) 100%)",
-          }}
         >
           {renderMessageArea()}
         </div>
@@ -1837,7 +1974,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
             <textarea
               value={newMessage}
               onChange={handleInputChange}
-              placeholder="Type a message..."
+              placeholder={t("message.typeMessage")}
               className="w-full px-4 py-2 text-sm bg-[var(--color-card-bg-secondary)] rounded-[18px] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] resize-none"
               style={{
                 maxHeight: "100px",
@@ -1852,22 +1989,7 @@ const MessageChat = React.memo(function MessageChat({ onBackToList }) {
                 }
               }}
             />
-
-            {/* Typing indicator */}
-            {isTyping && (
-              <div className="absolute -top-6 left-4 text-xs text-[var(--color-text-secondary)] bg-[var(--color-card-bg-secondary)] px-2 py-1 rounded-t-lg">
-                Someone is typing...
-              </div>
-            )}
           </div>
-
-          {/* Connection indicator */}
-          {!isConnected && (
-            <div className="absolute -top-6 right-4 text-xs text-[var(--color-text-error)] bg-[var(--color-card-bg-secondary)] px-2 py-1 rounded-t-lg flex items-center">
-              <span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>
-              Offline
-            </div>
-          )}
 
           {imageUploading ? (
             <div className="p-2 flex items-center justify-center">

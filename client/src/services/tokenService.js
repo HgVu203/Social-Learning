@@ -6,6 +6,14 @@
 // Constants
 export const TOKEN_KEY = "accessToken";
 export const USER_KEY = "user";
+export const TOKEN_TIMESTAMP_KEY = "token_timestamp";
+
+// Thêm cache trong bộ nhớ để giảm truy cập localStorage
+const memoryCache = {
+  token: null,
+  user: null,
+  tokenTimestamp: null,
+};
 
 /**
  * Kiểm tra xem localStorage có khả dụng không
@@ -41,20 +49,21 @@ export const setToken = (token, axiosInstance = null) => {
   }
 
   try {
-    console.log(
-      "Setting token to localStorage:",
-      token.substring(0, 15) + "..."
-    );
+    // Cập nhật timestamp cho token để theo dõi thời gian lưu
+    const timestamp = Date.now();
+
+    // Lưu vào memory cache trước
+    memoryCache.token = token;
+    memoryCache.tokenTimestamp = timestamp;
 
     if (isLocalStorageAvailable()) {
       localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(TOKEN_TIMESTAMP_KEY, timestamp.toString());
     } else {
       memoryStorage.token = token;
-      console.log("Saved token to memory storage instead of localStorage");
     }
 
     if (axiosInstance) {
-      console.log("Updating axios instance headers with token");
       axiosInstance.defaults.headers.common[
         "Authorization"
       ] = `Bearer ${token}`;
@@ -63,7 +72,6 @@ export const setToken = (token, axiosInstance = null) => {
     console.error("Error saving token:", error);
     // Store in memory as fallback
     memoryStorage.token = token;
-    console.log("Saved token to memory storage as fallback");
   }
 };
 
@@ -72,16 +80,25 @@ export const setToken = (token, axiosInstance = null) => {
  * @returns {boolean} - true nếu token đã hết hạn, false nếu chưa hoặc không có token
  */
 export const isTokenExpired = () => {
-  let token = null;
+  // Ưu tiên dùng bộ nhớ cache
+  let token = memoryCache.token;
 
-  // Try localStorage first
-  if (isLocalStorageAvailable()) {
-    token = localStorage.getItem(TOKEN_KEY);
+  // Nếu không có trong cache, thử localStorage
+  if (!token) {
+    if (isLocalStorageAvailable()) {
+      token = localStorage.getItem(TOKEN_KEY);
+      if (token) {
+        // Cập nhật lại cache
+        memoryCache.token = token;
+      }
+    }
   }
 
   // Fall back to memory storage if needed
   if (!token && memoryStorage.token) {
     token = memoryStorage.token;
+    // Cập nhật lại cache
+    memoryCache.token = token;
   }
 
   if (!token) return false; // Không có token nên không thể xác định là đã hết hạn
@@ -89,15 +106,7 @@ export const isTokenExpired = () => {
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
     const isExpired = Date.now() >= payload.exp * 1000;
-    if (isExpired) {
-      console.log(
-        `Token has expired. Expiration: ${new Date(
-          payload.exp * 1000
-        ).toISOString()}, Current: ${new Date().toISOString()}`
-      );
-      return true;
-    }
-    return false;
+    return isExpired;
   } catch (error) {
     console.error("Error checking token expiration:", error);
     return false; // Không xác định được nên coi như chưa hết hạn
@@ -109,16 +118,26 @@ export const isTokenExpired = () => {
  * @returns {string|null} - Access token hoặc null nếu không có hoặc hết hạn
  */
 export const getToken = () => {
-  let token = null;
+  // Ưu tiên dùng bộ nhớ cache
+  let token = memoryCache.token;
 
-  // Try localStorage first
-  if (isLocalStorageAvailable()) {
-    token = localStorage.getItem(TOKEN_KEY);
-  }
+  // Nếu không có trong cache, thử localStorage
+  if (!token) {
+    // Try localStorage first
+    if (isLocalStorageAvailable()) {
+      token = localStorage.getItem(TOKEN_KEY);
+      if (token) {
+        // Cập nhật lại cache
+        memoryCache.token = token;
+      }
+    }
 
-  // Fall back to memory storage if needed
-  if (!token && memoryStorage.token) {
-    token = memoryStorage.token;
+    // Fall back to memory storage if needed
+    if (!token && memoryStorage.token) {
+      token = memoryStorage.token;
+      // Cập nhật lại cache
+      memoryCache.token = token;
+    }
   }
 
   if (!token) {
@@ -130,11 +149,15 @@ export const getToken = () => {
     const payload = JSON.parse(atob(token.split(".")[1]));
     // Return null if token is expired
     if (Date.now() >= payload.exp * 1000) {
+      // Cập nhật lại cache là null vì token đã hết hạn
+      memoryCache.token = null;
       return null;
     }
     return token;
   } catch (error) {
     console.error("Invalid token format:", error);
+    // Cập nhật lại cache là null vì token không hợp lệ
+    memoryCache.token = null;
     return null;
   }
 };
@@ -144,13 +167,35 @@ export const getToken = () => {
  * @returns {boolean} - true nếu token còn hiệu lực, false nếu không
  */
 export const isTokenValid = () => {
+  // Ưu tiên lấy token từ cache hoặc localStorage
   const token = getToken();
   if (!token) return false;
 
   try {
+    // Giải mã payload của token
     const payload = JSON.parse(atob(token.split(".")[1]));
-    return Date.now() < payload.exp * 1000;
-  } catch {
+
+    // Kiểm tra expiry time - tính theo milliseconds
+    const tokenExpiry = payload.exp * 1000; // Convert to milliseconds
+    const currentTime = Date.now();
+
+    // Thêm logging để dễ debug
+    if (currentTime >= tokenExpiry) {
+      console.log(
+        "Token đã hết hạn vào: ",
+        new Date(tokenExpiry).toLocaleString()
+      );
+      console.log(
+        "Thời gian hiện tại: ",
+        new Date(currentTime).toLocaleString()
+      );
+      return false;
+    }
+
+    // Nếu còn hơn 15 phút trước khi hết hạn, token được coi là hợp lệ
+    return true;
+  } catch (error) {
+    console.error("Error validating token:", error);
     return false;
   }
 };
@@ -166,22 +211,18 @@ export const setUser = (user) => {
   }
 
   try {
-    console.log(
-      "Setting user data to localStorage:",
-      user._id || user.id || "unknown ID"
-    );
+    // Cập nhật cache trước
+    memoryCache.user = user;
 
     if (isLocalStorageAvailable()) {
       localStorage.setItem(USER_KEY, JSON.stringify(user));
     } else {
       memoryStorage.user = user;
-      console.log("Saved user to memory storage instead of localStorage");
     }
   } catch (error) {
     console.error("Error saving user data:", error);
     // Store in memory as fallback
     memoryStorage.user = user;
-    console.log("Saved user to memory storage as fallback");
   }
 };
 
@@ -190,25 +231,34 @@ export const setUser = (user) => {
  * @returns {object|null} - Đối tượng người dùng hoặc null nếu không có
  */
 export const getUser = () => {
+  // Ưu tiên dùng bộ nhớ cache
+  if (memoryCache.user) {
+    return memoryCache.user;
+  }
+
   // Try localStorage first
   if (isLocalStorageAvailable()) {
     const userStr = localStorage.getItem(USER_KEY);
     if (userStr) {
       try {
-        return JSON.parse(userStr);
+        const user = JSON.parse(userStr);
+        // Cập nhật cache
+        memoryCache.user = user;
+        return user;
       } catch (e) {
         console.error("Failed to parse user from localStorage:", e);
+        return null;
       }
     }
   }
 
-  // Fall back to memory storage
+  // Fall back to memory storage if needed
   if (memoryStorage.user) {
-    console.log("Retrieved user from memory storage");
-    return memoryStorage.user;
+    // Cập nhật cache
+    memoryCache.user = memoryStorage.user;
   }
 
-  return null;
+  return memoryStorage.user;
 };
 
 /**
@@ -216,10 +266,16 @@ export const getUser = () => {
  * @param {object} axiosInstance - (Optional) Instance axios để xóa header
  */
 export const clearTokens = (axiosInstance = null) => {
+  // Xóa cache trước
+  memoryCache.token = null;
+  memoryCache.user = null;
+  memoryCache.tokenTimestamp = null;
+
   // Clear localStorage if available
   if (isLocalStorageAvailable()) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(TOKEN_TIMESTAMP_KEY);
   }
 
   // Always clear memory storage

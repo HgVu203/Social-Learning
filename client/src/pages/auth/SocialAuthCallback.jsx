@@ -1,194 +1,152 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import tokenService from "../../services/tokenService";
-import axios from "axios";
+import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import AuthForm from "../../components/auth/AuthForm";
+import axiosService from "../../services/axiosService";
 
 const SocialAuthCallback = () => {
   const [searchParams] = useSearchParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
   const { setCredentials } = useAuth();
-  const [error, setError] = useState(null);
-  const [processingStatus, setProcessingStatus] = useState(
-    "Starting authentication process"
-  );
+  const { t } = useTranslation();
 
   useEffect(() => {
-    async function processAuth() {
+    const processCallback = async () => {
       try {
-        setProcessingStatus("Retrieving authentication data");
-
-        // Get the token from URL parameters
         const token = searchParams.get("token");
-        const nonce = searchParams.get("nonce");
+        const error = searchParams.get("error");
 
-        console.log("SocialAuthCallback received params:", {
-          hasToken: !!token,
-          nonce,
-          queryString: window.location.search,
-        });
+        if (error) {
+          setError(decodeURIComponent(error));
+          setLoading(false);
+          return;
+        }
 
         if (!token) {
-          console.error("Missing required token parameter");
-          throw new Error(
-            "Authentication failed: Missing authentication token"
-          );
+          setError(t("auth.invalidAuthData"));
+          setLoading(false);
+          return;
         }
 
-        setProcessingStatus("Fetching user data");
-
-        // Use the token to get the user data from the API
         try {
-          const apiUrl = import.meta.env.VITE_API_URL;
+          // Set token to be used for fetching user data
+          axiosService.defaults.headers.common[
+            "Authorization"
+          ] = `Bearer ${token}`;
 
-          // First, make sure the token is properly stored
-          tokenService.clearTokens(); // Clear any existing tokens first
-          tokenService.setToken(token); // Set the new token
+          // Fetch user data using the token
+          const userResponse = await axiosService.get("/auth/check");
 
-          // Now make the request with Authorization header
-          const response = await axios.get(`${apiUrl}/auth/check`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            // Ensure cookies are sent with the request
-            withCredentials: true,
-          });
-
-          console.log("User data fetched successfully:", response.data);
-
-          if (!response.data.success || !response.data.data?.user) {
-            throw new Error("Invalid user data received from server");
+          if (!userResponse.data.success || !userResponse.data.data?.user) {
+            throw new Error("Failed to fetch user data");
           }
 
-          const userData = response.data.data.user;
+          const userData = userResponse.data.data.user;
 
-          setProcessingStatus("Setting credentials");
-
-          // Create a complete user object with token
-          const userWithToken = {
-            ...userData,
-            token: token,
-          };
-
-          // Set credentials in the auth context
-          const result = setCredentials({
-            user: userWithToken,
+          // Use both the token and fetched user data for authentication
+          const result = await setCredentials({
             accessToken: token,
+            user: userData,
           });
 
-          console.log("Social login setCredentials result:", result);
-
-          if (result) {
-            setProcessingStatus("Login successful, redirecting");
-
-            // Redirect with slight delay to ensure state is updated
-            setTimeout(() => {
-              // Redirect admin users to admin dashboard
-              if (userWithToken.role === "admin") {
-                navigate("/admin", { replace: true });
-              } else {
-                navigate("/", { replace: true });
-              }
-            }, 500);
+          if (result.success) {
+            navigate("/", { replace: true });
           } else {
-            console.error("Failed to set credentials", result);
-            throw new Error(
-              "Authentication failed: Unable to save credentials"
-            );
+            setError(result.error || t("auth.authFailed"));
+            setLoading(false);
           }
-        } catch (apiError) {
-          console.error("API error:", apiError);
-          throw new Error(`Failed to fetch user data: ${apiError.message}`);
+        } catch (e) {
+          console.error("Error during authentication process:", e);
+          setError(t("auth.invalidAuthData"));
+          setLoading(false);
         }
-      } catch (error) {
-        console.error("Error during social authentication:", error);
-        setError(`Error processing login: ${error.message}`);
-
-        // Delay redirect to show error
-        setTimeout(() => {
-          navigate(
-            `/login?error=${encodeURIComponent(`Error: ${error.message}`)}`
-          );
-        }, 2000);
+      } catch (err) {
+        console.error("Auth callback error:", err);
+        setError(err.message || t("auth.authFailed"));
+        setLoading(false);
       }
-    }
+    };
 
-    processAuth();
-  }, [searchParams, setCredentials, navigate]);
+    processCallback();
+  }, [searchParams, navigate, setCredentials, t]);
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-900/30 mb-6">
-              <svg
-                className="w-8 h-8 text-red-500"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-2">
-              Authentication Error
-            </h3>
-            <p className="text-red-400 mb-6">{error}</p>
-            <p className="text-gray-400 text-sm mb-6">
-              Please try logging in again or contact support if the problem
-              persists.
-            </p>
-            <button
-              onClick={() => navigate("/login")}
-              className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg font-medium transition-all duration-200 hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/20"
-            >
-              Return to Login
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const clearError = () => {
+    setError("");
+  };
+
+  // Redirect to login on error
+  const handleBackToLogin = () => {
+    navigate("/login");
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1c22] to-[#16181c] flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-[#1d1f23] rounded-xl shadow-2xl p-8 border border-gray-800 transition-all duration-200 text-center">
-        <div className="flex flex-col items-center">
-          <div className="w-20 h-20 relative mb-6">
-            <div className="absolute top-0 left-0 w-full h-full rounded-full border-4 border-blue-500/30 border-t-blue-500 animate-spin"></div>
-            <div className="absolute top-3 left-3 w-14 h-14 rounded-full border-4 border-indigo-500/30 border-t-indigo-500 animate-spin"></div>
+    <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
+      >
+        <AuthForm
+          title={
+            loading
+              ? t("auth.processingAuth")
+              : error
+              ? t("auth.authFailed")
+              : t("auth.authSuccess")
+          }
+          subtitle={
+            loading
+              ? t("auth.pleaseWait")
+              : error
+              ? t("auth.tryAgain")
+              : t("auth.redirecting")
+          }
+          error={error}
+          clearError={clearError}
+        >
+          <div className="flex flex-col items-center justify-center py-6">
+            {loading ? (
+              <div className="flex flex-col items-center space-y-4">
+                <div className="w-12 h-12 border-t-2 border-b-2 border-[var(--color-primary)] rounded-full animate-spin"></div>
+                <p className="text-[var(--color-text-secondary)] text-sm">
+                  {t("auth.verifyingCredentials")}
+                </p>
+              </div>
+            ) : error ? (
+              <button
+                onClick={handleBackToLogin}
+                className="mt-4 px-6 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-dark)] transition-colors duration-200"
+              >
+                {t("auth.backToLogin")}
+              </button>
+            ) : (
+              <div className="text-center space-y-2">
+                <svg
+                  className="h-16 w-16 text-green-500 mx-auto"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-[var(--color-text-primary)]">
+                  {t("auth.loginSuccess")}
+                </p>
+              </div>
+            )}
           </div>
-
-          <h3 className="text-2xl font-bold text-white mb-1">
-            Processing Login
-          </h3>
-          <p className="text-blue-400 mb-6">{processingStatus}...</p>
-
-          <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 animate-pulse"
-              style={{
-                width:
-                  processingStatus === "Starting authentication process"
-                    ? "25%"
-                    : processingStatus === "Retrieving authentication data"
-                    ? "50%"
-                    : processingStatus === "Fetching user data"
-                    ? "75%"
-                    : "90%",
-              }}
-            ></div>
-          </div>
-
-          <p className="mt-4 text-gray-400 text-sm">
-            Please wait while we complete your authentication
-          </p>
-        </div>
-      </div>
+        </AuthForm>
+      </motion.div>
     </div>
   );
 };

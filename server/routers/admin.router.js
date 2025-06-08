@@ -20,11 +20,20 @@ router.post("/cache/users/clear", AdminController.clearUsersCache);
 
 // Content Management Routes
 router.get("/posts", AdminController.getAllPosts);
+router.get("/posts/offensive-content", AdminController.getOffensivePosts);
 router.get("/posts/:id/details", AdminController.getPostDetails);
 router.patch("/posts/:id", AdminController.updatePost);
 router.patch("/posts/:id/status", AdminController.updatePostStatus);
 router.delete("/posts/:id", AdminController.deletePost);
 router.patch("/posts/:id/restore", AdminController.restorePost);
+
+// Thêm routes cho phân tích nội dung
+router.post("/posts/:id/analyze-content", AdminController.analyzePostContent);
+router.post("/posts/analyze-all-content", AdminController.analyzeAllContent);
+router.post(
+  "/posts/analyze-duplicate-content",
+  AdminController.analyzeDuplicateContent
+);
 
 // Group Management Routes
 router.get("/groups", AdminController.getAllGroups);

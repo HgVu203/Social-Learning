@@ -10,6 +10,7 @@ import tokenService from "./services/tokenService";
 import { initPrefetchOnHover } from "./utils/prefetchNavigation";
 import ScrollToTop from "./components/common/ScrollToTop";
 import RedirectWrapper from "./utils/RedirectWrapper";
+import GlobalAuthCheck from "./utils/GlobalAuthCheck";
 
 // Layout
 import ProtectedRoute from "./utils/ProtectedRoute";
@@ -66,16 +67,6 @@ const LoadingFallback = () => (
 const AdminRoute = () => {
   const { user, loading } = useAuth();
 
-  // Sử dụng useEffect để kiểm tra cả user từ context và từ localStorage
-  useEffect(() => {
-    if (!loading) {
-      // Có thể thêm logic kiểm tra từ localStorage nếu cần
-      const storedUser = tokenService.getUser();
-      console.log("Admin route check - Context user:", user);
-      console.log("Admin route check - Stored user:", storedUser);
-    }
-  }, [user, loading]);
-
   if (loading) {
     return <LoadingFallback />;
   }
@@ -91,14 +82,32 @@ const AdminRoute = () => {
 };
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading, setCredentials } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
 
+  // Kiểm tra xem token còn hợp lệ không khi app khởi động
+  useEffect(() => {
+    // Nếu có token hợp lệ nhưng không ở trạng thái authenticated
+    if (tokenService.isTokenValid() && !isAuthenticated && !loading) {
+      // Lấy thông tin user từ local storage
+      const user = tokenService.getUser();
+      const token = tokenService.getToken();
+
+      if (user && token) {
+        // Đặt lại credentials cho session hiện tại
+        setCredentials({
+          user,
+          accessToken: token,
+        });
+
+        console.log("App restored authentication state from localStorage");
+      }
+    }
+  }, [isAuthenticated, loading, setCredentials]);
+
   // Handle socket disconnection when logging out
   useEffect(() => {
-    console.log("Auth state changed", isAuthenticated);
-
     if (!isAuthenticated) {
       // Disconnect socket on logout
       disconnectSocket(false); // Complete disconnect on logout
@@ -108,7 +117,6 @@ function App() {
     return () => {
       if (window.isUnmounting) {
         try {
-          console.log("Disconnecting socket due to app unmount");
           disconnectSocket(false); // Complete disconnect on app unmount
         } catch (error) {
           console.error("Socket cleanup error:", error);
@@ -130,7 +138,6 @@ function App() {
 
     // If navigating away from messages to another page, temporarily disconnect socket
     if (!isMessagesPage && isAuthenticated) {
-      console.log("Navigated away from messages page, pausing socket");
       disconnectSocket(true); // Disconnect with navigation flag to enable reconnection
     }
   }, [location.pathname, isAuthenticated]);
@@ -152,14 +159,11 @@ function App() {
     if (isAuthenticated) {
       if (isMessagesPage) {
         // Nếu đang ở trang message, kết nối socket
-        console.log("Navigated to messages page, connecting socket");
         import("./services/socket").then(({ connectSocket }) => {
           connectSocket();
         });
       } else {
-        // Nếu đang rời khỏi trang message, đóng socket
-        console.log("Navigated away from messages page, disconnecting socket");
-        disconnectSocket(true); // Ngắt kết nối với flag thông báo do chuyển trang
+        disconnectSocket(true);
       }
     }
   }, [location.pathname, isAuthenticated]);
@@ -212,6 +216,7 @@ function App() {
   return (
     <>
       <ScrollToTop />
+      <GlobalAuthCheck />
       <Routes>
         {/* Auth Routes - Outside MainLayout */}
         <Route
@@ -295,14 +300,6 @@ function App() {
         <Route element={<MainLayout />}>
           {/* Public Routes */}
           <Route
-            path="/"
-            element={
-              <Suspense fallback={<LoadingFallback />}>
-                <HomePage />
-              </Suspense>
-            }
-          />
-          <Route
             path="/search"
             element={
               <Suspense fallback={<LoadingFallback />}>
@@ -334,10 +331,10 @@ function App() {
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route
-              path="/profile"
+              path="/"
               element={
                 <Suspense fallback={<LoadingFallback />}>
-                  <ProfilePage />
+                  <HomePage />
                 </Suspense>
               }
             />

@@ -17,12 +17,29 @@ export const ADMIN_QUERY_KEYS = {
 };
 
 // User Management Hooks
-export const useAdminUsers = (page = 1, limit = 5, searchTerm = "") => {
+export const useAdminUsers = (
+  page = 1,
+  limit = 5,
+  searchTerm = "",
+  searchField = "all"
+) => {
   return useQuery({
-    queryKey: ADMIN_QUERY_KEYS.usersList({ page, limit, searchTerm }),
+    queryKey: ADMIN_QUERY_KEYS.usersList({
+      page,
+      limit,
+      searchTerm,
+      searchField,
+    }),
     queryFn: async () => {
-      console.log(`Fetching admin users: page ${page}, limit ${limit}`);
-      const response = await adminService.getAllUsers(page, limit, searchTerm);
+      console.log(
+        `Fetching admin users: page ${page}, limit ${limit}, search: ${searchTerm}, field: ${searchField}`
+      );
+      const response = await adminService.getAllUsers(
+        page,
+        limit,
+        searchTerm,
+        searchField
+      );
       return response;
     },
     keepPreviousData: true,
@@ -309,16 +326,26 @@ export const useAdminUserMutations = () => {
 };
 
 // Post Management Hooks
-export const useAdminPosts = (page = 1, limit = 5, status = "") => {
+export const useAdminPosts = (
+  page = 1,
+  limit = 5,
+  status = "",
+  search = null
+) => {
   return useQuery({
-    queryKey: ADMIN_QUERY_KEYS.postsList({ page, limit, status }),
+    queryKey: ADMIN_QUERY_KEYS.postsList({ page, limit, status, search }),
     queryFn: async () => {
       console.log(
-        `Fetching admin posts: page ${page}, limit ${limit}, status ${
-          status || "all"
-        }`
+        `Fetching posts: page ${page}, limit ${limit}, status: ${status}, search: ${JSON.stringify(
+          search
+        )}`
       );
-      const response = await adminService.getAllPosts(page, limit, status);
+      const response = await adminService.getAllPosts(
+        page,
+        limit,
+        status,
+        search
+      );
       return response;
     },
     keepPreviousData: true,
@@ -584,12 +611,29 @@ export const useAdminPostMutations = () => {
 };
 
 // Group Management Hooks
-export const useAdminGroups = (page = 1, limit = 5) => {
+export const useAdminGroups = (
+  page = 1,
+  limit = 5,
+  searchTerm = "",
+  searchField = "all"
+) => {
   return useQuery({
-    queryKey: ADMIN_QUERY_KEYS.groupsList({ page, limit }),
+    queryKey: ADMIN_QUERY_KEYS.groupsList({
+      page,
+      limit,
+      search: searchTerm,
+      field: searchField,
+    }),
     queryFn: async () => {
-      console.log(`Fetching admin groups: page ${page}, limit ${limit}`);
-      const response = await adminService.getAllGroups(page, limit);
+      console.log(
+        `Fetching groups: page ${page}, limit ${limit}, search: ${searchTerm}, field: ${searchField}`
+      );
+      const response = await adminService.getAllGroups(
+        page,
+        limit,
+        searchTerm,
+        searchField
+      );
       return response;
     },
     keepPreviousData: true,

@@ -1,23 +1,46 @@
 import io from "socket.io-client";
 import tokenService from "./services/tokenService";
 
-// Socket state management
+// ===== STATE MANAGEMENT =====
 let socket = null;
 let reconnectTimer = null;
-let messageListeners = new Map();
-let typingListeners = new Map();
-let statusListeners = new Map();
+let isConnecting = false;
+let connectionAttemptTimestamp = 0; // Timestamp của lần thử kết nối gần nhất
+const MIN_CONNECTION_INTERVAL = 3000; // Thời gian tối thiểu giữa 2 lần thử kết nối (3 giây)
 
-// Cấu hình Socket.io
+// Listeners và mapping
+const messageListeners = new Map(); // chatId -> callbacks
+const statusListeners = new Map(); // id -> callbacks
+const messageDeliveryListeners = new Map(); // messageId -> callbacks
+
+// Theo dõi tin nhắn và trạng thái
+const pendingMessages = new Map(); // tempId -> message object
+const onlineUsers = new Set(); // Set of userId
+
+// ===== CONFIGURATION =====
 const baseUrl =
   import.meta.env.MODE === "production"
     ? import.meta.env.VITE_API_URL || "/"
     : "http://localhost:3000";
 
+// Socket options
+const socketOptions = {
+  transports: ["websocket", "polling"],
+  reconnection: true,
+  reconnectionAttempts: 20,
+  reconnectionDelay: 3000,
+  reconnectionDelayMax: 10000,
+  timeout: 20000,
+  autoConnect: false,
+  forceNew: false,
+  pingInterval: 30000,
+  pingTimeout: 60000,
+};
+
 /**
  * Kiểm tra đang ở trang message không
  */
-export const isOnMessagePage = () => {
+const isOnMessagePage = () => {
   const currentPath = window.location.pathname;
   return (
     currentPath.includes("/message") ||
@@ -45,12 +68,367 @@ const getUserId = () => {
   }
 };
 
+// ===== SOCKET EVENT HANDLERS =====
+/**
+ * Xử lý các sự kiện socket
+ */
+const setupSocketEvents = (socket) => {
+  if (!socket) return;
+
+  // Xử lý sự kiện kết nối
+  socket.on("connect", () => {
+    console.log("[Socket] Connected successfully:", socket.id);
+    isConnecting = false; // Reset trạng thái kết nối
+
+    // Xác thực với server
+    const token = tokenService.getToken();
+    if (token) {
+      socket.emit("authenticate", token);
+    }
+
+    // Thông báo kết nối thành công
+    window.dispatchEvent(new CustomEvent("socket_connected"));
+
+    // Gửi ping định kỳ để giữ kết nối
+    startPingInterval();
+
+    // Đặt lại flag trạng thái
+    window._socketReconnecting = false;
+  });
+
+  // Xử lý xác thực thành công
+  socket.on("authentication_success", ({ userId }) => {
+    console.log(`Socket authentication successful for user ${userId}`);
+    // Sau khi xác thực thành công, yêu cầu danh sách người dùng online
+    socket.emit("get_online_status");
+  });
+
+  // Xử lý xác thực thất bại
+  socket.on("authentication_failed", ({ message }) => {
+    console.error(`Socket authentication failed: ${message}`);
+    disconnect();
+  });
+
+  // Xử lý ngắt kết nối
+  socket.on("disconnect", (reason) => {
+    console.log(`Socket disconnected. Reason: ${reason}`);
+    isConnecting = false;
+
+    // Thông báo ngắt kết nối
+    window.dispatchEvent(
+      new CustomEvent("socket_disconnected", {
+        detail: { reason },
+      })
+    );
+
+    // Xóa interval ping
+    if (window.socketPingInterval) {
+      clearInterval(window.socketPingInterval);
+      window.socketPingInterval = null;
+    }
+
+    // Thử kết nối lại nếu không phải do người dùng ngắt
+    if (
+      reason !== "io client disconnect" &&
+      reason !== "io server disconnect"
+    ) {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        console.log("Attempting to reconnect after disconnect...");
+        initSocket(true); // Truyền true để force reconnect
+      }, 3000);
+    }
+  });
+
+  // Xử lý lỗi
+  socket.on("error", (error) => {
+    console.error("Socket error:", error);
+    isConnecting = false;
+  });
+
+  // ===== MESSAGE EVENTS =====
+  // Lắng nghe tin nhắn mới
+  socket.on("new_message", (message) => {
+    console.log("Received new message:", message);
+
+    // Gọi tất cả listeners cho chat này
+    const chatId = message.chatId;
+    const listeners = messageListeners.get(chatId) || [];
+    listeners.forEach((callback) => callback(message));
+
+    // Dispatch sự kiện cập nhật conversation
+    window.dispatchEvent(new CustomEvent("conversation_updated"));
+  });
+
+  // Lắng nghe thông báo tin nhắn mới (khi không ở trong chat room)
+  socket.on("new_message_notification", (message) => {
+    console.log("Received new message notification:", message);
+
+    // Dispatch sự kiện notification
+    window.dispatchEvent(
+      new CustomEvent("new_message_notification", {
+        detail: message,
+      })
+    );
+
+    // Dispatch sự kiện cập nhật conversation
+    window.dispatchEvent(new CustomEvent("conversation_updated"));
+  });
+
+  // Lắng nghe xác nhận tin nhắn đã gửi đến server
+  socket.on("message_delivered", ({ messageId, status, timestamp }) => {
+    console.log(`Message ${messageId} status: ${status}`);
+
+    // Xử lý các callback cho tin nhắn
+    const listeners = messageDeliveryListeners.get(messageId) || [];
+    listeners.forEach((callback) => callback({ messageId, status, timestamp }));
+
+    // Xóa tin nhắn khỏi danh sách chờ nếu có
+    if (pendingMessages.has(messageId)) {
+      pendingMessages.delete(messageId);
+    }
+  });
+
+  // Lắng nghe lỗi gửi tin nhắn
+  socket.on("message_error", ({ messageId, error }) => {
+    console.error(`Error with message ${messageId}: ${error}`);
+
+    // Xử lý các callback cho tin nhắn
+    const listeners = messageDeliveryListeners.get(messageId) || [];
+    listeners.forEach((callback) =>
+      callback({ messageId, status: "error", error })
+    );
+  });
+
+  // ===== STATUS EVENTS =====
+  // Lắng nghe thay đổi trạng thái online/offline
+  socket.on("user_status_change", (data) => {
+    console.log(
+      `User ${data.userId} ${
+        data.isOnline ? "is now online" : "is now offline"
+      }`
+    );
+
+    // Cập nhật danh sách người dùng online
+    if (data.isOnline) {
+      onlineUsers.add(data.userId);
+    } else {
+      onlineUsers.delete(data.userId);
+    }
+
+    // Gọi tất cả listeners
+    const listeners = Array.from(statusListeners.values());
+    listeners.forEach((callback) => callback(data));
+
+    // Dispatch event để các components khác có thể lắng nghe
+    window.dispatchEvent(
+      new CustomEvent("user_status_change", {
+        detail: data,
+      })
+    );
+  });
+
+  // Lắng nghe danh sách users online
+  socket.on("online_users_list", (userIds) => {
+    console.log("Received online users list:", userIds);
+
+    // Cập nhật danh sách
+    onlineUsers.clear();
+    userIds.forEach((id) => onlineUsers.add(id));
+
+    // Thông báo cho các components
+    window.dispatchEvent(
+      new CustomEvent("online_users_updated", {
+        detail: { users: userIds },
+      })
+    );
+  });
+
+  // Lắng nghe phản hồi từ yêu cầu trạng thái online
+  socket.on("online_status_response", (statusMap) => {
+    console.log("Received online status response:", statusMap);
+
+    // Cập nhật danh sách
+    for (const [userId, isOnline] of Object.entries(statusMap)) {
+      if (isOnline) {
+        onlineUsers.add(userId);
+      } else {
+        onlineUsers.delete(userId);
+      }
+    }
+
+    // Thông báo cho các components
+    window.dispatchEvent(
+      new CustomEvent("online_status_updated", {
+        detail: { statusMap },
+      })
+    );
+  });
+
+  // Lắng nghe thông báo mới từ server
+  socket.on("new_notification", (notification) => {
+    console.log("Received new notification:", notification);
+
+    // Dispatch sự kiện cho NotificationContext
+    window.dispatchEvent(
+      new CustomEvent("notification_received", {
+        detail: notification,
+      })
+    );
+  });
+
+  // ===== CONNECTION EVENTS =====
+  // Lắng nghe ping từ server
+  socket.on("server_probe", ({ timestamp }) => {
+    // Gửi lại pong để xác nhận kết nối
+    if (socket && socket.connected) {
+      socket.emit("client_ping", {
+        timestamp,
+        response: Date.now(),
+      });
+    }
+  });
+
+  // Lắng nghe pong từ server
+  socket.on("server_pong", ({ timestamp }) => {
+    // Tính toán độ trễ
+    const latency = Date.now() - timestamp;
+    console.log(`Socket latency: ${latency}ms`);
+  });
+
+  // Lắng nghe sự kiện connect_error
+  socket.on("connect_error", (error) => {
+    console.error("Socket connection error:", error.message);
+    isConnecting = false;
+  });
+
+  // Thêm theo dõi trạng thái kết nối socket
+  socket.io.on("reconnect_attempt", (attempt) => {
+    console.log(`[Socket] Reconnect attempt #${attempt}`);
+    window._socketReconnecting = true;
+  });
+
+  socket.io.on("reconnect", (attempt) => {
+    console.log(`[Socket] Reconnected after ${attempt} attempts`);
+    isConnecting = false;
+    window._socketReconnecting = false;
+
+    // Thông báo kết nối lại thành công
+    window.dispatchEvent(new CustomEvent("socket_reconnected"));
+  });
+
+  socket.io.on("reconnect_error", (error) => {
+    console.error(`[Socket] Reconnect error: ${error.message}`);
+
+    // Nếu lỗi nhiều lần, thử tạo kết nối mới hoàn toàn
+    if (!window._socketReconnectionReset && window._socketReconnecting) {
+      window._socketReconnectionReset = true;
+      setTimeout(() => {
+        console.log("[Socket] Trying to create a completely new connection");
+        disconnect();
+        initSocket(true);
+        window._socketReconnectionReset = false;
+      }, 3000);
+    }
+  });
+
+  socket.io.on("reconnect_failed", () => {
+    console.error("[Socket] Reconnection failed after all attempts");
+    isConnecting = false;
+    window._socketReconnecting = false;
+
+    // Thông báo kết nối lại thất bại
+    window.dispatchEvent(new CustomEvent("socket_reconnect_failed"));
+  });
+};
+
+// ===== SOCKET CONNECTION MANAGEMENT =====
+
+/**
+ * Gửi ping định kỳ để giữ kết nối
+ */
+const startPingInterval = () => {
+  // Xóa interval cũ nếu có
+  if (window.socketPingInterval) {
+    clearInterval(window.socketPingInterval);
+  }
+
+  // Theo dõi ping timeouts
+  let consecutivePingFailures = 0;
+  let lastSuccessfulPing = Date.now();
+
+  // Tạo interval mới để ping server mỗi 30 giây
+  window.socketPingInterval = setInterval(() => {
+    if (socket && socket.connected) {
+      // Gửi ping với callback để đảm bảo nhận được phản hồi
+      socket.emit("client_ping", { timestamp: Date.now() }, (response) => {
+        // Nếu có phản hồi, reset biến đếm
+        if (response && response.received) {
+          consecutivePingFailures = 0;
+          lastSuccessfulPing = Date.now();
+        }
+      });
+
+      // Nếu không nhận được phản hồi trong thời gian dài, thử kết nối lại
+      setTimeout(() => {
+        // Nếu đã quá lâu từ lần ping thành công cuối
+        if (Date.now() - lastSuccessfulPing > 120000) {
+          // 2 phút không có ping thành công
+          console.warn(
+            "[Socket] No successful ping for 2 minutes, attempting to reconnect"
+          );
+          consecutivePingFailures = 0;
+
+          // Tạo kết nối mới nếu đang ở trang message
+          if (isOnMessagePage()) {
+            disconnect();
+            initSocket(true);
+          }
+        }
+      }, 3000); // Kiểm tra sau 3 giây
+    } else {
+      // Tăng số lần thất bại liên tiếp
+      consecutivePingFailures++;
+
+      // Nếu mất kết nối quá nhiều lần, xóa interval
+      if (consecutivePingFailures >= 5) {
+        console.warn("[Socket] Too many ping failures, clearing interval");
+        clearInterval(window.socketPingInterval);
+        window.socketPingInterval = null;
+
+        // Thử kết nối lại nếu cần
+        if (isOnMessagePage()) {
+          setTimeout(() => {
+            initSocket(true);
+          }, 5000); // Thử lại sau 5 giây
+        }
+      }
+    }
+  }, 30000);
+};
+
 /**
  * Khởi tạo kết nối socket
+ * @param {boolean} forceNew - Có cưỡng chế tạo kết nối mới không
  */
-export const initSocket = () => {
-  // Nếu đã kết nối, trả về socket hiện tại
-  if (socket && socket.connected) {
+const initSocket = (forceNew = false) => {
+  // Kiểm tra khoảng thời gian giữa 2 lần gọi hàm này
+  const now = Date.now();
+  if (now - connectionAttemptTimestamp < MIN_CONNECTION_INTERVAL && !forceNew) {
+    console.log("Connection attempt too frequent, skipping");
+    return socket;
+  }
+
+  connectionAttemptTimestamp = now;
+
+  // Ngăn nhiều lần kết nối đồng thời
+  if (isConnecting) {
+    console.warn("Socket connection already in progress, ignoring request");
+    return socket;
+  }
+
+  // Nếu đã kết nối và không yêu cầu kết nối mới, trả về socket hiện tại
+  if (socket && socket.connected && !forceNew) {
     return socket;
   }
 
@@ -68,115 +446,104 @@ export const initSocket = () => {
     return null;
   }
 
-  // Đóng kết nối cũ nếu có
-  if (socket) {
-    socket.disconnect();
-  }
+  try {
+    // Đánh dấu đang trong quá trình kết nối
+    isConnecting = true;
 
-  console.log(`Connecting socket to: ${baseUrl}`);
+    // Đóng kết nối cũ nếu có
+    if (socket) {
+      console.log("Closing existing socket before creating new connection");
+      socket.disconnect();
+      socket = null;
 
-  // Tạo kết nối socket mới
-  socket = io(baseUrl, {
-    auth: { token },
-    transports: ["websocket", "polling"],
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-  });
-
-  // Xử lý sự kiện kết nối
-  socket.on("connect", () => {
-    console.log("Socket connected:", socket.id);
-
-    // Xác thực với server
-    socket.emit("authenticate", token);
-
-    // Thông báo kết nối thành công
-    window.dispatchEvent(new CustomEvent("socket_connected"));
-  });
-
-  // Xử lý xác thực thành công
-  socket.on("authentication_success", ({ userId }) => {
-    console.log(`Socket authentication successful for user ${userId}`);
-  });
-
-  // Xử lý xác thực thất bại
-  socket.on("authentication_failed", ({ message }) => {
-    console.error(`Socket authentication failed: ${message}`);
-    disconnect();
-  });
-
-  // Xử lý ngắt kết nối
-  socket.on("disconnect", (reason) => {
-    console.log(`Socket disconnected. Reason: ${reason}`);
-
-    // Thông báo ngắt kết nối
-    window.dispatchEvent(
-      new CustomEvent("socket_disconnected", {
-        detail: { reason },
-      })
-    );
-
-    // Thử kết nối lại nếu không phải do người dùng ngắt
-    if (reason !== "io client disconnect") {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(() => {
-        console.log("Attempting to reconnect...");
-        initSocket();
-      }, 3000);
+      // Thêm một khoảng trễ nhỏ để đảm bảo kết nối cũ đã đóng hoàn toàn
+      setTimeout(() => {
+        _createNewConnection(token);
+      }, 500);
+    } else {
+      _createNewConnection(token);
     }
-  });
 
-  // Lắng nghe tin nhắn mới
-  socket.on("new_message", (message) => {
-    console.log("Received new message:", message);
+    return socket;
+  } catch (error) {
+    console.error("Error initializing socket:", error);
+    isConnecting = false;
+    return null;
+  }
+};
 
-    // Gọi tất cả listeners
-    const chatId = message.chatId;
-    const listeners = messageListeners.get(chatId) || [];
-    listeners.forEach((callback) => callback(message));
-  });
+/**
+ * Hàm nội bộ để tạo kết nối socket mới
+ */
+const _createNewConnection = (token) => {
+  console.log(
+    `[Socket] Connecting to: ${baseUrl} at ${new Date().toISOString()}`
+  );
 
-  // Lắng nghe trạng thái đang gõ
-  socket.on("typing_update", ({ chatId, usersTyping }) => {
-    const listeners = typingListeners.get(chatId) || [];
-    listeners.forEach((callback) => callback(usersTyping));
-  });
-
-  // Lắng nghe thay đổi trạng thái online/offline
-  socket.on("user_status_change", (data) => {
-    console.log(
-      `User ${data.userId} ${
-        data.isOnline ? "is now online" : "is now offline"
-      }`
-    );
-
-    // Gọi tất cả listeners
-    const listeners = Array.from(statusListeners.values());
-    listeners.forEach((callback) => callback(data));
-  });
-
-  // Lắng nghe cập nhật trạng thái tin nhắn
-  socket.on("message_status_update", (data) => {
-    const chatId = data.chatId;
-    const listeners = messageListeners.get(chatId) || [];
-    listeners.forEach((callback) => {
-      if (callback.onStatusUpdate) {
-        callback.onStatusUpdate(data);
-      }
+  try {
+    // Tạo kết nối socket mới với options đã định nghĩa
+    socket = io(baseUrl, {
+      ...socketOptions,
+      auth: { token },
     });
-  });
 
-  return socket;
+    // Thiết lập timeout để reset isConnecting nếu kết nối không thành công
+    const connectTimeout = setTimeout(() => {
+      if (isConnecting) {
+        console.warn(
+          "[Socket] Connection timed out, resetting connection state"
+        );
+        isConnecting = false;
+
+        // Tự động thử kết nối lại sau một khoảng thời gian
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(() => {
+          console.log("[Socket] Auto-reconnect after timeout");
+          if (isOnMessagePage()) {
+            initSocket(true);
+          }
+        }, 5000);
+      }
+    }, 20000);
+
+    // Đăng ký callback cho sự kiện connect_error và connect để xử lý isConnecting
+    socket.io.on("connect_error", (err) => {
+      console.error(`[Socket] Connect error: ${err.message}`);
+      clearTimeout(connectTimeout);
+      isConnecting = false;
+    });
+
+    socket.io.on("connect", () => {
+      console.log(
+        `[Socket] Connected successfully at ${new Date().toISOString()}`
+      );
+      clearTimeout(connectTimeout);
+      // isConnecting sẽ được reset trong event "connect" trong setupSocketEvents
+    });
+
+    // Thiết lập các event handlers
+    setupSocketEvents(socket);
+  } catch (error) {
+    console.error(`[Socket] Error creating connection: ${error.message}`);
+    isConnecting = false;
+  }
 };
 
 /**
  * Ngắt kết nối socket
  */
-export const disconnect = () => {
-  if (socket) {
+const disconnect = () => {
+  if (!socket) return true;
+
+  try {
+    // Thông báo server trước khi disconnect
+    if (socket.connected) {
+      socket.emit("client_disconnect");
+    }
+
     socket.disconnect();
     socket = null;
+    isConnecting = false;
 
     // Xóa reconnect timer nếu có
     if (reconnectTimer) {
@@ -184,22 +551,33 @@ export const disconnect = () => {
       reconnectTimer = null;
     }
 
+    // Xóa ping interval
+    if (window.socketPingInterval) {
+      clearInterval(window.socketPingInterval);
+      window.socketPingInterval = null;
+    }
+
     console.log("Socket disconnected");
+    return true;
+  } catch (error) {
+    console.error("Error disconnecting socket:", error);
+    return false;
   }
 };
 
 /**
- * Đồng nghĩa với disconnect - để tương thích với code cũ
- */
-export const closeSocket = disconnect;
-
-/**
  * Lấy socket instance
  */
-export const getSocket = () => {
-  // Tự động kết nối nếu chưa có
-  if (!socket && isOnMessagePage()) {
-    return initSocket();
+const getSocket = () => {
+  // Tự động kết nối nếu chưa có và đang ở trang message
+  if ((!socket || !socket.connected) && isOnMessagePage()) {
+    // Kiểm tra xem đã quá lâu từ lần kết nối cuối hay chưa để tránh spam
+    const now = Date.now();
+    if (now - connectionAttemptTimestamp > MIN_CONNECTION_INTERVAL) {
+      return initSocket();
+    } else {
+      console.log("Recent connection attempt, not reconnecting automatically");
+    }
   }
   return socket;
 };
@@ -207,14 +585,133 @@ export const getSocket = () => {
 /**
  * Kiểm tra socket đã kết nối chưa
  */
-export const isSocketConnected = () => {
-  return socket && socket.connected;
+const isSocketConnected = () => {
+  return !!(socket && socket.connected);
 };
+
+// ===== MESSAGE FUNCTIONS =====
+
+/**
+ * Gửi tin nhắn qua socket
+ * @param {Object} message - Dữ liệu tin nhắn cần gửi
+ * @returns {String} - Temp ID của tin nhắn hoặc null nếu không gửi được
+ */
+const sendMessage = (message) => {
+  const socket = getSocket();
+  if (socket && socket.connected) {
+    // Tạo một tempId cho tin nhắn
+    const tempId = `temp_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    // Thêm tempId vào message
+    const messageWithTempId = {
+      ...message,
+      tempId,
+      status: "sending",
+      sentAt: Date.now(),
+    };
+
+    // Lưu message vào danh sách chờ
+    pendingMessages.set(tempId, messageWithTempId);
+
+    // Gửi qua socket
+    socket.emit("send_message", messageWithTempId);
+
+    return tempId;
+  }
+  return null;
+};
+
+/**
+ * Đánh dấu tin nhắn đã đọc
+ */
+const markMessageAsRead = ({ messageId, chatId, senderId }) => {
+  const socket = getSocket();
+  if (socket && socket.connected) {
+    socket.emit("mark_read", { messageId, chatId, senderId });
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Lấy danh sách tin nhắn đang chờ
+ */
+const getPendingMessages = (chatId) => {
+  if (!chatId) return [];
+
+  const pendingForChat = [];
+  pendingMessages.forEach((message) => {
+    if (message.receiverId === chatId || message.chatId === chatId) {
+      pendingForChat.push(message);
+    }
+  });
+
+  return pendingForChat;
+};
+
+/**
+ * Đăng ký lắng nghe khi tin nhắn được gửi thành công
+ * @param {String} messageId - ID hoặc tempId của tin nhắn
+ * @param {Function} callback - Hàm callback khi trạng thái thay đổi
+ */
+const trackMessageDelivery = (messageId, callback) => {
+  if (!messageId) return () => {};
+
+  // Thêm callback vào danh sách
+  if (!messageDeliveryListeners.has(messageId)) {
+    messageDeliveryListeners.set(messageId, []);
+  }
+  messageDeliveryListeners.get(messageId).push(callback);
+
+  // Return một hàm để unsubscribe
+  return () => {
+    const listeners = messageDeliveryListeners.get(messageId) || [];
+    const index = listeners.indexOf(callback);
+    if (index !== -1) {
+      listeners.splice(index, 1);
+    }
+    // Xóa key nếu không còn listeners
+    if (listeners.length === 0) {
+      messageDeliveryListeners.delete(messageId);
+    }
+  };
+};
+
+/**
+ * Đăng ký lắng nghe tin nhắn mới
+ */
+const subscribeToMessages = (chatId, callback) => {
+  if (!chatId || !callback) return () => {};
+
+  // Initialize list for this chat if it doesn't exist
+  if (!messageListeners.has(chatId)) {
+    messageListeners.set(chatId, []);
+  }
+
+  // Add callback
+  messageListeners.get(chatId).push(callback);
+
+  // Return unsubscribe function
+  return () => {
+    const callbacks = messageListeners.get(chatId) || [];
+    const index = callbacks.indexOf(callback);
+    if (index !== -1) {
+      callbacks.splice(index, 1);
+    }
+    if (callbacks.length === 0) {
+      messageListeners.delete(chatId);
+    }
+  };
+};
+
+// ===== CHAT ROOM FUNCTIONS =====
 
 /**
  * Tham gia phòng chat
  */
-export const joinChatRoom = (chatId) => {
+const joinChatRoom = (chatId) => {
   const socket = getSocket();
   if (socket && socket.connected) {
     socket.emit("join_chat", chatId);
@@ -226,7 +723,7 @@ export const joinChatRoom = (chatId) => {
 /**
  * Rời phòng chat
  */
-export const leaveChatRoom = (chatId) => {
+const leaveChatRoom = (chatId) => {
   if (socket && socket.connected) {
     socket.emit("leave_chat", chatId);
     return true;
@@ -234,164 +731,68 @@ export const leaveChatRoom = (chatId) => {
   return false;
 };
 
+// ===== USER STATUS FUNCTIONS =====
+
 /**
- * Gửi tin nhắn
+ * Kiểm tra user có đang online không
+ * @param {string} userId - ID của user cần kiểm tra
+ * @returns {boolean} - true nếu user đang online
  */
-export const sendMessage = (message) => {
-  const socket = getSocket();
-  if (socket && socket.connected) {
-    socket.emit("send_message", message);
-    return true;
-  }
-  return false;
+const isUserOnline = (userId) => {
+  if (!userId) return false;
+  return onlineUsers.has(userId);
 };
 
 /**
- * Đánh dấu tin nhắn đã đọc
+ * Đăng ký lắng nghe thay đổi trạng thái người dùng
  */
-export const markMessageAsRead = ({ messageId, chatId, senderId }) => {
-  const socket = getSocket();
-  if (socket && socket.connected) {
-    socket.emit("message_read", { messageId, chatId, senderId });
-    return true;
-  }
-  return false;
-};
+const subscribeToUserStatus = (callback) => {
+  const id = Math.random().toString(36).substr(2, 9);
 
-/**
- * Bắt đầu gõ tin nhắn
- */
-export const startTyping = (chatId) => {
-  const socket = getSocket();
-  if (socket && socket.connected) {
-    socket.emit("typing_start", { chatId });
-    return true;
-  }
-  return false;
-};
+  // Add callback
+  statusListeners.set(id, callback);
 
-/**
- * Dừng gõ tin nhắn
- */
-export const stopTyping = (chatId) => {
-  const socket = getSocket();
-  if (socket && socket.connected) {
-    socket.emit("typing_end", { chatId });
-    return true;
-  }
-  return false;
-};
-
-/**
- * Lắng nghe tin nhắn mới
- * @param {string} chatId - ID của đoạn chat
- * @param {function} callback - Function xử lý khi có tin nhắn mới
- * @returns {function} - Function để hủy lắng nghe
- */
-export const subscribeToMessages = (chatId, callback) => {
-  // Đảm bảo đã tham gia phòng chat
-  joinChatRoom(chatId);
-
-  // Thêm callback vào danh sách listeners
-  const listeners = messageListeners.get(chatId) || [];
-  listeners.push(callback);
-  messageListeners.set(chatId, listeners);
-
-  // Trả về function hủy đăng ký
+  // Return unsubscribe function
   return () => {
-    const updatedListeners = messageListeners.get(chatId) || [];
-    const index = updatedListeners.indexOf(callback);
-    if (index > -1) {
-      updatedListeners.splice(index, 1);
-      if (updatedListeners.length > 0) {
-        messageListeners.set(chatId, updatedListeners);
-      } else {
-        messageListeners.delete(chatId);
-        leaveChatRoom(chatId);
-      }
-    }
+    statusListeners.delete(id);
   };
 };
 
 /**
- * Lắng nghe trạng thái đang gõ
+ * Yêu cầu trạng thái online của các bạn bè
+ * @param {Array} userIds - Danh sách ID của bạn bè cần kiểm tra
  */
-export const subscribeToTyping = (chatId, callback) => {
-  const listeners = typingListeners.get(chatId) || [];
-  listeners.push(callback);
-  typingListeners.set(chatId, listeners);
+const requestOnlineStatus = (userIds) => {
+  const socket = getSocket();
+  if (!socket || !socket.connected) return false;
 
-  return () => {
-    const updatedListeners = typingListeners.get(chatId) || [];
-    const index = updatedListeners.indexOf(callback);
-    if (index > -1) {
-      updatedListeners.splice(index, 1);
-      if (updatedListeners.length > 0) {
-        typingListeners.set(chatId, updatedListeners);
-      } else {
-        typingListeners.delete(chatId);
-      }
-    }
-  };
-};
-
-/**
- * Lắng nghe trạng thái online/offline
- */
-export const subscribeToUserStatus = (callback) => {
-  const listenerId = Date.now().toString();
-  statusListeners.set(listenerId, callback);
-
-  return () => {
-    statusListeners.delete(listenerId);
-  };
-};
-
-/**
- * Buộc kết nối lại socket
- */
-export const forceReconnect = () => {
-  if (!isOnMessagePage()) {
-    console.log("Not on messages page, skipping reconnection");
-    return false;
-  }
-
-  console.log("Force reconnecting socket...");
-
-  // Ngắt kết nối hiện tại
-  if (socket) {
-    socket.disconnect();
-  }
-
-  // Xóa các timer nếu có
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-
-  // Khởi tạo lại kết nối sau 500ms
-  setTimeout(() => {
-    const newSocket = initSocket();
-    return !!newSocket;
-  }, 500);
-
+  socket.emit("get_online_status", userIds);
   return true;
 };
 
-export default {
+// ===== EXPORT =====
+// Export cụ thể từng chức năng
+export {
+  // Connection management
   initSocket,
   disconnect,
   getSocket,
   isSocketConnected,
-  joinChatRoom,
-  leaveChatRoom,
+  isOnMessagePage,
+
+  // Message handling
   sendMessage,
   markMessageAsRead,
-  startTyping,
-  stopTyping,
+  getPendingMessages,
+  trackMessageDelivery,
   subscribeToMessages,
-  subscribeToTyping,
+
+  // Chat rooms
+  joinChatRoom,
+  leaveChatRoom,
+
+  // User status
+  isUserOnline,
   subscribeToUserStatus,
-  isOnMessagePage,
-  forceReconnect,
+  requestOnlineStatus,
 };

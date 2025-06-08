@@ -17,13 +17,13 @@ const router = express.Router();
 // Rate limiters
 const commentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: 200,
   message: { success: false, error: "Too many comments" },
 });
 
 const postLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
+  max: 100,
   message: { success: false, error: "Too many posts" },
 });
 
@@ -38,9 +38,15 @@ router.get("/search", optionalAuth, PostController.searchPosts);
 router.use("/recommended", protectedRouter);
 router.get("/recommended", PostController.getRecommendedPosts);
 
+// Specific routes - best practice to put specific routes before parameterized routes
 // *** PARAMETERIZED ROUTES ***
 // Public routes with optional auth
-router.get("/:id", optionalAuth, trackUserActivity, PostController.getPostById);
+router.get(
+  "/:id",
+  optionalAuth,
+  trackUserActivity,
+  PostController.unifiedGetPost
+);
 router.get("/:id/comments", optionalAuth, PostController.getComments);
 
 // All remaining routes require authentication
@@ -91,7 +97,7 @@ router.delete(
 router.post("/:id/like", trackUserActivity, PostController.likePost);
 
 router.post(
-  "/:id/comment/:commentId/like",
+  "/:id/comments/:commentId/like",
   trackUserActivity,
   PostController.likeComment
 );
@@ -104,5 +110,11 @@ router.post(
   trackUserActivity,
   PostController.addComment
 );
+router.patch(
+  "/:id/comments/:commentId",
+  validateRequest(postValidationSchema.updateComment),
+  PostController.updateComment
+);
+router.delete("/:id/comments/:commentId", PostController.deleteComment);
 
 export default router;

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="450" viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
+  <!-- Actor Quản trị viên -->
+  <circle cx="80" cy="150" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="170" x2="80" y2="200" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="180" x2="60" y2="220" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="180" x2="100" y2="220" stroke="#333" stroke-width="2"/>
+  <text x="80" y="240" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Quản trị viên</text>
+  
+  <!-- Actor Điều phối viên -->
+  <circle cx="720" cy="150" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="170" x2="720" y2="200" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="180" x2="700" y2="220" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="180" x2="740" y2="220" stroke="#333" stroke-width="2"/>
+  <text x="720" y="240" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Điều phối viên</text>
+  
+  <!-- Khung chính -->
+  <rect x="180" y="50" width="440" height="350" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="400" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Quản lý nhóm thảo luận</text>
+  
+  <!-- Chức năng tạo nhóm -->
+  <ellipse cx="300" cy="150" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="155" text-anchor="middle" font-family="Arial" font-size="14">Tạo nhóm thảo luận</text>
+  
+  <!-- Chức năng xóa nhóm -->
+  <ellipse cx="400" cy="230" rx="60" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="400" y="235" text-anchor="middle" font-family="Arial" font-size="14">Xóa nhóm</text>
+  
+  <!-- Chức năng quản lý thành viên -->
+  <ellipse cx="400" cy="310" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="400" y="315" text-anchor="middle" font-family="Arial" font-size="14">Quản lý thành viên nhóm</text>
+  
+  <!-- Chức năng kiểm duyệt -->
+  <ellipse cx="500" cy="150" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="155" text-anchor="middle" font-family="Arial" font-size="14">Kiểm duyệt nội dung nhóm</text>
+  
+  <!-- Đường kết nối từ actor quản trị viên đến chức năng -->
+  <line x1="80" y1="150" x2="210" y2="150" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="150" x2="345" y2="230" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="150" x2="310" y2="310" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối từ actor điều phối viên đến chức năng -->
+  <line x1="720" y1="150" x2="590" y2="150" stroke="#333" stroke-width="1.5"/>
+  <line x1="720" y1="150" x2="490" y2="310" stroke="#333" stroke-width="1.5"/>
+</svg> 

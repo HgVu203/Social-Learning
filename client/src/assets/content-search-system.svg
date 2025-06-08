@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <!-- Actor Người dùng -->
+  <circle cx="80" cy="180" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="200" x2="80" y2="230" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="210" x2="60" y2="250" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="210" x2="100" y2="250" stroke="#333" stroke-width="2"/>
+  <text x="80" y="270" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Người dùng</text>
+  
+  <!-- Actor Quản trị viên -->
+  <circle cx="720" cy="180" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="200" x2="720" y2="230" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="210" x2="700" y2="250" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="210" x2="740" y2="250" stroke="#333" stroke-width="2"/>
+  <text x="720" y="270" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Quản trị viên</text>
+  
+  <!-- Khung chính -->
+  <rect x="180" y="50" width="440" height="400" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="400" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Hệ thống Tìm kiếm Nội dung</text>
+  
+  <!-- Chức năng tìm kiếm bài viết -->
+  <ellipse cx="280" cy="140" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="280" y="145" text-anchor="middle" font-family="Arial" font-size="14">Tìm kiếm bài viết</text>
+  
+  <!-- Chức năng tìm kiếm người dùng -->
+  <ellipse cx="520" cy="140" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="520" y="145" text-anchor="middle" font-family="Arial" font-size="14">Tìm kiếm người dùng</text>
+  
+  <!-- Chức năng tìm kiếm nhóm -->
+  <ellipse cx="400" cy="200" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="400" y="205" text-anchor="middle" font-family="Arial" font-size="14">Tìm kiếm nhóm thảo luận</text>
+  
+  <!-- Chức năng kết quả chính xác -->
+  <ellipse cx="280" cy="260" rx="80" ry="25" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="280" y="265" text-anchor="middle" font-family="Arial" font-size="13">Hiển thị kết quả chính xác</text>
+  
+  <!-- Chức năng kết quả tương tự -->
+  <ellipse cx="520" cy="260" rx="80" ry="25" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="520" y="265" text-anchor="middle" font-family="Arial" font-size="13">Hiển thị kết quả tương tự</text>
+  
+  <!-- Chức năng lọc nội dung -->
+  <ellipse cx="280" cy="330" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="280" y="335" text-anchor="middle" font-family="Arial" font-size="14">Lọc kết quả theo từ khóa</text>
+  
+  <!-- Chức năng đề xuất liên quan -->
+  <ellipse cx="520" cy="330" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="520" y="335" text-anchor="middle" font-family="Arial" font-size="14">Đề xuất nội dung liên quan</text>
+  
+  <!-- Đường kết nối từ actor người dùng đến chức năng -->
+  <line x1="80" y1="180" x2="180" y2="140" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="180" x2="400" y2="180" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="180" x2="430" y2="140" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối từ actor quản trị viên đến chức năng -->
+  <line x1="720" y1="180" x2="610" y2="140" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường include từ Tìm kiếm bài viết đến hiển thị kết quả chính xác -->
+  <line x1="280" y1="170" x2="280" y2="230" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  
+  <!-- Đường include từ Tìm kiếm bài viết đến hiển thị kết quả tương tự -->
+  <line x1="325" y1="160" x2="470" y2="240" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  
+  <!-- Đường include từ Hiển thị kết quả chính xác đến lọc kết quả -->
+  <line x1="280" y1="285" x2="280" y2="300" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  
+  <!-- Đường include từ hiển thị kết quả tương tự đến đề xuất liên quan -->
+  <line x1="520" y1="285" x2="520" y2="300" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+</svg> 

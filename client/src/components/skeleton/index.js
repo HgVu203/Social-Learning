@@ -11,6 +11,7 @@ import SkeletonUserManagement from "./SkeletonUserManagement";
 import SkeletonContentManagement from "./SkeletonContentManagement";
 import SkeletonPointsManagement from "./SkeletonPointsManagement";
 import SkeletonGroupManagement from "./SkeletonGroupManagement";
+import PostListSkeleton from "./PostListSkeleton";
 
 export {
   SkeletonProfile,
@@ -26,4 +27,5 @@ export {
   SkeletonContentManagement,
   SkeletonPointsManagement,
   SkeletonGroupManagement,
+  PostListSkeleton,
 };

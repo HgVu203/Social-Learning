@@ -7,9 +7,24 @@ import {
 } from "@tanstack/react-query";
 import axiosService, { uploadFile } from "../services/axiosService";
 import { sortGroupsByPopularity } from "../utils/groupUtils";
+import { useAuth } from "./AuthContext";
+import tokenService from "../services/tokenService";
 
 // Create context
-const GroupContext = createContext(null);
+const GroupContext = createContext({
+  useAllGroups: () => {},
+  useUserGroups: () => {},
+  usePopularGroups: () => {},
+  createGroup: null,
+  joinGroup: null,
+  leaveGroup: null,
+  updateMemberRole: null,
+  removeMember: null,
+  selectGroup: () => {},
+  currentGroup: null,
+  currentGroupLoading: false,
+  currentGroupError: null,
+});
 
 // Constants for query keys
 export const GROUP_QUERY_KEYS = {
@@ -30,6 +45,11 @@ export const GROUP_QUERY_KEYS = {
 export const GroupProvider = ({ children }) => {
   const queryClient = useQueryClient();
   const [currentGroupId, setCurrentGroupId] = useState(null);
+  const { isAuthenticated, user } = useAuth();
+
+  // Kiểm tra người dùng đăng nhập
+  const isUserAuthenticated =
+    isAuthenticated && !!user && tokenService.isTokenValid();
 
   // Query to fetch all groups - now with infinite query support
   const useAllGroups = (query = "", limit = 12) => {
@@ -39,10 +59,7 @@ export const GroupProvider = ({ children }) => {
         try {
           const params = { page: pageParam, limit };
           if (query) params.query = query;
-
-          console.log("Fetching all groups with params:", params);
           const response = await axiosService.get("/group", { params });
-          console.log("All groups response:", response.data);
 
           // Đảm bảo trả về mảng trống nếu không có dữ liệu
           const groups = response.data.data || [];
@@ -66,6 +83,7 @@ export const GroupProvider = ({ children }) => {
       },
       staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
+      enabled: isUserAuthenticated, // Chỉ kích hoạt khi đăng nhập
     });
   };
 
@@ -76,11 +94,9 @@ export const GroupProvider = ({ children }) => {
       queryFn: async () => {
         try {
           // Need to use query parameter rather than a different endpoint
-          console.log("Fetching user groups");
           const response = await axiosService.get("/group", {
             params: { membership: "user" },
           });
-          console.log("User groups response:", response.data);
           return {
             success: response.data.success,
             data: response.data.data || [],
@@ -91,6 +107,7 @@ export const GroupProvider = ({ children }) => {
         }
       },
       staleTime: 1000 * 60 * 5, // 5 minutes
+      enabled: isUserAuthenticated, // Chỉ kích hoạt khi đăng nhập
     });
   };
 
@@ -101,21 +118,16 @@ export const GroupProvider = ({ children }) => {
       queryFn: async () => {
         try {
           // Get a larger set of groups to sort from
-          console.log("Fetching popular groups");
           const response = await axiosService.get("/group", {
             params: { limit: 20, sort: "memberCount" }, // Lấy nhiều nhóm hơn và sắp xếp theo số lượng thành viên
           });
-          console.log("Popular groups response:", response.data);
-
           // Ensure we have an array of groups
           const groups = Array.isArray(response.data.data)
             ? response.data.data
             : [];
-          console.log(`Found ${groups.length} groups before sorting`);
 
           // Sort groups by popularity using utility function
           const popularGroups = sortGroupsByPopularity(groups, 10);
-          console.log(`Sorted to ${popularGroups.length} popular groups`);
 
           return {
             success: true,
@@ -131,6 +143,7 @@ export const GroupProvider = ({ children }) => {
         }
       },
       staleTime: 1000 * 60 * 5, // 5 minutes
+      enabled: isUserAuthenticated, // Chỉ kích hoạt khi đăng nhập
     });
   };
 
@@ -139,31 +152,10 @@ export const GroupProvider = ({ children }) => {
     mutationFn: async (groupData) => {
       // Handle FormData for image uploads
       try {
-        // Log the type of data we're working with
-        console.log(
-          "Create group data type:",
-          groupData instanceof FormData ? "FormData" : typeof groupData
-        );
-
         if (groupData instanceof FormData) {
-          // Log FormData entries for debugging (excluding file content)
-          const formDataEntries = [...groupData.entries()].map(
-            ([key, value]) => {
-              if (key === "coverImage" && value instanceof File) {
-                return `${key}: [File: ${value.name}, ${value.size} bytes, ${value.type}]`;
-              }
-              return `${key}: ${value}`;
-            }
-          );
-          console.log("FormData entries:", formDataEntries);
-
-          // Make sure the URL is correct
           const url = "/group/create";
-          console.log(`Sending FormData to: ${url}`);
-
           try {
             const response = await uploadFile(url, groupData);
-            console.log("Create group response:", response.data);
             return response.data;
           } catch (uploadError) {
             console.error("Error uploading to group/create:", uploadError);
@@ -184,10 +176,7 @@ export const GroupProvider = ({ children }) => {
           }
         }
 
-        // This is for JSON data (no FormData)
-        console.log("Creating group with JSON data");
         const response = await axiosService.post("/group/create", groupData);
-        console.log("Create group response:", response.data);
         return response.data;
       } catch (error) {
         console.error("Error in createGroup mutation:", error);
@@ -199,8 +188,7 @@ export const GroupProvider = ({ children }) => {
         throw error; // Rethrow for onError handler
       }
     },
-    onSuccess: (data) => {
-      console.log("Group created successfully:", data);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: GROUP_QUERY_KEYS.lists() });
       queryClient.invalidateQueries({
         queryKey: GROUP_QUERY_KEYS.userGroups(),
@@ -319,7 +307,7 @@ export const GroupProvider = ({ children }) => {
     setCurrentGroupId(groupId);
   };
 
-  // Context value
+  // Export context value
   const value = {
     useAllGroups,
     useUserGroups,
@@ -343,8 +331,12 @@ export const GroupProvider = ({ children }) => {
 // Hook for using the context
 export const useGroup = () => {
   const context = useContext(GroupContext);
-  if (!context) {
-    throw new Error("useGroup must be used within a GroupProvider");
+  if (context === undefined) {
+    console.warn("useGroup must be used within a GroupProvider");
+    return {}; // Return empty object instead of throwing error
   }
   return context;
 };
+
+// Export the context itself for direct importing
+export default GroupContext;

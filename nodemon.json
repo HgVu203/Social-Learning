@@ -1,0 +1,12 @@
+{
+  "ignore": ["data/", "data/vectors/", "data/cache/", "node_modules/", ".git"],
+  "watch": [
+    "server.js",
+    "routers/",
+    "controllers/",
+    "models/",
+    "middleware/",
+    "utils/",
+    "services/"
+  ]
+}

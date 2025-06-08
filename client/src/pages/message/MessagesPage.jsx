@@ -5,6 +5,7 @@ import MessagesContainer from "../../components/message/MessagesContainer";
 import { useAuth } from "../../contexts/AuthContext";
 import { connectSocket } from "../../services/socket";
 import { useSocket } from "../../contexts/SocketContext";
+import { useTranslation } from "react-i18next";
 
 const MessagesPage = () => {
   const { isAuthenticated } = useAuth();
@@ -12,6 +13,7 @@ const MessagesPage = () => {
   const { userId } = useParams(); // Get userId from URL params
   const socket = useSocket();
   const isConnected = socket?.isConnected;
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -52,7 +54,7 @@ const MessagesPage = () => {
         animate={{ opacity: 1, y: 0 }}
         className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-1 sm:pb-2 md:pb-4"
       >
-        Messages
+        {t("navbar.messages")}
       </motion.h1>
       <div className="w-full h-[calc(100vh-90px)] sm:h-[calc(100vh-120px)] md:h-[calc(100vh-130px)]">
         <MessagesContainer userId={userId} />

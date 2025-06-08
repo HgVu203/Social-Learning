@@ -2,39 +2,27 @@ import axiosInstance from "./axiosService";
 
 export const adminService = {
   // User Management
-  getAllUsers: async (page = 1, limit = 10, searchTerm = "") => {
+  getAllUsers: async (
+    page = 1,
+    limit = 10,
+    searchTerm = "",
+    searchField = "all"
+  ) => {
     try {
       const params = { page, limit };
-      if (searchTerm) params.search = searchTerm;
+      if (searchTerm) {
+        params.search = searchTerm;
+        params.field = searchField;
+      }
 
       const response = await axiosInstance.get("/admin/users", {
         params,
         timeout: 15000,
       });
 
-      // Detailed logging of user data to debug badge issues
-      console.log("Admin users response:", response.data);
-      if (response.data?.data?.length > 0) {
-        console.log("First user data:", response.data.data[0]);
-        console.log("First user badge:", response.data.data[0].badge);
-
-        // Check if any users have badges
-        const usersWithBadges = response.data.data.filter(
-          (user) => user.badge && user.badge.name
-        );
-        console.log(
-          `Found ${usersWithBadges.length} users with badges:`,
-          usersWithBadges.map((u) => ({
-            id: u._id,
-            username: u.username,
-            badge: u.badge,
-          }))
-        );
-      }
-
       return response.data;
     } catch (error) {
-      console.error("Error getting admin users:", error);
+      console.error("Error getting admin users:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -46,7 +34,7 @@ export const adminService = {
       );
       return response.data;
     } catch (error) {
-      console.error("Error getting user details:", error);
+      console.error("Error getting user details:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -85,25 +73,37 @@ export const adminService = {
   },
 
   // Content Management
-  getAllPosts: async (page = 1, limit = 10, status = "") => {
+  getAllPosts: async (page = 1, limit = 10, status = "", search = null) => {
     try {
       const params = { page, limit };
       if (status) params.status = status;
+
+      // Add search parameters if provided
+      if (search) {
+        if (search.term) {
+          params.searchTerm = search.term;
+          params.searchField = search.field || "all";
+        }
+
+        // Add spam filter parameter if provided
+        if (search.isSpam !== undefined) {
+          params.isSpam = search.isSpam;
+        }
+
+        // Add duplicate content detection parameter if provided
+        if (search.findDuplicates !== undefined) {
+          params.findDuplicates = search.findDuplicates;
+        }
+      }
 
       const response = await axiosInstance.get("/admin/posts", {
         params,
         timeout: 15000,
       });
 
-      // Debug logging to check the structure of author data
-      console.log("Admin posts response:", response.data);
-      if (response.data?.data?.length > 0) {
-        console.log("First post author data:", response.data.data[0].author);
-      }
-
       return response.data;
     } catch (error) {
-      console.error("Error getting admin posts:", error);
+      console.error("Error getting admin posts:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -134,10 +134,9 @@ export const adminService = {
       const response = await axiosInstance.patch(
         `/admin/posts/${postId}/restore`
       );
-      console.log("Post restore response:", response.data);
       return response.data;
     } catch (error) {
-      console.error("Error restoring post:", error);
+      console.error("Error restoring post:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -149,40 +148,45 @@ export const adminService = {
       );
       return response.data;
     } catch (error) {
-      console.error("Error getting post details:", error);
+      console.error("Error getting post details:", error.message || error);
       throw error.response?.data || error;
     }
   },
 
   updatePostStatus: async (postId, status) => {
     try {
-      console.log(
-        `[Client] Sending updatePostStatus request: postId=${postId}, status=${status}`
-      );
       const response = await axiosInstance.patch(
         `/admin/posts/${postId}/status`,
         { status }
       );
-      // Log response chi tiết để debug
-      console.log("Post status update response:", response.data);
-      console.log("Post status from response:", response.data?.data?.status);
       return response.data;
     } catch (error) {
-      console.error("Error updating post status:", error);
+      console.error("Error updating post status:", error.message || error);
       throw error.response?.data || error;
     }
   },
 
   // Group Management
-  getAllGroups: async (page = 1, limit = 10) => {
+  getAllGroups: async (
+    page = 1,
+    limit = 10,
+    searchTerm = "",
+    searchField = "all"
+  ) => {
     try {
+      const params = { page, limit };
+      if (searchTerm) {
+        params.search = searchTerm;
+        params.field = searchField;
+      }
+
       const response = await axiosInstance.get("/admin/groups", {
-        params: { page, limit },
+        params,
         timeout: 15000,
       });
       return response.data;
     } catch (error) {
-      console.error("Error fetching all groups:", error);
+      console.error("Error fetching all groups:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -194,7 +198,7 @@ export const adminService = {
       );
       return response.data;
     } catch (error) {
-      console.error("Error getting group details:", error);
+      console.error("Error getting group details:", error.message || error);
       throw error.response?.data || error;
     }
   },
@@ -372,6 +376,153 @@ export const adminService = {
     } catch (error) {
       console.error("Error clearing groups cache:", error);
       throw error;
+    }
+  },
+
+  // Content Moderation - Phát hiện nội dung nhạy cảm
+  analyzePostContent: async (postId) => {
+    try {
+      const response = await axiosInstance.post(
+        `/admin/posts/${postId}/analyze-content`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error analyzing post content:", error.message || error);
+      throw error.response?.data || error;
+    }
+  },
+
+  analyzeAllPostsContent: async (statusFilter = "") => {
+    try {
+      const params = statusFilter ? { status: statusFilter } : {};
+      console.log(`[Admin Service] Analyzing all posts with filter:`, params);
+
+      // Thêm empty object body để đảm bảo đây là request POST hợp lệ
+      const response = await axiosInstance.post(
+        "/admin/posts/analyze-all-content",
+        {}, // Empty object body thay vì null
+        {
+          params,
+          timeout: 120000, // 120s timeout
+          headers: {
+            "Content-Type": "application/json", // Đảm bảo header đúng
+          },
+        }
+      );
+
+      console.log(`[Admin Service] Analysis complete:`, response.data);
+
+      if (!response.data) {
+        throw new Error("No data returned from server");
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error("[Admin Service] Error analyzing all posts:", error);
+
+      if (error.response?.status === 400) {
+        console.error("[Admin Service] Bad request:", error.response.data);
+      } else if (error.response?.status === 500) {
+        console.error("[Admin Service] Server error:", error.response.data);
+      }
+
+      // Thêm thông tin chi tiết về lỗi
+      const errorMessage =
+        error.response?.data?.error || error.message || "Unknown error";
+
+      throw {
+        response: {
+          data: {
+            success: false,
+            error: `Failed to analyze posts: ${errorMessage}`,
+          },
+          status: error.response?.status || 500,
+        },
+      };
+    }
+  },
+
+  analyzeDuplicateContent: async (statusFilter = "") => {
+    try {
+      const params = statusFilter ? { status: statusFilter } : {};
+      console.log(
+        `[Admin Service] Analyzing duplicate content with filter:`,
+        params
+      );
+
+      // Gọi API phân tích bài viết trùng lặp
+      const response = await axiosInstance.post(
+        "/admin/posts/analyze-duplicate-content",
+        {}, // Empty object body
+        {
+          params,
+          timeout: 120000, // 120s timeout
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log(
+        `[Admin Service] Duplicate content analysis complete:`,
+        response.data
+      );
+
+      if (!response.data) {
+        throw new Error("No data returned from server");
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error(
+        "[Admin Service] Error analyzing duplicate content:",
+        error
+      );
+
+      // Thêm thông tin chi tiết về lỗi
+      const errorMessage =
+        error.response?.data?.error || error.message || "Unknown error";
+
+      throw {
+        response: {
+          data: {
+            success: false,
+            error: `Failed to analyze duplicate content: ${errorMessage}`,
+          },
+          status: error.response?.status || 500,
+        },
+      };
+    }
+  },
+
+  // Lấy danh sách các bài viết có nội dung vi phạm
+  getOffensivePosts: async (page = 1, limit = 10, severity = null) => {
+    try {
+      const params = { page, limit };
+
+      if (severity) {
+        params.severity = severity;
+      }
+
+      console.log(
+        `[Admin Service] Fetching offensive posts with params:`,
+        params
+      );
+
+      const response = await axiosInstance.get(
+        "/admin/posts/offensive-content",
+        { params }
+      );
+
+      console.log(
+        `[Admin Service] Found ${
+          response.data?.data?.length || 0
+        } offensive posts`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("[Admin Service] Error fetching offensive posts:", error);
+      throw error.response?.data || error;
     }
   },
 };

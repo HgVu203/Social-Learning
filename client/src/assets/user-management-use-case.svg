@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="650" height="540" viewBox="0 0 650 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tiêu đề -->
+  <text x="325" y="30" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Quản lý người dùng</text>
+  
+  <!-- Khung quản lý người dùng (Admin) -->
+  <rect x="120" y="50" width="500" height="220" rx="5" ry="5" fill="#f5f5f5" stroke="#333" stroke-width="1"/>
+  <text x="370" y="70" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Quản lý người dùng (Admin)</text>
+  
+  <!-- Actor Admin -->
+  <circle cx="60" cy="170" r="15" fill="white" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="185" x2="60" y2="215" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="195" x2="45" y2="230" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="195" x2="75" y2="230" stroke="#333" stroke-width="1"/>
+  <text x="60" y="245" text-anchor="middle" font-family="Arial" font-size="12">Admin</text>
+  
+  <!-- Use cases của Admin -->
+  <ellipse cx="190" cy="115" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="118" text-anchor="middle" font-family="Arial" font-size="12">Xem danh sách người dùng</text>
+  
+  <ellipse cx="190" cy="170" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="173" text-anchor="middle" font-family="Arial" font-size="12">Chỉnh sửa thông tin người dùng</text>
+  
+  <ellipse cx="190" cy="225" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="228" text-anchor="middle" font-family="Arial" font-size="12">Xóa người dùng</text>
+  
+  <ellipse cx="390" cy="115" rx="80" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="118" text-anchor="middle" font-family="Arial" font-size="12">Cấp/quản lý quyền người dùng</text>
+  
+  <ellipse cx="390" cy="170" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="173" text-anchor="middle" font-family="Arial" font-size="12">Hiển thị xác nhận xóa</text>
+  
+  <ellipse cx="390" cy="225" rx="80" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="228" text-anchor="middle" font-family="Arial" font-size="12">Thay đổi trạng thái người dùng</text>
+  
+  <!-- Khung quản lý người dùng (User thường) -->
+  <rect x="120" y="300" width="500" height="220" rx="5" ry="5" fill="#f0fff0" stroke="#333" stroke-width="1"/>
+  <text x="370" y="320" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Quản lý người dùng (User)</text>
+  
+  <!-- Actor User -->
+  <circle cx="60" cy="420" r="15" fill="white" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="435" x2="60" y2="465" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="445" x2="45" y2="480" stroke="#333" stroke-width="1"/>
+  <line x1="60" y1="445" x2="75" y2="480" stroke="#333" stroke-width="1"/>
+  <text x="60" y="495" text-anchor="middle" font-family="Arial" font-size="12">User</text>
+  
+  <!-- Use cases của User -->
+  <ellipse cx="190" cy="365" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="368" text-anchor="middle" font-family="Arial" font-size="12">Đăng ký tài khoản</text>
+  
+  <ellipse cx="190" cy="420" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="423" text-anchor="middle" font-family="Arial" font-size="12">Đăng nhập</text>
+  
+  <ellipse cx="190" cy="475" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="190" y="478" text-anchor="middle" font-family="Arial" font-size="12">Xem thông tin cá nhân</text>
+  
+  <ellipse cx="390" cy="365" rx="80" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="368" text-anchor="middle" font-family="Arial" font-size="12">Chỉnh sửa thông tin cá nhân</text>
+  
+  <ellipse cx="390" cy="420" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="423" text-anchor="middle" font-family="Arial" font-size="12">Thay đổi mật khẩu</text>
+  
+  <ellipse cx="390" cy="475" rx="70" ry="18" fill="white" stroke="#333" stroke-width="1"/>
+  <text x="390" y="478" text-anchor="middle" font-family="Arial" font-size="12">Đăng xuất</text>
+  
+  <!-- Connections from Admin to use cases -->
+  <line x1="75" y1="160" x2="120" y2="115" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="170" x2="120" y2="170" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="180" x2="120" y2="225" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="155" x2="310" y2="115" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="170" x2="320" y2="170" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="185" x2="310" y2="225" stroke="#333" stroke-width="1"/>
+  
+  <!-- Connections from User to use cases -->
+  <line x1="75" y1="410" x2="120" y2="365" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="420" x2="120" y2="420" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="430" x2="120" y2="475" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="405" x2="310" y2="365" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="420" x2="320" y2="420" stroke="#333" stroke-width="1"/>
+  <line x1="75" y1="435" x2="320" y2="475" stroke="#333" stroke-width="1"/>
+</svg> 

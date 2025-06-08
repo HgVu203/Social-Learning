@@ -1,22 +1,13 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FaUserEdit,
   FaTrash,
-  FaSearch,
   FaUserLock,
   FaUserCheck,
-  FaUserShield,
-  FaUser,
   FaChevronLeft,
   FaChevronRight,
-  FaTrophy,
-  FaMedal,
-  FaStar,
-  FaAward,
-  FaLightbulb,
-  FaHandHoldingHeart,
-  FaBullhorn,
-  FaChalkboardTeacher,
+  FaCircle,
 } from "react-icons/fa";
 import { toast } from "react-toastify";
 import {
@@ -25,18 +16,20 @@ import {
   ADMIN_QUERY_KEYS,
 } from "../../hooks/queries/useAdminQueries";
 import { useQueryClient } from "@tanstack/react-query";
-import Select from "../ui/Select";
 import Button from "../ui/Button";
-import { SkeletonUserManagement } from "../skeleton";
 import { adminService } from "../../services/adminService";
+import { SkeletonUserManagement } from "../../components/skeleton";
+import AdvancedSearch from "./AdvancedSearch";
 
 const UserManagement = () => {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchField, setSearchField] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingUserId, setProcessingUserId] = useState(null);
-  const usersPerPage = 5;
+  const usersPerPage = 10;
   const queryClient = useQueryClient();
 
   // Sử dụng React Query hook để lấy dữ liệu người dùng
@@ -44,51 +37,24 @@ const UserManagement = () => {
     data: userData,
     isLoading,
     refetch,
-  } = useAdminUsers(currentPage, usersPerPage, searchTerm);
+  } = useAdminUsers(currentPage, usersPerPage, searchTerm, searchField);
 
-  // Xử lý tìm kiếm
-  const searchUsers = () => {
-    setCurrentPage(1);
-    refetch();
-  };
-
-  useEffect(() => {
-    // Nếu xóa hết từ khóa, tự động search lại
-    if (searchTerm === "") {
-      searchUsers();
+  // Xử lý tìm kiếm nâng cao
+  const handleAdvancedSearch = ({ field, term }) => {
+    setSearchField(field);
+    setSearchTerm(term);
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    } else {
+      refetch();
     }
-  }, [searchTerm]);
+  };
 
   const filteredUsers = userData?.data || [];
   const totalPages = userData?.pagination?.totalPages || 1;
 
   // Sử dụng React Query mutations
   const { updateUser, deleteUser, toggleUserStatus } = useAdminUserMutations();
-
-  // Reset to first page when searching
-  useEffect(() => {
-    if (currentPage !== 1 && searchTerm) {
-      setCurrentPage(1);
-    }
-  }, [searchTerm]);
-
-  // Helper function to ensure badge format is consistent for display
-  const normalizeBadge = (badge) => {
-    if (!badge) return null;
-
-    // Convert string badge to object format if needed
-    if (typeof badge === "string") {
-      return { name: badge, earnedAt: new Date().toISOString() };
-    }
-
-    // If it's already an object with name, return it
-    if (badge.name) {
-      return badge;
-    }
-
-    // Otherwise return null
-    return null;
-  };
 
   // Prefetch data for next page
   useEffect(() => {
@@ -100,17 +66,26 @@ const UserManagement = () => {
           page: nextPage,
           limit: usersPerPage,
           searchTerm,
+          searchField,
         }),
         queryFn: async () => {
           return await adminService.getAllUsers(
             nextPage,
             usersPerPage,
-            searchTerm
+            searchTerm,
+            searchField
           );
         },
       });
     }
-  }, [currentPage, searchTerm, usersPerPage, totalPages, queryClient]);
+  }, [
+    currentPage,
+    searchTerm,
+    searchField,
+    usersPerPage,
+    totalPages,
+    queryClient,
+  ]);
 
   const handlePageChange = (pageNumber) => {
     if (pageNumber > 0 && pageNumber <= totalPages) {
@@ -123,12 +98,14 @@ const UserManagement = () => {
             page: pageNumber + 1,
             limit: usersPerPage,
             searchTerm,
+            searchField,
           }),
           queryFn: async () => {
             return await adminService.getAllUsers(
               pageNumber + 1,
               usersPerPage,
-              searchTerm
+              searchTerm,
+              searchField
             );
           },
         });
@@ -142,14 +119,14 @@ const UserManagement = () => {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (window.confirm("Are you sure you want to delete this user?")) {
+    if (window.confirm(t("admin.users.confirmBan"))) {
       try {
         setProcessingUserId(userId);
         await deleteUser.mutateAsync(userId);
-        toast.success("User deleted successfully");
+        toast.success(t("admin.users.userDeleted"));
       } catch (error) {
         console.error("Error deleting user:", error);
-        toast.error(error.error || "Failed to delete user");
+        toast.error(error.error || t("admin.users.deleteError"));
       } finally {
         setProcessingUserId(null);
       }
@@ -161,10 +138,10 @@ const UserManagement = () => {
     try {
       setProcessingUserId(userId);
       await toggleUserStatus.mutateAsync({ userId, status: newStatus });
-      toast.success(`User status changed to ${newStatus}`);
+      toast.success(t("admin.users.statusChanged", { status: newStatus }));
     } catch (error) {
       console.error("Error toggling user status:", error);
-      toast.error(error.error || "Failed to change user status");
+      toast.error(error.error || t("admin.users.statusError"));
     } finally {
       setProcessingUserId(null);
     }
@@ -188,66 +165,15 @@ const UserManagement = () => {
           status: selectedUser.status,
         },
       });
-      toast.success("User updated successfully");
+      toast.success(t("admin.users.updateSuccess"));
       closeModal();
     } catch (error) {
       console.error("Error updating user:", error);
       toast.error(
-        error.response?.data?.error || error.message || "Failed to update user"
+        error.response?.data?.error ||
+          error.message ||
+          t("admin.users.updateError")
       );
-    }
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setSelectedUser({
-      ...selectedUser,
-      [name]: value,
-    });
-  };
-
-  // Hàm để trả về icon cho từng vai trò
-  const getRoleIcon = (role) => {
-    switch (role) {
-      case "admin":
-        return <FaUserShield className="mr-1" />;
-      default:
-        return <FaUser className="mr-1" />;
-    }
-  };
-
-  // hàm getBadgeIcon
-  const getBadgeIcon = (badge) => {
-    if (!badge) return null;
-
-    // Get badge name from either string or object
-    const badgeName = typeof badge === "string" ? badge : badge.name;
-
-    if (!badgeName) return null;
-
-    switch (badgeName) {
-      case "gold":
-        return <FaTrophy className="text-yellow-500" />;
-      case "silver":
-        return <FaMedal className="text-gray-400" />;
-      case "bronze":
-        return <FaMedal className="text-amber-700" />;
-      case "star":
-        return <FaStar className="text-blue-500" />;
-      case "expert":
-        return <FaUserShield className="text-indigo-500" />;
-      case "contributor":
-        return <FaHandHoldingHeart className="text-pink-500" />;
-      case "influencer":
-        return <FaBullhorn className="text-orange-500" />;
-      case "teacher":
-        return <FaChalkboardTeacher className="text-teal-500" />;
-      case "innovator":
-        return <FaLightbulb className="text-yellow-400" />;
-      case "veteran":
-        return <FaAward className="text-purple-500" />;
-      default:
-        return null;
     }
   };
 
@@ -256,179 +182,145 @@ const UserManagement = () => {
   }
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h3 className="text-lg font-semibold mb-4 md:mb-0 text-[var(--color-text-primary)]">
-          User Management
-        </h3>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] w-full md:w-64 bg-[var(--color-bg-secondary)] border-[var(--color-border)] text-[var(--color-text-primary)]"
-          />
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-primary)] opacity-70" />
-        </div>
+    <div className="bg-[var(--color-bg-secondary)] rounded-xl shadow-md p-5 overflow-hidden">
+      {/* Header with Advanced Search */}
+      <div className="flex flex-col mb-6 space-y-4">
+        <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
+          {t("admin.userManagement")}
+        </h2>
+
+        <AdvancedSearch
+          fields={[
+            { value: "all", label: t("admin.searchFields.all") },
+            { value: "name", label: t("admin.searchFields.name") },
+            { value: "email", label: t("admin.searchFields.email") },
+            { value: "username", label: t("admin.searchFields.username") },
+            { value: "role", label: t("admin.searchFields.role") },
+            { value: "status", label: t("admin.searchFields.status") },
+          ]}
+          onSearch={handleAdvancedSearch}
+          loading={isLoading}
+        />
       </div>
 
-      <div className="overflow-x-auto rounded-xl shadow-sm">
-        <table className="min-w-full border rounded-lg bg-[var(--color-bg-secondary)] border-[var(--color-border)]">
-          <thead className="bg-[var(--color-bg-tertiary)]">
+      {/* User Table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-[var(--color-bg-secondary)] rounded-lg overflow-hidden">
+          <thead className="bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]">
             <tr>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                ID
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Name
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Email
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Role
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Badge
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Status
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Join Date
-              </th>
-              <th className="py-3 px-4 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Actions
+              <th className="py-3 px-4 text-left">{t("admin.users.name")}</th>
+              <th className="py-3 px-4 text-left">{t("admin.users.email")}</th>
+              <th className="py-3 px-4 text-left">{t("admin.users.role")}</th>
+              <th className="py-3 px-4 text-left">{t("admin.users.status")}</th>
+              <th className="py-3 px-4 text-left">
+                {t("admin.users.actions")}
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {filteredUsers.length > 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan="5" className="py-8 text-center">
+                  <div className="flex justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[var(--color-primary)]"></div>
+                  </div>
+                </td>
+              </tr>
+            ) : filteredUsers.length > 0 ? (
               filteredUsers.map((user) => (
-                <tr key={user._id} className="hover:bg-[var(--color-bg-hover)]">
-                  <td className="py-3 px-4 whitespace-nowrap text-[var(--color-text-primary)]">
-                    {user._id.substring(0, 8)}...
+                <tr
+                  key={user._id}
+                  className="hover:bg-[var(--color-bg-hover)] transition-colors"
+                >
+                  <td className="py-3 px-4 text-[var(--color-text-primary)]">
+                    <div className="flex items-center">
+                      <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center mr-3">
+                        {user.avatar ? (
+                          <img
+                            src={user.avatar}
+                            alt={user.fullname}
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span>
+                            {user.fullname
+                              ? user.fullname.charAt(0).toUpperCase()
+                              : "U"}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium">
+                        {user.fullname || user.username || "User"}
+                      </span>
+                    </div>
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap text-[var(--color-text-primary)]">
-                    {user.fullname || user.username}
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap text-[var(--color-text-primary)]">
+                  <td className="py-3 px-4 text-[var(--color-text-primary)]">
                     {user.email}
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 py-1 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${
-                        user.role === "admin"
-                          ? "bg-purple-500/20 text-purple-500"
-                          : "bg-slate-500/20 text-slate-500"
-                      }`}
-                    >
-                      {getRoleIcon(user.role)}
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    {normalizeBadge(user.badge) ? (
-                      <div className="flex items-center space-x-2">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[var(--color-bg-hover)]">
-                          {getBadgeIcon(normalizeBadge(user.badge))}
-                        </span>
-                        <span className="text-xs text-[var(--color-text-primary)] capitalize">
-                          {normalizeBadge(user.badge).name}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-[var(--color-text-tertiary)]">
-                        No badge
+                  <td className="py-3 px-4">
+                    <div className="flex items-center">
+                      <span
+                        className={`inline-flex items-center text-xs whitespace-nowrap ${
+                          user.role === "admin"
+                            ? "bg-purple-500/20 text-purple-500"
+                            : "bg-blue-500/20 text-blue-500"
+                        } px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full`}
+                      >
+                        <FaCircle className="mr-1 text-[0.5rem]" />
+                        {user.role === "admin"
+                          ? t("admin.users.admin")
+                          : t("admin.users.user")}
                       </span>
-                    )}
+                    </div>
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
+                  <td className="py-3 px-4">
                     <span
-                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      className={`inline-flex items-center text-xs whitespace-nowrap ${
                         user.status === "active"
                           ? "bg-emerald-500/20 text-emerald-500"
-                          : user.status === "banned"
-                          ? "bg-rose-500/20 text-rose-500"
-                          : "bg-amber-500/20 text-amber-500"
-                      }`}
+                          : "bg-red-500/20 text-red-500"
+                      } px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full`}
                     >
-                      {user.status}
+                      <FaCircle className="mr-1 text-[0.5rem]" />
+                      {user.status === "active"
+                        ? t("admin.users.active")
+                        : t("admin.users.inactive")}
                     </span>
                   </td>
-                  <td className="py-3 px-4 whitespace-nowrap text-[var(--color-text-primary)]">
-                    {new Date(user.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <div className="flex space-x-3">
+                  <td className="py-3 px-4">
+                    <div className="flex space-x-2">
                       <button
                         onClick={() => handleEditUser(user)}
-                        className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-full transition-all cursor-pointer"
-                        title="Edit User"
-                        disabled={
-                          (deleteUser.isPending &&
-                            processingUserId === user._id) ||
-                          (toggleUserStatus.isPending &&
-                            processingUserId === user._id)
-                        }
+                        className="p-1 text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] rounded"
+                        title={t("admin.users.edit")}
                       >
-                        <FaUserEdit className="text-lg" />
+                        <FaUserEdit />
                       </button>
                       <button
                         onClick={() =>
                           handleToggleStatus(user._id, user.status)
                         }
-                        className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                          toggleUserStatus.isPending &&
-                          processingUserId === user._id
-                            ? "bg-gray-300/20 text-gray-400"
-                            : user.status === "active"
-                            ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500"
-                            : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
-                        }`}
+                        className="p-1 text-yellow-500 hover:bg-[var(--color-bg-hover)] rounded"
+                        disabled={processingUserId === user._id}
                         title={
                           user.status === "active"
-                            ? "Deactivate User"
-                            : "Activate User"
-                        }
-                        disabled={
-                          (deleteUser.isPending &&
-                            processingUserId === user._id) ||
-                          (toggleUserStatus.isPending &&
-                            processingUserId === user._id)
+                            ? t("admin.users.deactivate")
+                            : t("admin.users.activate")
                         }
                       >
-                        {toggleUserStatus.isPending &&
-                        processingUserId === user._id ? (
-                          <div className="w-6 h-6 border-2 border-t-transparent border-amber-500 rounded-full animate-spin"></div>
-                        ) : user.status === "active" ? (
-                          <FaUserLock className="text-lg" />
+                        {user.status === "active" ? (
+                          <FaUserLock />
                         ) : (
-                          <FaUserCheck className="text-lg" />
+                          <FaUserCheck />
                         )}
                       </button>
                       <button
                         onClick={() => handleDeleteUser(user._id)}
-                        className={`p-1.5 rounded-full transition-all cursor-pointer ${
-                          deleteUser.isPending && processingUserId === user._id
-                            ? "bg-gray-300/20 text-gray-400"
-                            : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-500"
-                        }`}
-                        title="Delete User"
-                        disabled={
-                          (deleteUser.isPending &&
-                            processingUserId === user._id) ||
-                          (toggleUserStatus.isPending &&
-                            processingUserId === user._id)
-                        }
+                        className="p-1 text-red-500 hover:bg-[var(--color-bg-hover)] rounded"
+                        disabled={processingUserId === user._id}
+                        title={t("admin.users.delete")}
                       >
-                        {deleteUser.isPending &&
-                        processingUserId === user._id ? (
-                          <div className="w-6 h-6 border-2 border-t-transparent border-rose-500 rounded-full animate-spin"></div>
-                        ) : (
-                          <FaTrash className="text-lg" />
-                        )}
+                        <FaTrash />
                       </button>
                     </div>
                   </td>
@@ -437,10 +329,10 @@ const UserManagement = () => {
             ) : (
               <tr>
                 <td
-                  colSpan="7"
+                  colSpan="5"
                   className="py-4 px-4 text-center text-[var(--color-text-secondary)]"
                 >
-                  No users found.
+                  {t("admin.users.noUsers")}
                 </td>
               </tr>
             )}
@@ -451,7 +343,7 @@ const UserManagement = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center mt-6">
-          <nav className="flex items-center justify-center mt-6 space-x-2">
+          <nav className="flex items-center space-x-2">
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
@@ -467,7 +359,6 @@ const UserManagement = () => {
             <div className="flex space-x-1">
               {Array.from({ length: totalPages }).map((_, index) => {
                 const pageNumber = index + 1;
-                // Display only current page, first, last, and pages around current
                 const shouldDisplay =
                   pageNumber === 1 ||
                   pageNumber === totalPages ||
@@ -516,13 +407,12 @@ const UserManagement = () => {
         </div>
       )}
 
-      {/* Edit User Modal */}
-      {isModalOpen && (
+      {/* User Edit Modal */}
+      {isModalOpen && selectedUser && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="min-h-screen px-4 text-center">
-            {/* Backdrop trong suốt */}
             <div
-              className="fixed inset-0 bg-[rgba(0,0,0,0.4)]"
+              className="fixed inset-0 bg-[rgba(0,0,0,0.4)] transition-opacity"
               onClick={closeModal}
             ></div>
 
@@ -533,145 +423,126 @@ const UserManagement = () => {
               &#8203;
             </span>
 
-            <div className="inline-block w-full max-w-md p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-[0_0_25px_rgba(0,0,0,0.3)] rounded-lg relative z-50">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium text-[var(--color-text-primary)]">
-                  Edit User
-                </h2>
+            <div className="inline-block w-full max-w-lg p-6 my-8 text-left align-middle transition-all transform bg-[var(--color-bg-secondary)] border border-[var(--color-border)] shadow-xl rounded-lg relative z-50">
+              <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-4 mb-4">
+                <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                  {t("admin.users.editUser")}
+                </h3>
                 <button
                   onClick={closeModal}
-                  className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
-                  disabled={updateUser.isPending}
+                  className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
                 >
-                  <svg
-                    className="h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  &times;
                 </button>
               </div>
 
               <form onSubmit={handleSaveUser}>
                 <div className="mb-4">
                   <label
-                    className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
-                    htmlFor="username"
-                  >
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    value={selectedUser.username}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] bg-[var(--color-bg-primary)] border-[var(--color-border)] text-[var(--color-text-primary)] shadow-sm hover:border-[var(--color-primary)]/60 transition-all"
-                    placeholder="Enter username"
-                    disabled={updateUser.isPending}
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label
-                    className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
-                    htmlFor="email"
-                  >
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={selectedUser.email}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] bg-[var(--color-bg-primary)] border-[var(--color-border)] text-[var(--color-text-primary)] shadow-sm hover:border-[var(--color-primary)]/60 transition-all"
-                    placeholder="Enter email"
-                    disabled={updateUser.isPending}
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label
-                    className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
+                    className="block text-[var(--color-text-secondary)] mb-2"
                     htmlFor="fullname"
                   >
-                    Full Name
+                    {t("admin.users.fullName")}
                   </label>
                   <input
                     type="text"
                     id="fullname"
-                    name="fullname"
-                    value={selectedUser.fullname}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] bg-[var(--color-bg-primary)] border-[var(--color-border)] text-[var(--color-text-primary)] shadow-sm hover:border-[var(--color-primary)]/60 transition-all"
-                    placeholder="Enter full name"
-                    disabled={updateUser.isPending}
+                    value={selectedUser.fullname || ""}
+                    onChange={(e) =>
+                      setSelectedUser({
+                        ...selectedUser,
+                        fullname: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 border border-[var(--color-border)] rounded bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]"
                   />
                 </div>
 
                 <div className="mb-4">
                   <label
-                    className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
+                    className="block text-[var(--color-text-secondary)] mb-2"
+                    htmlFor="email"
+                  >
+                    {t("admin.users.email")}
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    value={selectedUser.email}
+                    onChange={(e) =>
+                      setSelectedUser({
+                        ...selectedUser,
+                        email: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 border border-[var(--color-border)] rounded bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label
+                    className="block text-[var(--color-text-secondary)] mb-2"
                     htmlFor="role"
                   >
-                    Role
+                    {t("admin.users.role")}
                   </label>
-                  <Select
+                  <select
                     id="role"
-                    name="role"
-                    value={selectedUser.role}
-                    onChange={handleInputChange}
-                    options={[
-                      { value: "user", label: "User" },
-                      { value: "admin", label: "Admin" },
-                    ]}
-                    disabled={updateUser.isPending}
-                  />
+                    value={selectedUser.role || "user"}
+                    onChange={(e) =>
+                      setSelectedUser({
+                        ...selectedUser,
+                        role: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 border border-[var(--color-border)] rounded bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]"
+                  >
+                    <option value="user">{t("admin.users.user")}</option>
+                    <option value="admin">{t("admin.users.admin")}</option>
+                  </select>
                 </div>
 
-                <div className="mb-6">
+                <div className="mb-4">
                   <label
-                    className="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
+                    className="block text-[var(--color-text-secondary)] mb-2"
                     htmlFor="status"
                   >
-                    Status
+                    {t("admin.users.status")}
                   </label>
-                  <Select
+                  <select
                     id="status"
-                    name="status"
-                    value={selectedUser.status}
-                    onChange={handleInputChange}
-                    options={[
-                      { value: "active", label: "Active" },
-                      { value: "inactive", label: "Inactive" },
-                      { value: "banned", label: "Banned" },
-                    ]}
-                    disabled={updateUser.isPending}
-                  />
+                    value={selectedUser.status || "active"}
+                    onChange={(e) =>
+                      setSelectedUser({
+                        ...selectedUser,
+                        status: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 border border-[var(--color-border)] rounded bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]"
+                  >
+                    <option value="active">{t("admin.users.active")}</option>
+                    <option value="inactive">
+                      {t("admin.users.inactive")}
+                    </option>
+                  </select>
                 </div>
 
-                <div className="flex justify-end space-x-3">
+                <div className="flex justify-end space-x-2 mt-6">
                   <Button
-                    variant="secondary"
+                    type="button"
+                    variant="outline"
                     onClick={closeModal}
-                    disabled={updateUser.isPending}
+                    className="px-4 py-2"
                   >
-                    Cancel
+                    {t("admin.cancel")}
                   </Button>
                   <Button
-                    variant="primary"
                     type="submit"
-                    isLoading={updateUser.isPending}
+                    variant="primary"
+                    className="px-4 py-2"
+                    disabled={updateUser.isLoading}
                   >
-                    Save Changes
+                    {updateUser.isLoading ? t("admin.saving") : t("admin.save")}
                   </Button>
                 </div>
               </form>

@@ -5,14 +5,25 @@ import PostList from "../../components/post/PostList";
 import defaultAvatar from "../../assets/images/default-avatar.svg";
 import LazyImage from "../../components/common/LazyImage";
 import { useAuth } from "../../contexts/AuthContext";
-import { useUserProfile } from "../../hooks/queries/useUserQueries";
+import {
+  useUserProfile,
+  useUserFollowers,
+  useUserFollowing,
+} from "../../hooks/queries/useUserQueries";
+import { useUserPosts } from "../../hooks/queries/usePostQueries";
 import EditProfileModal from "../../components/profile/EditProfileModal";
 import { BiCalendar, BiPhone, BiMap, BiUser } from "react-icons/bi";
 import { useUserFollow } from "../../hooks/mutations/useUserMutations";
-import { SkeletonProfile, SkeletonCard } from "../../components/skeleton";
+import { SkeletonProfile } from "../../components/skeleton";
 import { useFriend } from "../../contexts/FriendContext";
 import { useFriendQueries } from "../../hooks/queries/useFriendQueries";
 import { FiUserPlus, FiSettings } from "react-icons/fi";
+import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { USER_QUERY_KEYS } from "../../hooks/queries/useUserQueries";
+import { FRIEND_QUERY_KEYS } from "../../hooks/queries/useFriendQueries";
+import FollowersModal from "../../components/profile/FollowersModal";
+import FollowingModal from "../../components/profile/FollowingModal";
 
 // Mapping của màu sắc cho từng rank
 const rankColors = {
@@ -80,6 +91,10 @@ const ProfilePage = () => {
   const [sendingFriendRequest, setSendingFriendRequest] = useState(false);
   const [postPage, setPostPage] = useState(1);
   const postLimit = 5;
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [isFollowersModalOpen, setIsFollowersModalOpen] = useState(false);
+  const [isFollowingModalOpen, setIsFollowingModalOpen] = useState(false);
 
   // Nếu truy cập /profile mà không có userId, chuyển hướng đến profile của chính mình
   useEffect(() => {
@@ -110,33 +125,49 @@ const ProfilePage = () => {
     currentUser
   );
 
+  // Tải thông tin user profile
   const {
     data: profileData,
-    isLoading: loading,
+    isLoading,
     error,
     refetch,
-  } = useUserProfile(targetUserId, postPage, postLimit);
+  } = useUserProfile(targetUserId, {
+    page: postPage,
+    limit: postLimit,
+    includePosts: false,
+  });
 
-  console.log("Profile Data from query:", profileData);
+  // Tải bài viết của người dùng thông qua API posts để đảm bảo tương thích với chức năng like, comment
+  const {
+    data: userPostsData,
+    isLoading: loadingUserPosts,
+    hasNextPage,
+  } = useUserPosts(targetUserId, {
+    page: postPage,
+    limit: postLimit,
+    enabled: !!targetUserId,
+  });
 
-  // Đảm bảo profile có dữ liệu
+  // Đơn giản hóa truy cập dữ liệu
   const profile = profileData?.data || null;
 
-  console.log("Profile after parsing:", profile);
+  // Cập nhật state local để UI hiển thị đúng khi có tương tác
+  useEffect(() => {
+    if (profile) {
+      setIsFollowing(profile.isFollowing || false);
+      setFollowersCount(profile.followersCount || 0);
+    }
+  }, [profile]);
 
-  // Luôn refetch data khi component mount để đảm bảo dữ liệu mới nhất
+  // Prefetch data khi component mount
   useEffect(() => {
     if (targetUserId) {
-      console.log(
-        `[ProfilePage] Component mounted, refetching data for ${targetUserId}`
-      );
-      // Sử dụng setTimeout để đảm bảo token đã được load xong
-      setTimeout(() => {
-        refetch();
-        console.log("[ProfilePage] Triggered refetch on mount");
-      }, 300);
+      console.log(`[ProfilePage] Prefetching data for ${targetUserId}`);
+      queryClient.prefetchQuery({
+        queryKey: USER_QUERY_KEYS.userProfile(targetUserId),
+      });
     }
-  }, [targetUserId, refetch, currentUser]);
+  }, [targetUserId, queryClient]);
 
   // Refetch data khi user ID thay đổi (route change)
   useEffect(() => {
@@ -146,13 +177,15 @@ const ProfilePage = () => {
       );
       prevUserId.current = userId;
 
-      // Đảm bảo cập nhật data từ server
-      setTimeout(() => {
-        refetch();
-        console.log("[ProfilePage] Triggered refetch on user change");
-      }, 300);
+      // Reset post page
+      setPostPage(1);
+
+      // Invalidate queries để fetch lại dữ liệu
+      queryClient.invalidateQueries({
+        queryKey: USER_QUERY_KEYS.userProfile(userId),
+      });
     }
-  }, [userId, refetch]);
+  }, [userId, queryClient]);
 
   useEffect(() => {
     if (!targetUserId) {
@@ -160,13 +193,20 @@ const ProfilePage = () => {
     }
   }, [targetUserId, navigate]);
 
-  // Cập nhật state từ dữ liệu profile từ server
+  // Cập nhật state từ dữ liệu stats và đảm bảo đồng bộ với trạng thái thực tế
   useEffect(() => {
     if (profile) {
-      // Xác định giá trị từ profile data
+      // Xác định giá trị từ stats data và đảm bảo luôn là boolean
       const newFollowersCount = profile.followersCount || 0;
       // Đảm bảo isFollowing luôn là boolean
       const newIsFollowing = profile.isFollowing === true;
+
+      console.log(
+        "[ProfilePage] Setting isFollowing from profile data:",
+        newIsFollowing,
+        "Profile isFollowing:",
+        profile.isFollowing
+      );
 
       // Cập nhật state từ server
       setFollowersCount(newFollowersCount);
@@ -222,15 +262,57 @@ const ProfilePage = () => {
     setFollowersCount(newFollowersCount);
 
     try {
-      // Call API
-      const response = await userFollow.mutateAsync(profile._id);
+      // Gọi API phù hợp dựa trên trạng thái follow hiện tại
+      const response = await userFollow.mutateAsync({
+        userId: profile._id,
+        isFollowing: currentlyFollowing,
+      });
+
+      console.log("[ProfilePage] Follow API response:", response);
 
       // Update with actual API response
       if (response && response.success) {
         setIsFollowing(response.data.isFollowing);
         setFollowersCount(response.data.followersCount);
+        console.log(
+          "[ProfilePage] Follow/unfollow success, new state:",
+          response.data.isFollowing
+        );
+
+        // Force refetch profile data to ensure UI is consistent
+        setTimeout(() => {
+          console.log(
+            "[ProfilePage] Refetching profile data after follow/unfollow"
+          );
+          refetch();
+
+          // Force invalidate query để đảm bảo lấy dữ liệu mới
+          queryClient.invalidateQueries({
+            queryKey: USER_QUERY_KEYS.userProfile(profile._id),
+            exact: false,
+          });
+
+          // Cũng xóa cache profile trong localStorage nếu có
+          try {
+            const cacheKeysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.includes("profile") && key.includes(profile._id)) {
+                cacheKeysToRemove.push(key);
+              }
+            }
+
+            cacheKeysToRemove.forEach((key) => {
+              localStorage.removeItem(key);
+              console.log("[ProfilePage] Removed localStorage cache:", key);
+            });
+          } catch (e) {
+            console.error("[ProfilePage] Error cleaning localStorage:", e);
+          }
+        }, 500);
       }
-    } catch {
+    } catch (error) {
+      console.error("[ProfilePage] Follow/unfollow error:", error);
       // Revert on error
       setIsFollowing(currentlyFollowing);
       setFollowersCount(currentFollowersCount);
@@ -245,6 +327,8 @@ const ProfilePage = () => {
     navigate,
     currentUser,
     followersCount,
+    refetch,
+    queryClient,
   ]);
 
   const handleSendFriendRequest = async () => {
@@ -255,73 +339,259 @@ const ProfilePage = () => {
 
     if (!profile || !profile._id || sendingFriendRequest) return;
 
+    // Cập nhật UI ngay lập tức (Optimistic UI)
+    setSendingFriendRequest(true);
+    // Lưu trạng thái ban đầu để phục hồi nếu có lỗi
+    const originalStatus = friendshipStatus;
+
+    // Cập nhật trạng thái cục bộ để giao diện thay đổi ngay lập tức
+    queryClient.setQueryData(FRIEND_QUERY_KEYS.status(profile._id), {
+      status: "PENDING_SENT",
+    });
+
     try {
-      setSendingFriendRequest(true);
-      await sendFriendRequest({ userId: profile._id });
+      // Gọi API ở nền
+      await sendFriendRequest.mutateAsync({ userId: profile._id });
+      // Cập nhật friendshipStatus ở cục bộ
+      queryClient.setQueryData(FRIEND_QUERY_KEYS.status(profile._id), {
+        status: "PENDING_SENT",
+      });
     } catch (error) {
       console.error("Failed to send friend request:", error);
+      // Khôi phục trạng thái ban đầu nếu có lỗi
+      queryClient.setQueryData(FRIEND_QUERY_KEYS.status(profile._id), {
+        status: originalStatus,
+      });
     } finally {
       setSendingFriendRequest(false);
     }
   };
 
-  // Thêm nút Xem thêm bài viết nếu còn bài viết
-  const posts = profile?.posts || [];
-  const hasMorePosts = posts.length === postLimit;
+  // Hàm tải thêm bài viết
+  const loadMorePosts = () => {
+    if (hasNextPage) {
+      setPostPage((prev) => prev + 1);
+    }
+  };
 
-  if (loading) {
+  // Tính toán màu sắc cho rank
+  const rankColor =
+    profile && rankColors[profile.rank]
+      ? rankColors[profile.rank]
+      : rankColors.Rookie;
+
+  // Handle edit profile modal
+  const openEditProfileModal = useCallback(() => {
+    if (!profile) {
+      console.error("Cannot open edit profile modal: profile data is missing");
+      return;
+    }
+    console.log("Opening edit profile modal with profile:", profile);
+    setIsEditModalOpen(true);
+  }, [profile]);
+
+  // Handle profile update success
+  const handleProfileUpdateSuccess = useCallback(
+    (updatedData) => {
+      console.log("Profile updated successfully:", updatedData);
+
+      // Cập nhật state local trực tiếp để UI cập nhật ngay lập tức
+      if (profile && updatedData) {
+        // Tạo phiên bản mới của profile với dữ liệu cập nhật
+        const updatedProfile = {
+          ...profile,
+          fullname: updatedData.fullname || profile.fullname,
+          phone: updatedData.phone || profile.phone,
+          address: updatedData.address || profile.address,
+          bio: updatedData.bio || profile.bio,
+          avatar: updatedData.avatar || profile.avatar,
+        };
+
+        // Cập nhật trực tiếp vào cache
+        queryClient.setQueryData(USER_QUERY_KEYS.userProfile(targetUserId), {
+          success: true,
+          data: updatedProfile,
+        });
+      }
+
+      // Force refetch để đảm bảo UI có dữ liệu mới nhất
+      refetch();
+
+      // Đóng modal sau khi cập nhật thành công
+      setIsEditModalOpen(false);
+    },
+    [refetch, profile, targetUserId, queryClient]
+  );
+
+  // Force refresh profile sau khi update
+  useEffect(() => {
+    if (isEditModalOpen === false) {
+      // Khi modal đóng, force refetch dữ liệu
+      const timeoutId = setTimeout(() => {
+        refetch();
+      }, 500); // delay nhỏ để đảm bảo API đã xử lý xong
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isEditModalOpen, refetch]);
+
+  // Fetch followers/following data when modal opens
+  const {
+    data: followersData,
+    isLoading: followersLoading,
+    refetch: refetchFollowers,
+  } = useUserFollowers(targetUserId, {
+    enabled: isFollowersModalOpen,
+  });
+
+  const {
+    data: followingData,
+    isLoading: followingLoading,
+    refetch: refetchFollowing,
+  } = useUserFollowing(targetUserId, {
+    enabled: isFollowingModalOpen,
+  });
+
+  // Prepare followers/following lists for modals
+  const followersList = followersData?.data || [];
+  const followingList = followingData?.data || [];
+
+  // Open followers modal handler
+  const handleOpenFollowersModal = useCallback(() => {
+    setIsFollowersModalOpen(true);
+    refetchFollowers();
+  }, [refetchFollowers]);
+
+  // Open following modal handler
+  const handleOpenFollowingModal = useCallback(() => {
+    setIsFollowingModalOpen(true);
+    refetchFollowing();
+  }, [refetchFollowing]);
+
+  // Loading state
+  if (isLoading) {
+    return <SkeletonProfile />;
+  }
+
+  // Error state
+  if (error) {
     return (
-      <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4 md:py-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-4">
-          Profile
-        </h1>
-        <div className="space-y-4">
-          <SkeletonProfile />
-          <div className="grid grid-cols-1 gap-4">
-            <SkeletonCard height="h-40" />
-            <SkeletonCard height="h-40" />
-          </div>
-        </div>
+      <div className="text-center my-10">
+        <h2 className="text-xl text-[var(--color-text-primary)]">
+          {t("error.user.notfound")}
+        </h2>
+        <p className="text-[var(--color-text-secondary)]">
+          {t("error.user.profile")}
+        </p>
+        <button
+          onClick={() => navigate(-1)}
+          className="mt-4 px-4 py-2 bg-[var(--color-accent)] text-white rounded-md"
+        >
+          {t("action.goback")}
+        </button>
       </div>
     );
   }
 
-  if (error || !profile) {
+  // No profile data
+  if (!profile) {
     return (
-      <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4">
-        <div className="text-center py-8 text-gray-400 bg-[var(--color-bg-secondary)] rounded-lg">
-          <div className="mb-4">
-            <svg
-              className="w-12 h-12 mx-auto text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-xl font-semibold mb-2">Profile not found</h2>
-          <p className="text-gray-500">
-            This user profile doesn't exist or you don't have permission to view
-            it.
-          </p>
-          <div className="mt-6">
-            <Link to="/" className="btn btn-primary">
-              Return to Home
-            </Link>
-          </div>
-        </div>
+      <div className="text-center my-10">
+        <h2 className="text-xl text-[var(--color-text-primary)]">
+          {t("error.user.notfound")}
+        </h2>
       </div>
     );
   }
 
-  // Lấy màu sắc cho rank hiện tại
-  const rankColor = rankColors[profile.rank] || rankColors.Rookie;
+  // Render the Stats Card section
+  const renderStatsCard = () => {
+    return (
+      <div className="flex-1 bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6 flex flex-col">
+        <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
+          {t("profile.stats")}
+        </h2>
+
+        <div className="space-y-3 sm:space-y-4">
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[var(--color-text-secondary)]">
+                {t("profile.currentRank")}
+              </span>
+              <div
+                className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${rankColor.text} bg-gradient-to-r ${rankColor.gradient}`}
+              >
+                {profile.rank}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[var(--color-text-secondary)]">
+                {t("profile.points")}
+              </span>
+              <span className="text-[var(--color-text-primary)] font-semibold">
+                {profile.points || 0}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[var(--color-text-secondary)]">
+                {t("profile.followers")}
+              </span>
+              <button
+                onClick={handleOpenFollowersModal}
+                className="text-[var(--color-text-primary)] font-semibold hover:text-[var(--color-primary)] transition-colors"
+              >
+                {followersCount || 0}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[var(--color-text-secondary)]">
+                {t("profile.following")}
+              </span>
+              <button
+                onClick={handleOpenFollowingModal}
+                className="text-[var(--color-text-primary)] font-semibold hover:text-[var(--color-primary)] transition-colors"
+              >
+                {profile.followingCount || 0}
+              </button>
+            </div>
+          </div>
+
+          {profile.rank !== "Master" && (
+            <div>
+              <div className="flex justify-between items-center mb-1 text-sm">
+                <span className="text-[var(--color-text-secondary)]">
+                  {t("profile.nextRank")}: {getNextRank(profile.rank)}
+                </span>
+                <span className="text-[var(--color-text-tertiary)]">
+                  {getPointsToNextRankPercentage(profile.rank, profile.points)}%
+                </span>
+              </div>
+              <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)]"
+                  style={{
+                    width: `${getPointsToNextRankPercentage(
+                      profile.rank,
+                      profile.points
+                    )}%`,
+                  }}
+                ></div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-7xl mx-auto py-4 px-3 sm:px-4 md:py-6">
@@ -331,7 +601,7 @@ const ProfilePage = () => {
         animate={{ opacity: 1, y: 0 }}
         className="text-xl sm:text-2xl font-bold text-[var(--color-text-primary)] pb-4"
       >
-        Profile
+        {t("profile.title")}
       </motion.h1>
 
       {/* Profile Card */}
@@ -347,7 +617,7 @@ const ProfilePage = () => {
             <button
               onClick={() => navigate("/settings")}
               className="bg-[var(--color-bg-secondary)] p-2 sm:p-2.5 rounded-md hover:bg-[var(--color-bg-hover)] transition-colors text-[var(--color-text-primary)] shadow-sm cursor-pointer"
-              title="Settings"
+              title={t("settings.title")}
             >
               <FiSettings className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -440,7 +710,9 @@ const ProfilePage = () => {
                           )}
                         </svg>
                         <span className="font-semibold text-sm sm:text-base relative z-10">
-                          {isFollowing ? "Following" : "Follow"}
+                          {isFollowing
+                            ? t("profile.following")
+                            : t("profile.follow")}
                         </span>
                       </button>
 
@@ -465,7 +737,7 @@ const ProfilePage = () => {
                             />
                           </svg>
                           <span className="font-semibold text-sm sm:text-base relative z-10">
-                            Message
+                            {t("message.message")}
                           </span>
                         </button>
                       )}
@@ -493,10 +765,10 @@ const ProfilePage = () => {
                           <FiUserPlus className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2 relative z-10" />
                           <span className="font-semibold text-sm sm:text-base relative z-10">
                             {friendshipStatus === "PENDING_SENT"
-                              ? "Sent"
+                              ? t("profile.friendRequestSent")
                               : friendshipStatus === "PENDING_RECEIVED"
-                              ? "Accept"
-                              : "Add Friend"}
+                              ? t("profile.acceptFriendRequest")
+                              : t("profile.sendFriendRequest")}
                           </span>
                         </button>
                       )}
@@ -504,7 +776,7 @@ const ProfilePage = () => {
                   ) : (
                     <div className="mt-4 flex justify-center sm:justify-start">
                       <button
-                        onClick={() => setIsEditModalOpen(true)}
+                        onClick={openEditProfileModal}
                         className="relative overflow-hidden group rounded-md px-4 py-1.5 sm:px-5 sm:py-2 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-lg active:scale-95 bg-gradient-to-r from-violet-500 to-purple-500 text-white"
                       >
                         <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-purple-500 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></span>
@@ -522,7 +794,7 @@ const ProfilePage = () => {
                           />
                         </svg>
                         <span className="font-semibold text-sm sm:text-base relative z-10">
-                          Edit Profile
+                          {t("profile.edit")}
                         </span>
                       </button>
                     </div>
@@ -538,10 +810,10 @@ const ProfilePage = () => {
                       {profile.bio}
                       {profile.bio.length > 100 && (
                         <button
-                          onClick={() => setIsEditModalOpen(true)}
+                          onClick={openEditProfileModal}
                           className="text-[var(--color-primary)] font-medium ml-1 hover:underline absolute cursor-pointer"
                         >
-                          more
+                          {t("common.more")}
                         </button>
                       )}
                     </p>
@@ -610,81 +882,12 @@ const ProfilePage = () => {
       <div className="mt-4 sm:mt-6">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Stats Card */}
-          <div className="flex-1 bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6 flex flex-col justify-between">
-            <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
-              Stats
-            </h2>
-
-            <div className="space-y-3 sm:space-y-4">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Current Rank
-                  </span>
-                  <div
-                    className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${rankColor.text} bg-gradient-to-r ${rankColor.gradient}`}
-                  >
-                    {profile.rank}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Points
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold">
-                    {profile.points || 0}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[var(--color-text-secondary)]">
-                    Followers
-                  </span>
-                  <span className="text-[var(--color-text-primary)] font-semibold">
-                    {followersCount || 0}
-                  </span>
-                </div>
-              </div>
-
-              {profile.rank !== "Master" && (
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-sm">
-                    <span className="text-[var(--color-text-secondary)]">
-                      Next rank: {getNextRank(profile.rank)}
-                    </span>
-                    <span className="text-[var(--color-text-tertiary)]">
-                      {getPointsToNextRankPercentage(
-                        profile.rank,
-                        profile.points
-                      )}
-                      %
-                    </span>
-                  </div>
-                  <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
-                    <div
-                      className="h-2 rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)]"
-                      style={{
-                        width: `${getPointsToNextRankPercentage(
-                          profile.rank,
-                          profile.points
-                        )}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          {renderStatsCard()}
 
           {/* About Card */}
           <div className="flex-1 bg-[var(--color-bg-secondary)] rounded-lg shadow-md p-4 sm:p-6 flex flex-col justify-between">
             <h2 className="text-lg font-semibold mb-3 sm:mb-4 text-[var(--color-text-primary)]">
-              About
+              {t("profile.about")}
             </h2>
 
             <div className="space-y-3 sm:space-y-4">
@@ -694,7 +897,7 @@ const ProfilePage = () => {
                 </div>
                 <div>
                   <span className="block text-xs sm:text-sm text-[var(--color-text-secondary)]">
-                    Joined
+                    {t("profile.joinedOn")}
                   </span>
                   <span className="block font-medium text-[var(--color-text-primary)] text-sm sm:text-base">
                     {new Date(
@@ -760,7 +963,7 @@ const ProfilePage = () => {
                     <p className="text-[var(--color-text-secondary)] text-xs sm:text-sm">
                       Add information about yourself by{" "}
                       <button
-                        onClick={() => setIsEditModalOpen(true)}
+                        onClick={openEditProfileModal}
                         className="text-[var(--color-primary)] hover:underline"
                       >
                         editing your profile
@@ -790,62 +993,66 @@ const ProfilePage = () => {
                   d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
                 />
               </svg>
-              {isOwnProfile ? "Your Posts" : `${profile.fullname}'s Posts`}
+              {isOwnProfile
+                ? "Your Posts"
+                : `${profile?.fullname || ""}'s Posts`}
             </h2>
 
-            {profile.posts && profile.posts.length > 0 ? (
-              <PostList posts={profile.posts} loading={false} error={null} />
+            {/* Thay đổi cách hiển thị bài viết */}
+            {loadingUserPosts ? (
+              <div className="flex justify-center my-6">
+                <div className="spinner"></div>
+              </div>
+            ) : userPostsData?.data?.length > 0 ? (
+              <PostList
+                posts={userPostsData.data}
+                loading={false}
+                error={null}
+                hasMore={hasNextPage}
+                loadMore={loadMorePosts}
+              />
             ) : (
-              <div className="text-center py-8 sm:py-10 bg-[var(--color-bg-tertiary)] rounded-lg">
+              <div className="flex flex-col items-center justify-center py-8 text-center">
                 <svg
-                  className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-[var(--color-text-tertiary)]"
+                  className="w-16 h-16 text-gray-300 mb-4"
                   fill="none"
-                  viewBox="0 0 24 24"
                   stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
                 >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth="1"
-                    d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"
+                    strokeWidth="2"
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                   />
                 </svg>
-                <p className="mt-2 text-[var(--color-text-secondary)]">
-                  No posts yet
+                <p className="text-[var(--color-text-secondary)] mb-2">
+                  {isOwnProfile
+                    ? t("profile.noposts.own")
+                    : t("profile.noposts.other", {
+                        username: profile?.username || "",
+                      })}
                 </p>
-
                 {isOwnProfile && (
                   <Link
                     to="/create-post"
-                    className="mt-3 sm:mt-4 inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--color-primary)]"
+                    className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors text-sm"
                   >
-                    <svg
-                      className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                      />
-                    </svg>
-                    Create Your First Post
+                    {t("common.createfirst")}
                   </Link>
                 )}
               </div>
             )}
 
             {/* Nút Xem thêm bài viết */}
-            {hasMorePosts && (
+            {hasNextPage && (
               <div className="flex justify-center mt-4">
                 <button
-                  className="btn btn-primary"
-                  onClick={() => setPostPage((prev) => prev + 1)}
+                  className="px-4 py-2 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors text-sm"
+                  onClick={loadMorePosts}
                 >
-                  Xem thêm bài viết
+                  {t("common.loadmore")}
                 </button>
               </div>
             )}
@@ -854,12 +1061,29 @@ const ProfilePage = () => {
       </div>
 
       {/* Edit Profile Modal */}
-      {isOwnProfile && (
+      {isEditModalOpen && profile && (
         <EditProfileModal
-          isOpen={isEditModalOpen}
+          profile={profile}
           onClose={() => setIsEditModalOpen(false)}
+          onSuccess={handleProfileUpdateSuccess}
         />
       )}
+
+      {/* Followers Modal */}
+      <FollowersModal
+        isOpen={isFollowersModalOpen}
+        onClose={() => setIsFollowersModalOpen(false)}
+        followersList={followersList}
+        isLoading={followersLoading}
+      />
+
+      {/* Following Modal */}
+      <FollowingModal
+        isOpen={isFollowingModalOpen}
+        onClose={() => setIsFollowingModalOpen(false)}
+        followingList={followingList}
+        isLoading={followingLoading}
+      />
     </div>
   );
 };

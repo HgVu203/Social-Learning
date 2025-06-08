@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// Global image cache shared across all components
+const GLOBAL_IMAGE_CACHE = new Map();
 
 /**
- * LazyImage - Component tải hình ảnh chỉ khi chúng hiển thị trong viewport
+ * LazyImage - Component tải hình ảnh chỉ khi chúng hiển thị trong viewport với nhiều tối ưu
  * @param {Object} props
  * @param {string} props.src - Đường dẫn hình ảnh
  * @param {string} props.alt - Alt text cho hình ảnh
@@ -26,30 +29,108 @@ const LazyImage = ({
   const [isInView, setIsInView] = useState(eager); // Nếu eager=true, coi như đã trong view
   const imgRef = useRef(null);
   const observerRef = useRef(null);
+  const placeholderRef = useRef(null);
 
-  // Prefetch hình ảnh (tải trước)
-  const prefetchImage = (imageSrc) => {
-    if (!imageSrc) return;
+  // Kiểm tra xem ảnh đã có trong cache chưa - sử dụng global cache
+  const isImageCached = useCallback((imageSrc) => {
+    // Kiểm tra trong global cache
+    if (GLOBAL_IMAGE_CACHE.has(imageSrc)) {
+      return true;
+    }
+
+    // Kiểm tra trong browser cache
     const img = new Image();
     img.src = imageSrc;
-  };
+    return img.complete;
+  }, []);
 
+  // Thêm ảnh vào cache
+  const addToCache = useCallback((imageSrc) => {
+    if (imageSrc) GLOBAL_IMAGE_CACHE.set(imageSrc, true);
+  }, []);
+
+  // Force load image with high priority
+  const forceLoadImage = useCallback(
+    (imageSrc) => {
+      if (!imageSrc) return Promise.resolve();
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          addToCache(imageSrc);
+          resolve(img);
+        };
+        img.onerror = () => {
+          console.warn(`Failed to load image: ${imageSrc}`);
+          resolve(null);
+        };
+
+        // Set all high priority attributes
+        img.fetchPriority = "high";
+        img.importance = "high";
+        img.loading = "eager";
+        img.decoding = "sync"; // Use sync to ensure it's available immediately
+        img.src = imageSrc;
+      });
+    },
+    [addToCache]
+  );
+
+  // Xử lý khi ảnh đã tải xong
+  const handleImageLoad = useCallback(() => {
+    setIsLoaded(true);
+    addToCache(src);
+    if (onLoad) onLoad();
+  }, [src, onLoad, addToCache]);
+
+  // Preload ảnh ngay khi component mount để ảnh có sẵn trong cache
   useEffect(() => {
+    // Preload ảnh ngay từ đầu để tối ưu tốc độ hiển thị
+    if (src) {
+      const preloadImg = new Image();
+      preloadImg.src = src;
+      preloadImg.fetchPriority = "high";
+      preloadImg.importance = "high";
+      preloadImg.onload = () => {
+        addToCache(src);
+        if (isInView) {
+          handleImageLoad();
+        }
+      };
+    }
+  }, [src, addToCache, isInView, handleImageLoad]);
+
+  // Effect xử lý intersection observer
+  useEffect(() => {
+    // Kiểm tra trước xem ảnh có trong cache không
+    if (isImageCached(src)) {
+      setIsInView(true);
+      setIsLoaded(true);
+      if (onLoad) onLoad();
+      return;
+    }
+
     // Tạo một IntersectionObserver với rootMargin lớn hơn để tải sớm hơn
     if (!eager) {
       observerRef.current = new IntersectionObserver(
         (entries) => {
           const [entry] = entries;
           if (entry.isIntersecting) {
+            // Đánh dấu ngay khi đã vào viewport
             setIsInView(true);
+
+            // Force load ảnh ngay lập tức khi xuất hiện trong viewport
+            forceLoadImage(src).then(() => {
+              handleImageLoad();
+            });
+
             // Ngắt kết nối observer sau khi hình ảnh đã được phát hiện
             observerRef.current.disconnect();
           }
         },
         {
           // Thiết lập rootMargin lớn hơn để bắt đầu tải trước khi hình ảnh xuất hiện trong viewport
-          // 300px ở dưới viewport là khoảng cách lớn để tải trước
-          rootMargin: "0px 0px 300px 0px",
+          rootMargin: "0px 0px 2500px 0px", // Tăng từ 2000px lên 2500px để tải sớm hơn rất nhiều
           threshold: 0.01, // Kích hoạt ngay khi 1% hình ảnh xuất hiện
         }
       );
@@ -58,8 +139,11 @@ const LazyImage = ({
         observerRef.current.observe(imgRef.current);
       }
     } else {
-      // Nếu eager=true, prefetch ảnh ngay lập tức
-      prefetchImage(src);
+      // Nếu eager=true, force load ảnh ngay lập tức
+      forceLoadImage(src).then(() => {
+        handleImageLoad();
+      });
+      setIsInView(true); // Đánh dấu là đã trong view để hiển thị ngay
     }
 
     return () => {
@@ -67,46 +151,49 @@ const LazyImage = ({
         observerRef.current.disconnect();
       }
     };
-  }, [eager, src]);
+  }, [eager, src, forceLoadImage, onLoad, isImageCached, handleImageLoad]);
 
-  const handleImageLoad = () => {
-    setIsLoaded(true);
-    if (onLoad) onLoad();
-  };
+  // Quyết định có sử dụng blur effect hay không dựa vào loại placeholder
+  const usesBlurEffect = placeholderSrc && placeholderSrc.startsWith("data:");
 
   return (
     <div
       ref={imgRef}
-      className={`relative ${className}`}
+      className={`relative overflow-hidden ${className}`}
       style={{
         ...style,
         background: "#f0f0f0",
       }}
     >
-      {/* Placeholder hiển thị khi ảnh chưa tải */}
+      {/* Placeholder hiển thị khi ảnh chưa tải xong */}
       {!isLoaded && (
         <img
+          ref={placeholderRef}
           src={placeholderSrc}
           alt={alt}
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+          className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 ${
+            usesBlurEffect ? "blur-sm scale-105" : ""
+          }`}
           style={{
             opacity: isLoaded ? 0 : 1,
           }}
+          loading="eager"
         />
       )}
 
-      {/* Ảnh thực sự chỉ tải khi trong viewport hoặc eager=true */}
-      {isInView && (
-        <img
-          src={src}
-          alt={alt}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
-            isLoaded ? "opacity-100" : "opacity-0"
-          }`}
-          onLoad={handleImageLoad}
-          {...rest}
-        />
-      )}
+      {/* Ảnh thực sự - hiển thị ngay dưới dạng opacity 0 và chuyển sang opacity 1 khi tải xong */}
+      <img
+        src={src}
+        alt={alt}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${
+          isLoaded ? "opacity-100" : "opacity-0"
+        }`}
+        onLoad={handleImageLoad}
+        loading="eager"
+        decoding="sync"
+        fetchPriority="high"
+        {...rest}
+      />
     </div>
   );
 };

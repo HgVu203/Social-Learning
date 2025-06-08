@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { FiImage, FiUpload, FiX } from "react-icons/fi";
 import { showSuccessToast, showErrorToast } from "../../utils/toast";
 import { useGroup } from "../../contexts/GroupContext";
+import { useTranslation } from "react-i18next";
 
 const CreateGroupPage = () => {
+  const { t } = useTranslation();
   const { createGroup } = useGroup();
   const navigate = useNavigate();
 
@@ -41,7 +43,7 @@ const CreateGroupPage = () => {
 
     // Check file size (limit to 2MB)
     if (file.size > 2 * 1024 * 1024) {
-      showErrorToast("Image size should be less than 2MB");
+      showErrorToast(t("errors.fileTooLarge", { size: "2MB" }));
       return;
     }
 
@@ -71,7 +73,7 @@ const CreateGroupPage = () => {
     e.preventDefault();
 
     if (!formData.name || formData.name.trim().length < 3) {
-      showErrorToast("Group name must be at least 3 characters");
+      showErrorToast(t("group.groupNameMinLength"));
       return;
     }
 
@@ -103,7 +105,7 @@ const CreateGroupPage = () => {
       console.log("Create group response:", response);
 
       if (response && response.data) {
-        showSuccessToast("Group created successfully!");
+        showSuccessToast(t("group.createdSuccessfully"));
         navigate(`/groups/${response.data._id}`);
       } else {
         throw new Error("Invalid response from server");
@@ -111,9 +113,7 @@ const CreateGroupPage = () => {
     } catch (err) {
       console.error("Failed to create group:", err);
       showErrorToast(
-        err?.response?.data?.error ||
-          err?.message ||
-          "Failed to create group. Please try again."
+        err?.response?.data?.error || err?.message || t("group.failedToCreate")
       );
     } finally {
       setIsSubmitting(false);
@@ -123,14 +123,14 @@ const CreateGroupPage = () => {
   return (
     <div className="max-w-3xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6 text-[var(--color-text-primary)]">
-        Create New Group
+        {t("group.createNewGroup")}
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Cover Image Upload */}
         <div className="relative bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
           <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-4">
-            Group Cover Image
+            {t("group.groupCoverImage")}
           </h3>
 
           <div
@@ -151,12 +151,12 @@ const CreateGroupPage = () => {
           >
             {!coverPreview && (
               <div className="text-center">
-                <FiImage className="mx-auto text-[var(--color-text-tertiary)] text-3xl mb-2" />
-                <p className="text-[var(--color-text-tertiary)]">
-                  Cover Image (Optional)
+                <FiImage className="mx-auto text-[var(--color-text-secondary)] text-3xl mb-2" />
+                <p className="text-[var(--color-text-secondary)]">
+                  {t("group.coverImageOptional")}
                 </p>
-                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-                  Recommended size: 820 x 312 pixels
+                <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                  {t("group.recommendedSize")}
                 </p>
               </div>
             )}
@@ -185,23 +185,23 @@ const CreateGroupPage = () => {
             className="absolute bottom-6 right-6 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] rounded-lg shadow-md px-4 py-2 text-sm font-medium flex items-center cursor-pointer text-white transition-colors"
           >
             <FiUpload className="mr-2" />
-            {coverPreview ? "Change Cover" : "Add Cover Image"}
+            {coverPreview ? t("group.changeCover") : t("group.addCoverImage")}
           </label>
         </div>
 
         {/* Group Info */}
         <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
           <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-4">
-            Group Information
+            {t("group.groupInformation")}
           </h3>
 
           {/* Group Name */}
           <div className="mb-4">
             <label
               htmlFor="name"
-              className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2"
+              className="block text-[var(--color-text-primary)] font-medium mb-2"
             >
-              Group Name *
+              {t("group.groupName")} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -209,66 +209,77 @@ const CreateGroupPage = () => {
               name="name"
               value={formData.name}
               onChange={handleChange}
+              placeholder={t("group.groupNamePlaceholder")}
+              className="w-full p-3 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:ring-2 focus:ring-[var(--color-primary-light)] focus:outline-none transition-colors"
               required
-              placeholder="Enter group name"
-              className="w-full px-4 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
+              minLength={3}
             />
+            <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+              {t("group.groupNameMinLength")}
+            </p>
           </div>
 
           {/* Group Description */}
           <div className="mb-4">
             <label
               htmlFor="description"
-              className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2"
+              className="block text-[var(--color-text-primary)] font-medium mb-2"
             >
-              Description
+              {t("group.description")}
             </label>
             <textarea
               id="description"
               name="description"
               value={formData.description}
               onChange={handleChange}
+              placeholder={t("group.descriptionPlaceholder")}
               rows={4}
-              placeholder="Describe what your group is about"
-              className="w-full px-4 py-2 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
-            />
+              className="w-full p-3 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg text-[var(--color-text-primary)] focus:ring-2 focus:ring-[var(--color-primary-light)] focus:outline-none transition-colors"
+            ></textarea>
           </div>
 
           {/* Privacy Setting */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="isPrivate"
-              name="isPrivate"
-              checked={formData.isPrivate}
-              onChange={handleChange}
-              className="h-4 w-4 text-[var(--color-primary)] border-[var(--color-border)] rounded focus:ring-[var(--color-primary)] bg-[var(--color-bg-tertiary)]"
-            />
-            <label
-              htmlFor="isPrivate"
-              className="ml-2 block text-[var(--color-text-secondary)] text-sm"
-            >
-              Private Group (Only members can see posts)
-            </label>
+          <div className="mt-6">
+            <h4 className="text-[var(--color-text-primary)] font-medium mb-2">
+              {t("group.groupPrivacy")}
+            </h4>
+
+            <div className="flex items-start mb-2">
+              <div className="flex items-center h-5">
+                <input
+                  id="isPrivate"
+                  name="isPrivate"
+                  type="checkbox"
+                  checked={formData.isPrivate}
+                  onChange={handleChange}
+                  className="w-4 h-4 rounded border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] focus:ring-[var(--color-primary)] text-[var(--color-primary)]"
+                />
+              </div>
+              <div className="ml-3">
+                <label
+                  htmlFor="isPrivate"
+                  className="text-[var(--color-text-primary)] font-medium"
+                >
+                  {t("group.isPrivate")}
+                </label>
+                <p className="text-xs text-[var(--color-text-secondary)]">
+                  {formData.isPrivate
+                    ? t("group.privateDescription")
+                    : t("group.publicDescription")}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => navigate("/groups")}
-            className="px-6 py-2.5 mr-2 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded-lg hover:bg-[var(--color-bg-hover)] transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg hover:bg-[var(--color-primary-hover)] transition-all font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? "Creating..." : "Create Group"}
-          </button>
-        </div>
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isSubmitting || !formData.name.trim()}
+          className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-medium rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
+        >
+          {isSubmitting ? t("group.creatingGroup") : t("group.createButton")}
+        </button>
       </form>
     </div>
   );

@@ -1,26 +1,32 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthInput from "../../components/auth/AuthInput";
 import AuthButton from "../../components/auth/AuthButton";
 import { FaEnvelope, FaUser, FaLock, FaUserAlt } from "react-icons/fa";
+import { useTranslation } from "react-i18next";
+import { showSuccessToast } from "../../utils/toast";
+import { useSignup } from "../../hooks/mutations/useAuthMutations";
 
 const SignupPage = () => {
   const [formData, setFormData] = useState({
-    email: "",
     username: "",
-    password: "",
+    email: "",
     fullname: "",
+    password: "",
+    confirmPassword: "",
   });
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [error, setError] = useState("");
+  const isSubmittingRef = useRef(false);
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const { signup, isAuthenticated, verificationData, loading, error } =
-    useAuth();
+  const { isAuthenticated, verificationData, loading } = useAuth();
+  const signup = useSignup();
+  const { t } = useTranslation();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -29,148 +35,171 @@ const SignupPage = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Immediately redirect to verification page when verification data is available
+  // Redirect if verification data is available
   useEffect(() => {
-    // Check if we're coming back from verification page with a special flag
-    const fromVerification = location?.state?.fromVerification === true;
-
-    if (verificationData && !fromVerification) {
-      console.log(
-        "Redirecting to verification page with data:",
-        verificationData
-      );
-      localStorage.setItem(
-        "pendingVerification",
-        JSON.stringify(verificationData)
-      );
-      navigate("/verify-email", { state: verificationData });
-    } else if (fromVerification) {
-      // If we're coming back from verification page, clear the verification data
-      localStorage.removeItem("pendingVerification");
-      sessionStorage.removeItem("pendingVerification");
-      sessionStorage.removeItem("emailVerification");
-      // And remove the state so future navigation won't trigger this condition
-      window.history.replaceState({}, document.title);
+    if (verificationData) {
+      navigate("/verify-email");
     }
-  }, [verificationData, navigate, location]);
-
-  const validateField = (name, value) => {
-    let error = null;
-
-    switch (name) {
-      case "email":
-        if (!value) {
-          error = "Email is required";
-        } else if (!/\S+@\S+\.\S+/.test(value)) {
-          error = "Please enter a valid email address";
-        }
-        break;
-      case "username":
-        if (!value) {
-          error = "Username is required";
-        } else if (value.length < 3) {
-          error = "Username must be at least 3 characters";
-        } else if (!/^[a-zA-Z0-9_]+$/.test(value)) {
-          error = "Username can only contain letters, numbers and underscores";
-        }
-        break;
-      case "fullname":
-        if (!value) {
-          error = "Full name is required";
-        } else if (value.length < 2) {
-          error = "Full name must be at least 2 characters";
-        }
-        break;
-      case "password":
-        if (!value) {
-          error = "Password is required";
-        } else if (value.length < 8) {
-          error = "Password must be at least 8 characters";
-        } else if (!/[A-Z]/.test(value)) {
-          error = "Password must contain at least one uppercase letter";
-        } else if (!/[a-z]/.test(value)) {
-          error = "Password must contain at least one lowercase letter";
-        } else if (!/[0-9]/.test(value)) {
-          error = "Password must contain at least one number";
-        }
-        break;
-      default:
-        break;
-    }
-
-    return error;
-  };
+  }, [verificationData, navigate]);
 
   const validateForm = () => {
     const errors = {};
-    Object.keys(formData).forEach((key) => {
-      const error = validateField(key, formData[key]);
-      if (error) {
-        errors[key] = error;
+    let isValid = true;
+
+    // Check if fields are empty
+    Object.entries(formData).forEach(([key, value]) => {
+      if (!value.trim() && touched[key]) {
+        errors[key] = `${
+          key.charAt(0).toUpperCase() + key.slice(1)
+        } is required`;
+        isValid = false;
       }
     });
 
+    // Validate email format
+    if (formData.email && touched.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        errors.email = "Invalid email format";
+        isValid = false;
+      }
+    }
+
+    // Username validation - at least 3 characters, alphanumeric + underscore only
+    if (formData.username && touched.username) {
+      const usernameRegex = /^[a-zA-Z0-9_]{3,}$/;
+      if (!usernameRegex.test(formData.username)) {
+        errors.username =
+          "Username must be at least 3 characters long and contain only alphanumeric characters and underscores";
+        isValid = false;
+      }
+    }
+
+    // Password validation - at least 8 characters
+    if (formData.password && touched.password) {
+      if (formData.password.length < 8) {
+        errors.password = "Password must be at least 8 characters long";
+        isValid = false;
+      }
+    }
+
+    // Confirm password validation
+    if (
+      formData.confirmPassword &&
+      formData.password &&
+      touched.confirmPassword
+    ) {
+      if (formData.confirmPassword !== formData.password) {
+        errors.confirmPassword = "Passwords do not match";
+        isValid = false;
+      }
+    }
+
     setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return isValid;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
     setFormData({
       ...formData,
       [name]: value,
     });
 
-    // Validate field on change if it has been touched
-    if (touched[name]) {
+    // Mark field as touched
+    if (!touched[name]) {
+      setTouched({
+        ...touched,
+        [name]: true,
+      });
+    }
+
+    // Clear error when typing
+    if (validationErrors[name]) {
       setValidationErrors({
         ...validationErrors,
-        [name]: validateField(name, value),
+        [name]: null,
       });
+    }
+
+    // Clear global error
+    if (error) {
+      setError("");
     }
   };
 
   const handleBlur = (e) => {
-    const { name, value } = e.target;
-
-    // Mark field as touched
-    setTouched({
-      ...touched,
-      [name]: true,
-    });
-
-    // Validate on blur
-    setValidationErrors({
-      ...validationErrors,
-      [name]: validateField(name, value),
-    });
+    const { name } = e.target;
+    if (!touched[name]) {
+      setTouched({
+        ...touched,
+        [name]: true,
+      });
+    }
+    validateForm();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Prevent double submission
-    if (loading) return;
+    // Prevent multiple submissions
+    if (loading || isSubmittingRef.current) return;
 
-    // Mark all fields as touched
-    const allTouched = {};
-    Object.keys(formData).forEach((key) => {
-      allTouched[key] = true;
-    });
-    setTouched(allTouched);
-
-    // Validate all fields
+    // Validate form
     if (!validateForm()) {
       return;
     }
 
     try {
-      // This will set verificationData in the auth context, which triggers the redirect
-      await signup(formData);
-      // The redirect is handled by the useEffect above
+      isSubmittingRef.current = true;
+
+      // Create signup data without confirmPassword field
+      const signupData = {
+        username: formData.username,
+        email: formData.email,
+        fullname: formData.fullname,
+        password: formData.password,
+      };
+
+      // Call the API
+      const result = await signup.mutateAsync(signupData);
+
+      if (result.success && result.data?.verificationData) {
+        // Store verification data in localStorage
+        localStorage.setItem(
+          "pendingVerification",
+          JSON.stringify(result.data.verificationData)
+        );
+
+        // Redirect to email verification page
+        navigate("/verify-email", {
+          state: result.data.verificationData,
+        });
+      } else if (result.success) {
+        showSuccessToast(t("auth.signupSuccess"));
+        navigate("/login");
+      } else {
+        // Hiển thị lỗi cụ thể từ server
+        setError(result.error || result.message || t("auth.signupFailed"));
+      }
     } catch (err) {
-      console.error("Registration failed:", err);
+      console.error("Signup error:", err);
+
+      // Xử lý các loại lỗi khác nhau từ API
+      if (err.response?.data) {
+        // Trích xuất error message từ cấu trúc response
+        const errorMessage =
+          err.response.data.error ||
+          err.response.data.message ||
+          err.message ||
+          t("auth.signupFailed");
+
+        setError(errorMessage);
+      } else {
+        setError(err.message || t("auth.signupFailed"));
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -229,8 +258,8 @@ const SignupPage = () => {
         className="max-w-md w-full"
       >
         <AuthForm
-          title="Create Account"
-          subtitle="Sign up to get started with your new account"
+          title={t("auth.createAccount")}
+          subtitle={t("auth.signupSubtitle")}
           onSubmit={handleSubmit}
           className="space-y-5"
         >
@@ -258,63 +287,63 @@ const SignupPage = () => {
           )}
 
           <AuthInput
-            label="Email Address"
+            label={t("auth.emailAddress")}
             type="email"
             name="email"
             value={formData.email}
             onChange={handleChange}
             onBlur={handleBlur}
-            placeholder="Enter your email"
+            placeholder={t("auth.emailAddress")}
             error={validationErrors.email}
             icon={<FaEnvelope />}
             autoComplete="email"
-            disabled={loading}
+            disabled={loading || signup.isPending}
             required
           />
 
           <AuthInput
-            label="Full Name"
+            label={t("auth.fullName")}
             type="text"
             name="fullname"
             value={formData.fullname}
             onChange={handleChange}
             onBlur={handleBlur}
-            placeholder="Enter your full name"
+            placeholder={t("auth.fullName")}
             error={validationErrors.fullname}
             icon={<FaUserAlt />}
             autoComplete="name"
-            disabled={loading}
+            disabled={loading || signup.isPending}
             required
           />
 
           <AuthInput
-            label="Username"
+            label={t("auth.username")}
             type="text"
             name="username"
             value={formData.username}
             onChange={handleChange}
             onBlur={handleBlur}
-            placeholder="Choose a username"
+            placeholder={t("auth.username")}
             error={validationErrors.username}
             icon={<FaUser />}
             autoComplete="username"
-            disabled={loading}
+            disabled={loading || signup.isPending}
             required
           />
 
           <div className="space-y-1">
             <AuthInput
-              label="Password"
+              label={t("auth.password")}
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
               onBlur={handleBlur}
-              placeholder="Create a strong password"
+              placeholder={t("auth.passwordRequirements")}
               error={validationErrors.password}
               icon={<FaLock />}
               autoComplete="new-password"
-              disabled={loading}
+              disabled={loading || signup.isPending}
               required
             />
 
@@ -326,7 +355,7 @@ const SignupPage = () => {
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs text-[var(--color-text-secondary)]">
-                    Password Strength:
+                    {t("auth.passwordStrength")}:
                   </span>
                   <span
                     className={`text-xs font-medium ${
@@ -352,22 +381,22 @@ const SignupPage = () => {
 
           <AuthButton
             type="submit"
-            isLoading={loading}
-            disabled={loading}
+            isLoading={loading || signup.isPending}
+            disabled={loading || signup.isPending}
             variant="primary"
             fullWidth
           >
-            Create Account
+            {t("auth.createAccount")}
           </AuthButton>
 
           <div className="text-center mt-6">
             <p className="text-[var(--color-text-secondary)]">
-              Already have an account?{" "}
+              {t("auth.alreadyHaveAccount")}{" "}
               <Link
                 to="/login"
                 className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
               >
-                Sign in
+                {t("auth.signIn")}
               </Link>
             </p>
           </div>

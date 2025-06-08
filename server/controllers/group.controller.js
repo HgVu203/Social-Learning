@@ -1,6 +1,34 @@
 import Group from "../models/group.model.js";
 import { groupValidationSchema } from "../utils/validator/group.validator.js";
 import mongoose from "mongoose";
+import NodeCache from "node-cache";
+import similaritySearchService from "../services/similarity-search.service.js";
+
+// Khởi tạo cache với TTL và check period tối ưu
+const groupCache = new NodeCache({
+  stdTTL: 300, // 5 phút
+  checkperiod: 60, // Check cache expiration mỗi 1 phút
+  useClones: false, // Tăng hiệu năng bằng cách không clone objects
+});
+
+// Tạo cache riêng cho dữ liệu chi tiết nhóm với TTL dài hơn
+const groupDetailCache = new NodeCache({
+  stdTTL: 600, // 10 phút
+  checkperiod: 120,
+  useClones: false,
+});
+
+// Định nghĩa các trường cần thiết cho group để giảm kích thước response
+const GROUP_BASIC_FIELDS = {
+  name: 1,
+  description: 1,
+  coverImage: 1,
+  isPrivate: 1,
+  tags: 1,
+  createdBy: 1,
+  createdAt: 1,
+  status: 1,
+};
 
 export const GroupController = {
   createGroup: async (req, res) => {
@@ -361,6 +389,7 @@ export const GroupController = {
   },
 
   getGroupById: async (req, res) => {
+    const startTime = Date.now();
     try {
       // Special case for 'create' - prevent it from being treated as an ID
       if (req.params.id === "create") {
@@ -378,9 +407,30 @@ export const GroupController = {
         });
       }
 
-      const group = await Group.findById(req.params.id)
+      const groupId = req.params.id;
+      const currentUserId = req.user?._id?.toString();
+
+      // Tạo cache key riêng cho từng user (kết quả khác nhau cho mỗi user)
+      const cacheKey = `group_${groupId}_${currentUserId || "guest"}`;
+      const cachedData = groupDetailCache.get(cacheKey);
+
+      // Trả về data từ cache nếu có
+      if (cachedData) {
+        console.log(
+          `Returning cached group data for ${cacheKey}, took ${
+            Date.now() - startTime
+          }ms`
+        );
+        return res.status(200).json(cachedData);
+      }
+
+      console.log(`Cache miss for group ${groupId}, fetching from database`);
+
+      // Sử dụng lean() để tăng tốc truy vấn
+      const group = await Group.findById(groupId)
         .populate("createdBy", "username email avatar")
-        .populate("members.user", "username email avatar");
+        .populate("members.user", "username email avatar")
+        .lean();
 
       if (!group) {
         return res
@@ -395,29 +445,43 @@ export const GroupController = {
       const isMember =
         req.user?._id &&
         members.some(
-          (member) => member?.user?._id?.toString() === req.user._id.toString()
+          (member) => member?.user?._id?.toString() === currentUserId
         );
 
       // Get user's role in the group if they are a member
       let userRole = null;
       if (isMember) {
         const memberRecord = members.find(
-          (member) => member?.user?._id?.toString() === req.user._id.toString()
+          (member) => member?.user?._id?.toString() === currentUserId
         );
         userRole = memberRecord?.role;
       }
 
       // Create return object with member info
       const groupWithMemberInfo = {
-        ...group.toObject(),
+        ...group,
         isMember,
         userRole,
         membersCount: members.length || 0,
       };
 
-      return res.status(200).json({ success: true, data: groupWithMemberInfo });
+      const responseData = {
+        success: true,
+        data: groupWithMemberInfo,
+        duration: Date.now() - startTime,
+      };
+
+      // Lưu vào cache với TTL tùy thuộc vào kích thước
+      const cacheTTL = members.length > 100 ? 300 : 600; // 5 phút hoặc 10 phút
+      groupDetailCache.set(cacheKey, responseData, cacheTTL);
+
+      console.log(`Group data fetched in ${Date.now() - startTime}ms`);
+      return res.status(200).json(responseData);
     } catch (error) {
-      console.error("Get group by ID error:", error);
+      console.error(
+        `Get group by ID error (took ${Date.now() - startTime}ms):`,
+        error
+      );
       return res.status(500).json({ success: false, error: error.message });
     }
   },
@@ -954,12 +1018,6 @@ export const GroupController = {
         });
       }
 
-      // Import AI search service
-      const { AISearchService } = await import(
-        "../services/ai-search.service.js"
-      );
-      const aiSearchService = new AISearchService();
-
       // Build search query
       const searchQuery = { status: "active" };
 
@@ -1038,12 +1096,16 @@ export const GroupController = {
         };
       });
 
-      // Use AI to enhance search results if there are results
-      if (processedGroups.length > 0) {
-        processedGroups = await aiSearchService.enhanceSearchResults(
-          query,
-          processedGroups
-        );
+      // Use SimilaritySearchService to enhance search results
+      try {
+        if (processedGroups.length > 0) {
+          processedGroups = await similaritySearchService.enhanceSearchResults(
+            query,
+            processedGroups
+          );
+        }
+      } catch (error) {
+        console.error("Error enhancing group search results:", error);
       }
 
       // If no exact matches, find similar groups
@@ -1131,6 +1193,196 @@ export const GroupController = {
         success: false,
         error: error.message || "Failed to search groups",
       });
+    }
+  },
+
+  // API mới: Chỉ lấy thông tin cơ bản của nhóm
+  getGroupBasicInfo: async (req, res) => {
+    const startTime = Date.now();
+    try {
+      // Validate id format to prevent server errors
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid group ID format",
+        });
+      }
+
+      const groupId = req.params.id;
+
+      // Tạo cache key cho basic info
+      const cacheKey = `group_basic_${groupId}`;
+      const cachedData = groupCache.get(cacheKey);
+
+      // Trả về data từ cache nếu có
+      if (cachedData) {
+        console.log(
+          `Returning cached basic group data for ${cacheKey}, took ${
+            Date.now() - startTime
+          }ms`
+        );
+        return res.status(200).json(cachedData);
+      }
+
+      console.log(
+        `Cache miss for basic group ${groupId}, fetching from database`
+      );
+
+      // Chỉ lấy thông tin cơ bản, không bao gồm thành viên
+      const group = await Group.findById(groupId)
+        .select(GROUP_BASIC_FIELDS)
+        .populate("createdBy", "username email avatar")
+        .lean();
+
+      if (!group) {
+        console.log(`Group ${groupId} not found`);
+        return res.status(404).json({
+          success: false,
+          error: "Group not found",
+        });
+      }
+
+      const responseData = {
+        success: true,
+        data: group,
+        duration: Date.now() - startTime,
+      };
+
+      // Lưu vào cache (10 phút)
+      groupCache.set(cacheKey, responseData, 600);
+
+      console.log(`Basic group data fetched in ${Date.now() - startTime}ms`);
+      return res.status(200).json(responseData);
+    } catch (error) {
+      console.error(
+        `Get basic group info error (took ${Date.now() - startTime}ms):`,
+        error
+      );
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  },
+
+  // API mới: Chỉ lấy thành viên của nhóm
+  getGroupMembers: async (req, res) => {
+    const startTime = Date.now();
+    try {
+      // Validate id format
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid group ID format",
+        });
+      }
+
+      const groupId = req.params.id;
+      const currentUserId = req.user?._id?.toString();
+
+      // Pagination parameters
+      const { page = 1, limit = 20 } = req.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Tạo cache key cho members với pagination
+      const cacheKey = `group_members_${groupId}_${page}_${limit}`;
+      const cachedData = groupCache.get(cacheKey);
+
+      // Trả về data từ cache nếu có
+      if (cachedData) {
+        console.log(
+          `Returning cached group members for ${cacheKey}, took ${
+            Date.now() - startTime
+          }ms`
+        );
+        return res.status(200).json(cachedData);
+      }
+
+      console.log(
+        `Cache miss for group members ${groupId}, fetching from database`
+      );
+
+      // Kiểm tra xem nhóm có tồn tại và người dùng có quyền xem thành viên không
+      const group = await Group.findById(groupId)
+        .select("isPrivate members")
+        .lean();
+
+      if (!group) {
+        return res.status(404).json({
+          success: false,
+          error: "Group not found",
+        });
+      }
+
+      // Nếu nhóm private, kiểm tra xem user có phải thành viên không
+      const members = Array.isArray(group.members) ? group.members : [];
+      const isMember =
+        currentUserId &&
+        members.some((member) => member?.user?.toString() === currentUserId);
+
+      if (group.isPrivate && !isMember && req.user?.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "You don't have permission to view this group's members",
+        });
+      }
+
+      // Aggregate để lấy pagination và thông tin thành viên
+      const result = await Group.aggregate([
+        { $match: { _id: new mongoose.Types.ObjectId(groupId) } },
+        { $unwind: "$members" },
+        { $sort: { "members.joinedAt": -1 } },
+        { $skip: skip },
+        { $limit: parseInt(limit) },
+        {
+          $project: {
+            _id: 0,
+            memberId: "$members._id",
+            userId: "$members.user",
+            role: "$members.role",
+            joinedAt: "$members.joinedAt",
+          },
+        },
+      ]).allowDiskUse(true);
+
+      // Lấy tổng số thành viên
+      const totalMembers = members.length;
+
+      // Populate user data cho các thành viên đã lấy
+      await Group.populate(result, {
+        path: "userId",
+        select: "username fullname avatar email",
+        model: "User",
+      });
+
+      // Format lại kết quả cho dễ sử dụng
+      const formattedMembers = result.map((item) => ({
+        id: item.memberId,
+        user: item.userId,
+        role: item.role,
+        joinedAt: item.joinedAt,
+      }));
+
+      const responseData = {
+        success: true,
+        data: formattedMembers,
+        pagination: {
+          total: totalMembers,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalMembers / parseInt(limit)),
+        },
+        duration: Date.now() - startTime,
+      };
+
+      // Lưu vào cache (2 phút)
+      groupCache.set(cacheKey, responseData, 120);
+
+      console.log(`Group members fetched in ${Date.now() - startTime}ms`);
+      return res.status(200).json(responseData);
+    } catch (error) {
+      console.error(
+        `Get group members error (took ${Date.now() - startTime}ms):`,
+        error
+      );
+      return res.status(500).json({ success: false, error: error.message });
     }
   },
 };

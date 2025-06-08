@@ -27,6 +27,19 @@ const MessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    readAt: {
+      type: Date,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ["sending", "sent", "delivered", "read", "error"],
+      default: "sent",
+    },
+    clientTempId: {
+      type: String,
+      index: true,
+    },
     deletedBy: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -36,6 +49,10 @@ const MessageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Tạo index cho các truy vấn thường xuyên
+MessageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 });
+MessageSchema.index({ receiverId: 1, read: 1 });
 
 const Message = mongoose.model("Message", MessageSchema);
 export default Message;

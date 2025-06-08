@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="450" viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
+  <!-- Người dùng -->
+  <circle cx="400" cy="40" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="400" y1="60" x2="400" y2="100" stroke="#333" stroke-width="2"/>
+  <line x1="400" y1="80" x2="370" y2="120" stroke="#333" stroke-width="2"/>
+  <line x1="400" y1="80" x2="430" y2="120" stroke="#333" stroke-width="2"/>
+  <text x="400" y="140" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Người Dùng</text>
+  
+  <!-- Khung chính -->
+  <rect x="100" y="180" width="600" height="250" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="400" y="210" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Nhận Thông Báo</text>
+  
+  <!-- Đường kết nối từ người dùng đến tiêu đề -->
+  <line x1="400" y1="150" x2="400" y2="180" stroke="#333" stroke-width="2" stroke-dasharray="5,5"/>
+  
+  <!-- Thông báo bình luận -->
+  <ellipse cx="200" cy="280" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="200" y="285" text-anchor="middle" font-family="Arial" font-size="14">Thông báo bình luận</text>
+  
+  <!-- Thông báo thích -->
+  <ellipse cx="400" cy="280" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="400" y="285" text-anchor="middle" font-family="Arial" font-size="14">Thông báo thích</text>
+  
+  <!-- Thông báo lời mời kết bạn -->
+  <ellipse cx="600" cy="280" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="600" y="285" text-anchor="middle" font-family="Arial" font-size="14">Thông báo kết bạn</text>
+  
+  <!-- Thông báo lời mời nhóm -->
+  <ellipse cx="300" cy="360" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="365" text-anchor="middle" font-family="Arial" font-size="14">Thông báo lời mời nhóm</text>
+  
+  <!-- Thông báo hệ thống -->
+  <ellipse cx="500" cy="360" rx="90" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="365" text-anchor="middle" font-family="Arial" font-size="14">Thông báo hệ thống</text>
+  
+  <!-- Đường kết nối từ tiêu đề đến các loại thông báo -->
+  <line x1="400" y1="220" x2="200" y2="250" stroke="#333" stroke-width="1.5"/>
+  <line x1="400" y1="220" x2="400" y2="250" stroke="#333" stroke-width="1.5"/>
+  <line x1="400" y1="220" x2="600" y2="250" stroke="#333" stroke-width="1.5"/>
+  <line x1="400" y1="220" x2="300" y2="330" stroke="#333" stroke-width="1.5"/>
+  <line x1="400" y1="220" x2="500" y2="330" stroke="#333" stroke-width="1.5"/>
+</svg> 

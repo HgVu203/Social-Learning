@@ -14,6 +14,7 @@ import {
   useAdminRecentActivity,
 } from "../../hooks/queries/useAdminQueries";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import Button from "../ui/Button";
 import { SkeletonDashboard } from "../skeleton";
 import { Line } from "react-chartjs-2";
@@ -89,6 +90,8 @@ const Card = ({ title, value, icon, color, increase }) => {
 };
 
 const DashboardOverview = () => {
+  const { t } = useTranslation();
+
   // Sử dụng các query tách biệt thay vì một query lớn
   const {
     data: basicStats,
@@ -125,17 +128,14 @@ const DashboardOverview = () => {
   // Xử lý khi có lỗi
   useEffect(() => {
     if (basicError) {
-      console.log("Retrying basic stats fetch...");
       setTimeout(() => refetchBasic(), 2000);
     }
 
     if (userGrowthError) {
-      console.log("Retrying user growth data fetch...");
       setTimeout(() => refetchUserGrowth(), 2000);
     }
 
     if (postGrowthError) {
-      console.log("Retrying post growth data fetch...");
       setTimeout(() => refetchPostGrowth(), 2000);
     }
   }, [basicError, userGrowthError, postGrowthError]);
@@ -146,7 +146,7 @@ const DashboardOverview = () => {
   // Tạo mảng cho card stats
   const statCards = [
     {
-      title: "Total Users",
+      title: t("admin.overview.totalUsers"),
       key: "totalUsers",
       value: statsData?.userStats?.totalUsers || 0,
       increase: statsData?.userStats?.percentChange || 0,
@@ -154,14 +154,14 @@ const DashboardOverview = () => {
       color: "blue",
     },
     {
-      title: "Active Users",
+      title: t("admin.overview.activeUsers"),
       key: "activeUsers",
       value: statsData?.userStats?.activeStatusCount || 0,
       icon: <FaUsersCog className="text-xl" />,
       color: "green",
     },
     {
-      title: "Total Posts",
+      title: t("admin.overview.totalPosts"),
       key: "totalPosts",
       value: statsData?.postStats?.totalPosts || 0,
       increase: statsData?.postStats?.percentChange || 0,
@@ -169,7 +169,7 @@ const DashboardOverview = () => {
       color: "purple",
     },
     {
-      title: "Total Groups",
+      title: t("admin.overview.totalGroups"),
       key: "totalGroups",
       value: statsData?.groupStats?.totalGroups || 0,
       icon: <FaUserFriends className="text-xl" />,
@@ -189,7 +189,7 @@ const DashboardOverview = () => {
     labels: userGrowthData?.data?.labels || last7Days,
     datasets: [
       {
-        label: "New Users",
+        label: t("admin.overview.newUsers"),
         data: userGrowthData?.data?.growth || Array(7).fill(0),
         fill: false,
         borderColor: "rgb(59, 130, 246)",
@@ -199,12 +199,24 @@ const DashboardOverview = () => {
     ],
   };
 
+  // Tuỳ chọn biểu đồ user growth
+  const userChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        min: 0,
+      },
+    },
+  };
+
   // Cấu hình cho biểu đồ Content Growth từ API riêng
   const contentGrowthConfig = {
     labels: postGrowthData?.data?.labels || last7Days,
     datasets: [
       {
-        label: "New Posts",
+        label: t("admin.overview.newPosts"),
         data: postGrowthData?.data?.growth || Array(7).fill(0),
         fill: false,
         borderColor: "rgb(147, 51, 234)",
@@ -212,6 +224,18 @@ const DashboardOverview = () => {
         tension: 0.1,
       },
     ],
+  };
+
+  // Tuỳ chọn biểu đồ content growth
+  const contentChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        min: 0,
+      },
+    },
   };
 
   // Hiển thị trạng thái loading
@@ -225,17 +249,17 @@ const DashboardOverview = () => {
       <div className="text-center p-6 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] my-4">
         <FaExclamationTriangle className="text-amber-500 text-4xl mx-auto mb-4" />
         <p className="text-lg font-medium text-[var(--color-text-primary)]">
-          Error loading dashboard data
+          {t("admin.overview.errorLoadingDashboard")}
         </p>
         <p className="text-[var(--color-text-secondary)] mt-2">
-          {basicError.message || "Please try again later."}
+          {basicError.message || t("admin.overview.tryAgainLater")}
         </p>
         <Button
           onClick={() => window.location.reload()}
           variant="primary"
           className="mt-4"
         >
-          Reload
+          {t("admin.overview.reload")}
         </Button>
       </div>
     );
@@ -244,7 +268,7 @@ const DashboardOverview = () => {
   return (
     <div>
       <h3 className="text-lg font-semibold mb-6 text-[var(--color-text-primary)]">
-        Dashboard Overview
+        {t("admin.overview.dashboardOverview")}
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -264,7 +288,7 @@ const DashboardOverview = () => {
         <div className="bg-[var(--color-bg-secondary)] p-6 rounded-lg border border-[var(--color-border)] shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-medium text-[var(--color-text-primary)]">
-              User Growth
+              {t("admin.overview.userGrowth")}
             </h3>
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
               <FaChartLine className="text-lg" />
@@ -272,11 +296,11 @@ const DashboardOverview = () => {
           </div>
           <div className="h-64">
             {userGrowthData?.data?.growth ? (
-              <Line data={userGrowthConfig} />
+              <Line data={userGrowthConfig} options={userChartOptions} />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[var(--color-text-secondary)]">
-                  No user growth data available
+                  {t("admin.overview.noUserGrowthData")}
                 </p>
               </div>
             )}
@@ -286,7 +310,7 @@ const DashboardOverview = () => {
         <div className="bg-[var(--color-bg-secondary)] p-6 rounded-lg border border-[var(--color-border)] shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-medium text-[var(--color-text-primary)]">
-              Content Growth
+              {t("admin.overview.contentGrowth")}
             </h3>
             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
               <FaChartLine className="text-lg" />
@@ -294,11 +318,11 @@ const DashboardOverview = () => {
           </div>
           <div className="h-64">
             {postGrowthData?.data?.growth ? (
-              <Line data={contentGrowthConfig} />
+              <Line data={contentGrowthConfig} options={contentChartOptions} />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <p className="text-[var(--color-text-secondary)]">
-                  No content growth data available
+                  {t("admin.overview.noContentGrowthData")}
                 </p>
               </div>
             )}
@@ -309,7 +333,7 @@ const DashboardOverview = () => {
       <div className="bg-[var(--color-bg-secondary)] p-6 rounded-lg border border-[var(--color-border)] shadow-sm mb-8">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-medium text-[var(--color-text-primary)]">
-            Recent Activity
+            {t("admin.overview.recentActivity")}
           </h3>
           <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
             <FaChartBar className="text-lg" />
@@ -320,13 +344,13 @@ const DashboardOverview = () => {
             <thead>
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                  Activity
+                  {t("admin.overview.activity")}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                  User
+                  {t("admin.overview.user")}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">
-                  Time
+                  {t("admin.overview.time")}
                 </th>
               </tr>
             </thead>
@@ -378,7 +402,7 @@ const DashboardOverview = () => {
                     colSpan={3}
                     className="px-4 py-3 text-sm text-center text-[var(--color-text-secondary)]"
                   >
-                    No recent activity found
+                    {t("admin.overview.noRecentActivity")}
                   </td>
                 </tr>
               )}
@@ -390,18 +414,18 @@ const DashboardOverview = () => {
       <div className="bg-[var(--color-bg-secondary)] p-6 rounded-lg border border-[var(--color-border)] shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-medium text-[var(--color-text-primary)]">
-            System Status
+            {t("admin.overview.systemStatus")}
           </h3>
           <div className="flex space-x-2">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              Healthy
+              {t("admin.overview.healthy")}
             </span>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg">
             <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-              Server Uptime
+              {t("admin.overview.serverUptime")}
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
               {statsData?.system?.uptime || "99.9%"}
@@ -409,7 +433,7 @@ const DashboardOverview = () => {
           </div>
           <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg">
             <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-              Memory Usage
+              {t("admin.overview.memoryUsage")}
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
               {statsData?.system?.memory || "42%"}
@@ -417,7 +441,7 @@ const DashboardOverview = () => {
           </div>
           <div className="p-4 bg-[var(--color-bg-tertiary)] rounded-lg">
             <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-              API Response Time
+              {t("admin.overview.apiResponseTime")}
             </p>
             <p className="text-2xl font-semibold text-[var(--color-text-primary)]">
               {statsData?.system?.responseTime || "120ms"}

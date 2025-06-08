@@ -6,16 +6,36 @@ import { FiSettings, FiX } from "react-icons/fi";
 import { IoGameControllerOutline } from "react-icons/io5";
 import { SkeletonSidebar } from "../skeleton";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useTranslation } from "react-i18next";
+import logoImage from "../../assets/images/logo.png";
 
 const Sidebar = ({ onClose }) => {
+  const { t } = useTranslation();
   const location = useLocation();
   const { user, isAuthenticated, loading } = useAuth();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
+  // Function to check if a menu item is active
+  const isMenuItemActive = (path) => {
+    if (path === "/") {
+      return location.pathname === "/";
+    }
+
+    // For profile, check if path starts with /profile
+    if (path === "/profile") {
+      return location.pathname.startsWith("/profile");
+    }
+
+    // For other paths, check exact match or if path starts with the menu item path
+    return (
+      location.pathname === path || location.pathname.startsWith(`${path}/`)
+    );
+  };
+
   // Tất cả menu items, không phân biệt private/public
   const allMenuItems = [
     {
-      name: "Home",
+      name: t("sidebar.home"),
       path: "/",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -24,12 +44,12 @@ const Sidebar = ({ onClose }) => {
       ),
     },
     {
-      name: "Games",
+      name: t("sidebar.games"),
       path: "/game",
       icon: <IoGameControllerOutline className="w-6 h-6" />,
     },
     {
-      name: "Create Post",
+      name: t("sidebar.createPost"),
       path: "/create-post",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -38,7 +58,7 @@ const Sidebar = ({ onClose }) => {
       ),
     },
     {
-      name: "Messages",
+      name: t("sidebar.messages"),
       path: "/messages",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -47,7 +67,7 @@ const Sidebar = ({ onClose }) => {
       ),
     },
     {
-      name: "Groups",
+      name: t("sidebar.groups"),
       path: "/groups",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -56,7 +76,7 @@ const Sidebar = ({ onClose }) => {
       ),
     },
     {
-      name: "Friends",
+      name: t("sidebar.friends"),
       path: "/friends",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -65,7 +85,7 @@ const Sidebar = ({ onClose }) => {
       ),
     },
     {
-      name: "Profile",
+      name: t("sidebar.profile"),
       path: "/profile",
       icon: (
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
@@ -97,21 +117,25 @@ const Sidebar = ({ onClose }) => {
   }
 
   return (
-    <div className="h-screen p-4 flex flex-col">
+    <div className="h-screen w-full flex flex-col overflow-y-auto">
       {/* Header with Logo and Close Button */}
-      <div className="flex items-center justify-between mb-8 px-3">
+      <div className="flex items-center justify-between mb-2 px-3 py-6 sticky top-0 bg-[var(--color-bg-primary)] z-10">
         <Link
           to="/"
           className="flex items-center"
           onClick={isDesktop ? undefined : onClose}
         >
+          <img src={logoImage} alt="Logo" className="w-8 h-8 mr-2" />
           <motion.span
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="text-2xl font-bold bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] bg-clip-text text-transparent"
+            transition={{ duration: 0.8 }}
+            className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-[#4F46E5] via-[#7C3AED] to-[#9333EA] bg-clip-text text-transparent drop-shadow-sm hover:drop-shadow-md transition-all duration-300"
+            style={{
+              textShadow: "0 0 30px rgba(124, 58, 237, 0.5)",
+            }}
           >
-            Pin Leaning
+            {t("navbar.appName")}
           </motion.span>
         </Link>
 
@@ -119,7 +143,7 @@ const Sidebar = ({ onClose }) => {
           <button
             onClick={onClose}
             className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
-            aria-label="Close menu"
+            aria-label={t("common.close")}
           >
             <FiX className="w-6 h-6" />
           </button>
@@ -127,7 +151,7 @@ const Sidebar = ({ onClose }) => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1">
+      <nav className="flex-1 px-2">
         <motion.ul
           variants={containerVariant}
           initial="hidden"
@@ -135,12 +159,12 @@ const Sidebar = ({ onClose }) => {
           className="space-y-1"
         >
           {allMenuItems.map((menuItem) => {
-            const isActive = location.pathname === menuItem.path;
+            const isActive = isMenuItemActive(menuItem.path);
             return (
               <motion.li key={menuItem.path} variants={menuItemVariant}>
                 <Link
                   to={menuItem.path}
-                  className={`flex items-center px-4 py-3.5 text-base rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-all ${
+                  className={`flex items-center px-3 py-3 text-base rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-all ${
                     isActive
                       ? "bg-[var(--color-bg-tertiary)] text-[var(--color-primary-light)] font-medium shadow-sm border-l-4 border-[var(--color-primary)]"
                       : "text-[var(--color-text-secondary)]"
@@ -175,7 +199,7 @@ const Sidebar = ({ onClose }) => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="mt-auto"
+          className="mt-auto px-2 pb-4 pt-2 sticky bottom-0 bg-[var(--color-bg-primary)]"
         >
           <div className="flex items-center justify-between p-3 rounded-xl hover:bg-[var(--color-bg-tertiary)] transition-colors border border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
             <Link
@@ -187,22 +211,22 @@ const Sidebar = ({ onClose }) => {
                 src={user.avatar}
                 alt={user.fullname || user.username}
                 size="md"
-                className="mr-3"
+                className="mr-3 flex-shrink-0"
               />
-              <div>
-                <div className="font-medium text-[var(--color-text-primary)]">
+              <div className="min-w-0">
+                <div className="font-medium text-[var(--color-text-primary)] truncate">
                   {user.fullname || user.username}
                 </div>
-                <div className="text-xs text-[var(--color-text-secondary)] truncate max-w-[120px]">
+                <div className="text-xs text-[var(--color-text-secondary)] truncate">
                   @{user.username}
                 </div>
               </div>
             </Link>
             <Link
               to="/settings"
-              className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)]"
+              className="p-2 rounded-full hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)] flex-shrink-0"
               onClick={onClose}
-              title="Settings"
+              title={t("sidebar.settings")}
             >
               <FiSettings className="w-5 h-5" />
             </Link>

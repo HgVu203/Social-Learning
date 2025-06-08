@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <!-- Actor Người dùng -->
+  <circle cx="100" cy="180" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="200" x2="100" y2="230" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="210" x2="80" y2="250" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="210" x2="120" y2="250" stroke="#333" stroke-width="2"/>
+  <text x="100" y="270" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Người Dùng</text>
+  
+  <!-- Actor Admin -->
+  <circle cx="700" cy="180" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="700" y1="200" x2="700" y2="230" stroke="#333" stroke-width="2"/>
+  <line x1="700" y1="210" x2="680" y2="250" stroke="#333" stroke-width="2"/>
+  <line x1="700" y1="210" x2="720" y2="250" stroke="#333" stroke-width="2"/>
+  <text x="700" y="270" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Admin</text>
+  
+  <!-- Khung chính -->
+  <rect x="200" y="50" width="400" height="400" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="400" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Quản lý bài viết/câu hỏi</text>
+  
+  <!-- Chức năng xem bài viết -->
+  <ellipse cx="300" cy="140" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="145" text-anchor="middle" font-family="Arial" font-size="14">Xem bài viết/câu hỏi</text>
+  
+  <!-- Chức năng tạo bài viết -->
+  <ellipse cx="300" cy="210" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="215" text-anchor="middle" font-family="Arial" font-size="14">Tạo bài viết</text>
+  
+  <!-- Chức năng chỉnh sửa bài viết -->
+  <ellipse cx="300" cy="280" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="285" text-anchor="middle" font-family="Arial" font-size="14">Chỉnh sửa bài viết</text>
+  
+  <!-- Chức năng xóa bài viết -->
+  <ellipse cx="300" cy="350" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="355" text-anchor="middle" font-family="Arial" font-size="14">Xóa bài viết</text>
+  
+  <!-- Chức năng tìm kiếm nội dung -->
+  <ellipse cx="500" cy="140" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="145" text-anchor="middle" font-family="Arial" font-size="14">Tìm kiếm nội dung</text>
+  
+  <!-- Chức năng quản lý nội dung vi phạm -->
+  <ellipse cx="500" cy="210" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="215" text-anchor="middle" font-family="Arial" font-size="14">Quản lý nội dung vi phạm</text>
+  
+  <!-- Chức năng phê duyệt nội dung -->
+  <ellipse cx="500" cy="280" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="285" text-anchor="middle" font-family="Arial" font-size="14">Phê duyệt nội dung</text>
+  
+  <!-- Chức năng khôi phục bài viết -->
+  <ellipse cx="500" cy="350" rx="80" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="355" text-anchor="middle" font-family="Arial" font-size="14">Khôi phục bài viết</text>
+  
+  <!-- Đường kết nối từ người dùng đến chức năng -->
+  <line x1="100" y1="180" x2="220" y2="140" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="180" x2="220" y2="210" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="180" x2="220" y2="280" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="180" x2="220" y2="350" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="180" x2="420" y2="140" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối từ Admin đến chức năng -->
+  <line x1="700" y1="180" x2="580" y2="140" stroke="#333" stroke-width="1.5"/>
+  <line x1="700" y1="180" x2="580" y2="210" stroke="#333" stroke-width="1.5"/>
+  <line x1="700" y1="180" x2="580" y2="280" stroke="#333" stroke-width="1.5"/>
+  <line x1="700" y1="180" x2="580" y2="350" stroke="#333" stroke-width="1.5"/>
+  <line x1="700" y1="180" x2="380" y2="350" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối include -->
+  <line x1="300" y1="170" x2="300" y2="180" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  <line x1="500" y1="170" x2="500" y2="180" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+</svg> 

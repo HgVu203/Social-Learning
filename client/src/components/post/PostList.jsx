@@ -1,31 +1,12 @@
-import { memo, useRef, useCallback, useEffect, useState } from "react";
+import { memo, useRef, useCallback, useEffect, useMemo } from "react";
 import PostCard from "./PostCard";
 import { usePostContext } from "../../contexts/PostContext";
 import { SkeletonCard } from "../skeleton";
 import {
   prefetchImages,
   createImagePrefetchObserver,
+  forceRenderImages,
 } from "../../utils/prefetch";
-
-// Utility function to check for duplicate IDs
-const checkForDuplicates = (posts) => {
-  if (!posts || !posts.length) return null;
-
-  const ids = new Set();
-  const duplicates = [];
-
-  for (const post of posts) {
-    if (!post._id) continue;
-
-    if (ids.has(post._id)) {
-      duplicates.push(post._id);
-    } else {
-      ids.add(post._id);
-    }
-  }
-
-  return duplicates.length ? duplicates : null;
-};
 
 const PostList = ({
   groupId,
@@ -35,9 +16,6 @@ const PostList = ({
   hasMore: propHasMore,
   loadMore: propLoadMore,
 }) => {
-  // For debugging
-  const [duplicateIDs, setDuplicateIDs] = useState(null);
-
   // Nếu props được cung cấp, sử dụng props, nếu không sử dụng context
   const context = usePostContext();
 
@@ -49,20 +27,179 @@ const PostList = ({
 
   const observer = useRef();
   const postsRef = useRef([]);
+  const loadMoreRef = useRef(loadMoreFunc);
+  const hasMoreRef = useRef(hasMore);
+  const lastLoadMoreTimeRef = useRef(0); // Tránh việc tải quá nhanh
+
+  // Cập nhật tham chiếu mới nhất của loadMore và hasMore để tránh stale closures
+  useEffect(() => {
+    loadMoreRef.current = loadMoreFunc;
+    hasMoreRef.current = hasMore;
+  }, [loadMoreFunc, hasMore]);
+
+  // Tạo IntersectionObserver một lần và chỉ cập nhật khi cần thiết
+  const observerCallback = useCallback((entries) => {
+    if (entries[0].isIntersecting && hasMoreRef.current) {
+      // Thêm throttling để tránh load quá nhiều lần
+      const now = Date.now();
+      if (now - lastLoadMoreTimeRef.current > 1000) {
+        // Tối thiểu 1 giây giữa các lần tải
+        lastLoadMoreTimeRef.current = now;
+        loadMoreRef.current();
+      }
+    }
+  }, []);
+
+  const observerOptions = useMemo(
+    () => ({
+      threshold: 0.1,
+      rootMargin: "2000px 0px", // Tăng từ 800px lên 2000px để tải các post tiếp theo sớm hơn nhiều
+    }),
+    []
+  );
 
   // Khi component mount hoặc groupId thay đổi, tải bài đăng của nhóm
   useEffect(() => {
-    if (groupId && context.fetchGroupPosts) {
+    if (groupId && context.fetchGroupPosts && (!posts || posts.length === 0)) {
       context.fetchGroupPosts(groupId);
     }
-  }, [groupId, context.fetchGroupPosts]);
+  }, [groupId, context.fetchGroupPosts, posts]);
 
-  // Prefetch hình ảnh cho các bài viết tiếp theo
+  // Setup the intersection observer for infinite scroll
+  const lastPostElementRef = useCallback(
+    (node) => {
+      if (loading) return;
+
+      // Ngắt kết nối observer cũ nếu có
+      if (observer.current) observer.current.disconnect();
+
+      // Chỉ thiết lập observer nếu có hàm loadMore và còn dữ liệu để tải
+      if (loadMoreFunc && hasMore) {
+        // Sử dụng một observer duy nhất và chỉ cập nhật khi cần thiết
+        observer.current = new IntersectionObserver(
+          observerCallback,
+          observerOptions
+        );
+
+        if (node) observer.current.observe(node);
+      }
+    },
+    [loading, observerCallback, observerOptions]
+  );
+
+  // Lưu trữ tham chiếu cho mỗi bài viết để prefetch và prerender nếu cần
+  const setPostRef = (el, index) => {
+    if (el) {
+      el.dataset.index = index;
+      postsRef.current[index] = el;
+
+      // Force prerender/prefetch cho các post gần viewport
+      if (index < 20) {
+        // Tăng từ 10 lên 20 post sẽ được prefetch
+        // Force render ảnh trong post hiện tại
+        forceRenderImages(el);
+
+        // Tìm tất cả ảnh trong post và force preload chúng
+        const images = el.querySelectorAll("img");
+        images.forEach((img) => {
+          if (img.src) {
+            const preloadLink = document.createElement("link");
+            preloadLink.rel = "preload";
+            preloadLink.href = img.src;
+            preloadLink.as = "image";
+            preloadLink.fetchpriority = "high";
+            document.head.appendChild(preloadLink);
+
+            // Tạo ảnh mới và load nó vào cache
+            const preloadImg = new Image();
+            preloadImg.src = img.src;
+            preloadImg.fetchPriority = "high";
+            preloadImg.loading = "eager";
+          }
+        });
+      }
+    }
+  };
+
+  // Prefetch hình ảnh cho các bài viết tiếp theo với nhiều cải tiến
   useEffect(() => {
     if (!posts || posts.length === 0) return;
 
-    // Lấy tất cả URL hình ảnh từ các bài viết
-    const imageUrls = posts.slice(0, 3).flatMap((post) => {
+    // Tạo một array để lưu trữ tất cả preload links để xóa sau khi unmount
+    const preloadLinks = [];
+
+    // Xác định ảnh cần prefetch ngay lập tức vs ảnh có thể prefetch từ từ
+    const highPriorityPosts = posts.slice(0, 20); // Tăng từ 10 lên 20 bài đầu tiên
+    const lowPriorityPosts = posts.slice(20);
+
+    // Thu thập tất cả URL hình ảnh từ các bài viết ưu tiên cao
+    const highPriorityImages = highPriorityPosts.flatMap(extractImagesFromPost);
+
+    // Thực hiện prefetch với cả hai phương pháp để đảm bảo hiệu quả
+    // 1. Sử dụng thẻ link preload
+    highPriorityImages.forEach((imageUrl) => {
+      if (imageUrl) {
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.href = imageUrl;
+        link.fetchpriority = "high";
+        link.importance = "high";
+        document.head.appendChild(link);
+        preloadLinks.push(link);
+
+        // 2. Đồng thời sử dụng Image constructor để load vào cache
+        const img = new Image();
+        img.src = imageUrl;
+        img.fetchPriority = "high";
+        img.importance = "high";
+        img.loading = "eager";
+      }
+    });
+
+    // Thu thập URL hình ảnh từ các bài viết ưu tiên thấp
+    const lowPriorityImages = lowPriorityPosts.flatMap(extractImagesFromPost);
+
+    // Prefetch ảnh ưu tiên cao
+    if (highPriorityImages.length > 0) {
+      prefetchImages(highPriorityImages, {
+        highPriority: true,
+        quality: 85, // Sử dụng chất lượng tốt nhưng không quá lớn
+      });
+    }
+
+    // Prefetch ảnh ưu tiên thấp ngay lập tức
+    if (lowPriorityImages.length > 0) {
+      prefetchImages(lowPriorityImages, {
+        highPriority: true,
+        quality: 80,
+      });
+    }
+
+    // Tạo observer để theo dõi và prefetch hình ảnh cho các bài viết khi gần đến viewport
+    if (postsRef.current.length > 20) {
+      // Bỏ qua 20 bài viết đầu đã prefetch
+      const elements = postsRef.current.slice(20);
+
+      createImagePrefetchObserver(
+        elements,
+        (element) => {
+          const postIndex = parseInt(element.dataset.index || "0", 10);
+          const post = posts[postIndex];
+          if (!post) return null;
+          return extractImagesFromPost(post);
+        },
+        {
+          rootMargin: "3000px 0px", // Tăng từ 2000px lên 3000px
+          quality: 85,
+        }
+      );
+    }
+
+    // Helper function để trích xuất ảnh từ post
+    function extractImagesFromPost(post) {
+      if (!post) return [];
+
       const images = [];
       // Thêm ảnh từ mảng images nếu có
       if (post.images && post.images.length > 0) {
@@ -77,78 +214,69 @@ const PostList = ({
         images.push(post.author.avatar);
       }
       return images;
+    }
+
+    // Cleanup function để xóa các preload links khi component unmount
+    return () => {
+      preloadLinks.forEach((link) => {
+        if (document.head.contains(link)) {
+          document.head.removeChild(link);
+        }
+      });
+    };
+  }, [posts]);
+
+  // Cleanup observer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (observer.current) {
+        observer.current.disconnect();
+      }
+    };
+  }, []);
+
+  // Thêm cơ chế quan sát scroll để force render khi đến gần các post
+  useEffect(() => {
+    if (!posts || posts.length === 0 || !postsRef.current.length) return;
+
+    // Tạo observer mới để xem người dùng scroll đến đâu
+    const renderObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Khi gần đến post, force render các ảnh trong đó
+            const el = entry.target;
+            if (el) {
+              // Force render tất cả hình ảnh trong post này
+              forceRenderImages(el);
+
+              // Cũng force render 2 post tiếp theo nếu có
+              const index = parseInt(el.dataset.index || "0", 10);
+              for (let i = 1; i <= 2; i++) {
+                const nextPost = postsRef.current[index + i];
+                if (nextPost) {
+                  forceRenderImages(nextPost);
+                }
+              }
+            }
+          }
+        });
+      },
+      {
+        rootMargin: "500px 0px", // Khoảng cách ngắn hơn để xử lý khi thật sự gần
+        threshold: 0.1,
+      }
+    );
+
+    // Quan sát tất cả các post
+    postsRef.current.forEach((el) => {
+      if (el) renderObserver.observe(el);
     });
 
-    // Prefetch 3 bài viết đầu tiên với mức ưu tiên cao
-    if (imageUrls.length > 0) {
-      prefetchImages(imageUrls, { highPriority: true });
-    }
-
-    // Tạo observer để theo dõi và prefetch hình ảnh cho các bài viết khi gần đến viewport
-    if (postsRef.current.length > 0) {
-      const elements = postsRef.current.slice(3); // Bỏ qua 3 bài viết đầu đã prefetch
-      const getPostImages = (element) => {
-        const postIndex = parseInt(element.dataset.index || "0", 10);
-        const post = posts[postIndex];
-        if (!post) return null;
-
-        const images = [];
-        if (post.images && post.images.length > 0) {
-          images.push(...post.images);
-        }
-        if (post.image) {
-          images.push(post.image);
-        }
-        return images.length > 0 ? images : null;
-      };
-
-      createImagePrefetchObserver(elements, getPostImages, {
-        rootMargin: "1000px 0px", // Tải trước khi cách 1000px
-      });
-    }
-  }, [posts]);
-
-  // Setup the intersection observer for infinite scroll
-  const lastPostElementRef = useCallback(
-    (node) => {
-      if (loading) return;
-      if (observer.current) observer.current.disconnect();
-
-      // Chỉ thiết lập observer nếu có hàm loadMore
-      if (loadMoreFunc && hasMore) {
-        observer.current = new IntersectionObserver(
-          (entries) => {
-            if (entries[0].isIntersecting && hasMore) {
-              loadMoreFunc();
-            }
-          },
-          { threshold: 0.1, rootMargin: "500px 0px" }
-        );
-
-        if (node) observer.current.observe(node);
-      }
-    },
-    [loading, hasMore, loadMoreFunc]
-  );
-
-  // Lưu trữ tham chiếu cho mỗi bài viết để prefetch
-  const setPostRef = (el, index) => {
-    if (el) {
-      el.dataset.index = index;
-      postsRef.current[index] = el;
-    }
-  };
-
-  // Check for duplicates when posts change
-  useEffect(() => {
-    const duplicates = checkForDuplicates(posts);
-    if (duplicates) {
-      console.warn("Duplicate post IDs detected:", duplicates);
-      setDuplicateIDs(duplicates);
-    } else {
-      setDuplicateIDs(null);
-    }
-  }, [posts]);
+    return () => {
+      renderObserver.disconnect();
+    };
+  }, [posts, postsRef.current.length]);
 
   if (loading && !posts?.length) {
     return (
@@ -166,11 +294,6 @@ const PostList = ({
         {error.message || "Failed to load posts"}
       </div>
     );
-  }
-
-  // Display warning about duplicate IDs if any were found
-  if (duplicateIDs && duplicateIDs.length > 0) {
-    console.warn(`PostList: Found ${duplicateIDs.length} duplicate post IDs`);
   }
 
   if (!posts?.length) {
@@ -210,14 +333,21 @@ const PostList = ({
                 lastPostElementRef(el);
                 setPostRef(el, index);
               }}
+              className="post-item"
+              data-post-id={post._id}
             >
-              <PostCard post={post} />
+              <PostCard post={post} index={index} />
             </div>
           );
         } else {
           return (
-            <div key={key} ref={(el) => setPostRef(el, index)}>
-              <PostCard post={post} />
+            <div
+              key={key}
+              ref={(el) => setPostRef(el, index)}
+              className="post-item"
+              data-post-id={post._id}
+            >
+              <PostCard post={post} index={index} />
             </div>
           );
         }

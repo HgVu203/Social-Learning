@@ -5,24 +5,27 @@ import { motion } from "framer-motion";
 import { FaArrowLeft } from "react-icons/fa";
 import AuthForm from "../../components/auth/AuthForm";
 import AuthButton from "../../components/auth/AuthButton";
+import { useTranslation } from "react-i18next";
+import { showSuccessToast } from "../../utils/toast";
+import {
+  useVerifyEmail,
+  useResendVerificationCode,
+} from "../../hooks/mutations/useAuthMutations";
 
 const VerifyEmailPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const {
-    verifyEmail,
-    error: contextError,
-    loading,
-    clearError,
-    setCredentials,
-    resendVerificationCode,
-  } = useAuth();
+  const { error: contextError, loading, clearError } = useAuth();
+  const verifyEmail = useVerifyEmail();
+  const resendVerificationCode = useResendVerificationCode();
   const [verificationData, setVerificationData] = useState(null);
   const [codeDigits, setCodeDigits] = useState(["", "", "", "", "", ""]);
   const [resending, setResending] = useState(false);
   const [userInitiatedExit, setUserInitiatedExit] = useState(false);
   const [error, setError] = useState("");
   const inputRefs = useRef([]);
+  const isSubmittingRef = useRef(false);
+  const { t } = useTranslation();
 
   // Sync errors from context to local state
   useEffect(() => {
@@ -245,75 +248,101 @@ const VerifyEmailPage = () => {
     }
   };
 
-  const handleVerify = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const verificationCode = codeDigits.join("");
-    if (!verificationData || !verificationCode || verificationCode.length !== 6)
-      return;
+    // Prevent multiple submissions
+    if (loading || isSubmittingRef.current) return;
 
-    // Clear any existing errors
-    setError("");
+    // Validate code format
+    if (!validateCode()) return;
 
     try {
-      console.log("Sending verification with data:", {
-        email: verificationData.email,
-        userId: verificationData.userId,
-        code: verificationCode,
-      });
+      isSubmittingRef.current = true;
+      setError("");
 
-      const response = await verifyEmail({
-        email: verificationData.email,
-        userId: verificationData.userId,
-        code: verificationCode,
-      });
+      const payload = { code: codeDigits.join("") };
 
-      console.log("Verification response:", response);
+      // Add email/userId if available
+      if (verificationData) {
+        payload.email = verificationData.email;
+        payload.userId = verificationData.userId;
+      }
 
-      // Clean up local storage on successful verification
-      localStorage.removeItem("pendingVerification");
+      const result = await verifyEmail.mutateAsync(payload);
 
-      // If the server sent back user data and tokens, set them to auto-login
-      if (
-        response.success &&
-        response.data?.accessToken &&
-        response.data?.user
-      ) {
-        console.log("Auto-login after successful verification");
-        await setCredentials(response.data);
+      if (result.success) {
+        // Clear all stored verification data from localStorage/sessionStorage
+        localStorage.removeItem("pendingVerification");
+        sessionStorage.removeItem("pendingVerification");
+        sessionStorage.removeItem("emailVerification");
 
-        // Navigate to home page as an authenticated user
-        navigate("/", { replace: true });
+        // Show success message and redirect
+        showSuccessToast(t("auth.emailVerified"));
+
+        if (result.data?.accessToken) {
+          // If we got a token back, user is now logged in
+          setTimeout(() => navigate("/"), 500);
+        } else {
+          // Otherwise, redirect to login
+          setTimeout(() => navigate("/login"), 500);
+        }
       } else {
-        // Navigate to login with success state
-        navigate("/login", { state: { verified: true } });
+        // Hiển thị lỗi từ server
+        setError(
+          result.error || result.message || t("auth.verificationFailed")
+        );
       }
     } catch (err) {
-      console.error("Verification failed:", err);
-      // Set the error message locally
-      setError(
-        err.response?.data?.message ||
-          "Verification code is invalid. Please try again."
-      );
+      console.error("Verification error:", err);
+
+      // Xử lý lỗi chi tiết từ API response
+      if (err.response?.data) {
+        const errorMessage =
+          err.response.data.error ||
+          err.response.data.message ||
+          err.message ||
+          t("auth.verificationFailed");
+
+        setError(errorMessage);
+      } else {
+        setError(err.message || t("auth.verificationFailed"));
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
   const handleResendCode = async () => {
-    if (!verificationData?.email) return;
-
-    // Clear any existing errors
-    setError("");
+    if (!verificationData?.email) {
+      setError(t("auth.emailNotFound"));
+      return;
+    }
 
     try {
       setResending(true);
-      await resendVerificationCode(verificationData.email);
-      setCodeDigits(["", "", "", "", "", ""]); // Reset input fields
-    } catch (error) {
-      console.error("Failed to resend code:", error);
-      setError(
-        error.response?.data?.message ||
-          "Failed to resend verification code. Please try again."
+      setError("");
+
+      const result = await resendVerificationCode.mutateAsync(
+        verificationData.email
       );
+
+      if (result.success) {
+        showSuccessToast(t("auth.codeSentSuccess"));
+      } else {
+        setError(result.error || result.message || t("auth.resendFailed"));
+      }
+    } catch (err) {
+      console.error("Error resending code:", err);
+
+      // Xử lý lỗi từ API
+      const errorMessage =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        t("auth.resendFailed");
+
+      setError(errorMessage);
     } finally {
       setResending(false);
     }
@@ -363,6 +392,16 @@ const VerifyEmailPage = () => {
 
   const isCodeComplete = codeDigits.every((digit) => digit !== "");
 
+  // Validate code format
+  const validateCode = () => {
+    const code = codeDigits.join("");
+    if (code.length !== 6) {
+      setError("Please enter all 6 digits of the verification code");
+      return false;
+    }
+    return true;
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center p-4">
       <motion.div
@@ -380,9 +419,9 @@ const VerifyEmailPage = () => {
         </button>
 
         <AuthForm
-          title="Verify Your Email"
-          subtitle="One last step to complete your registration"
-          onSubmit={handleVerify}
+          title={t("auth.verifyEmail")}
+          subtitle={t("auth.verifyEmailSubtitle")}
+          onSubmit={handleSubmit}
           className="space-y-5"
         >
           <motion.div
@@ -402,10 +441,7 @@ const VerifyEmailPage = () => {
                   clipRule="evenodd"
                 />
               </svg>
-              <span>
-                Please enter the verification code sent to your email to
-                complete registration
-              </span>
+              <span>{t("auth.verifyEmailInstructions")}</span>
             </div>
           </motion.div>
 
@@ -437,7 +473,7 @@ const VerifyEmailPage = () => {
               htmlFor="code-0"
               className="block text-[var(--color-text-primary)] mb-2 font-medium"
             >
-              Verification Code
+              {t("auth.verificationCode")}
             </label>
 
             <div
@@ -457,7 +493,7 @@ const VerifyEmailPage = () => {
                     maxLength={1}
                     inputMode="numeric"
                     autoComplete={index === 0 ? "one-time-code" : "off"}
-                    disabled={loading}
+                    disabled={loading || verifyEmail.isPending}
                     autoFocus={index === 0}
                   />
                 </div>
@@ -465,33 +501,33 @@ const VerifyEmailPage = () => {
             </div>
 
             <p className="text-sm text-[var(--color-text-secondary)] mt-2 text-center">
-              Enter the 6-digit code sent to your email
+              {t("auth.enterVerificationCode")}
             </p>
           </div>
 
           <div className="flex flex-col gap-4 mt-6">
             <AuthButton
               type="submit"
-              disabled={loading || !isCodeComplete}
-              isLoading={loading}
+              disabled={loading || verifyEmail.isPending || !isCodeComplete}
+              isLoading={loading || verifyEmail.isPending}
               variant="primary"
               fullWidth
               className="py-3 text-base font-medium cursor-pointer"
             >
-              Verify Email
+              {t("auth.verifyEmailBtn")}
             </AuthButton>
 
             <div className="flex gap-3">
               <AuthButton
                 type="button"
                 onClick={handleResendCode}
-                disabled={loading || resending}
+                disabled={loading || verifyEmail.isPending || resending}
                 isLoading={resending}
                 variant="outline"
                 fullWidth
                 className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors"
               >
-                Resend Code
+                {t("auth.resendCode")}
               </AuthButton>
 
               <AuthButton
@@ -502,7 +538,7 @@ const VerifyEmailPage = () => {
                 fullWidth
                 className="cursor-pointer py-2.5 hover:bg-[var(--color-primary)] hover:text-white transition-colors font-medium"
               >
-                Change Email
+                {t("auth.changeEmail")}
               </AuthButton>
             </div>
           </div>

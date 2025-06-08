@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="450" viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
+  <!-- Người quản trị viên -->
+  <circle cx="100" cy="150" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="170" x2="100" y2="200" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="180" x2="80" y2="220" stroke="#333" stroke-width="2"/>
+  <line x1="100" y1="180" x2="120" y2="220" stroke="#333" stroke-width="2"/>
+  <text x="100" y="240" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">Quản trị viên</text>
+  
+  <!-- Khung chính -->
+  <rect x="180" y="50" width="550" height="350" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="455" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Quản lý người dùng</text>
+  
+  <!-- Chức năng xem danh sách -->
+  <ellipse cx="300" cy="130" rx="120" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="135" text-anchor="middle" font-family="Arial" font-size="14">Xem danh sách người dùng</text>
+  
+  <!-- Chức năng chỉnh sửa -->
+  <ellipse cx="425" cy="190" rx="120" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="425" y="195" text-anchor="middle" font-family="Arial" font-size="14">Chỉnh sửa thông tin người dùng</text>
+  
+  <!-- Chức năng xóa -->
+  <ellipse cx="300" cy="250" rx="120" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="255" text-anchor="middle" font-family="Arial" font-size="14">Xóa người dùng</text>
+  
+  <!-- Chức năng quản lý quyền -->
+  <ellipse cx="425" cy="310" rx="120" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="425" y="315" text-anchor="middle" font-family="Arial" font-size="14">Cấp/quản lý quyền người dùng</text>
+  
+  <!-- Chức năng xác nhận xóa -->
+  <ellipse cx="550" cy="250" rx="120" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="550" y="255" text-anchor="middle" font-family="Arial" font-size="14">Hiển thị xác nhận xóa</text>
+  
+  <!-- Đường kết nối từ actor đến chức năng -->
+  <line x1="100" y1="150" x2="190" y2="130" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="150" x2="310" y2="190" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="150" x2="180" y2="250" stroke="#333" stroke-width="1.5"/>
+  <line x1="100" y1="150" x2="305" y2="310" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối include -->
+  <line x1="300" y1="250" x2="430" y2="250" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  <text x="365" y="240" text-anchor="middle" font-family="Arial" font-size="12">«include»</text>
+</svg> 

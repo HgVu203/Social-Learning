@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FiUserPlus, FiUserCheck, FiClock } from "react-icons/fi";
 import { showConfirmToast } from "../../utils/toast";
 import { useFriend } from "../../contexts/FriendContext";
+import { useTranslation } from "react-i18next";
 
 // Các trạng thái có thể:
 // - NOT_FRIEND: Chưa là bạn bè
@@ -15,6 +16,7 @@ const FriendRequestButton = ({
   requestId = null,
   onStatusChange,
 }) => {
+  const { t } = useTranslation();
   const { sendFriendRequest, rejectFriendRequest, removeFriend } = useFriend();
   const [status, setStatus] = useState(initialStatus);
   const [loading, setLoading] = useState(false);
@@ -37,7 +39,7 @@ const FriendRequestButton = ({
   const handleCancelRequest = async () => {
     if (loading || !requestId) return;
 
-    showConfirmToast("Bạn có chắc muốn hủy lời mời kết bạn?", async () => {
+    showConfirmToast(t("friend.confirmCancelRequest"), async () => {
       setLoading(true);
       try {
         await rejectFriendRequest.mutateAsync(requestId);
@@ -54,7 +56,7 @@ const FriendRequestButton = ({
   const handleUnfriend = async () => {
     if (loading) return;
 
-    showConfirmToast("Bạn có chắc muốn hủy kết bạn?", async () => {
+    showConfirmToast(t("friend.confirmUnfriend"), async () => {
       setLoading(true);
       try {
         await removeFriend.mutateAsync(userId);
@@ -79,7 +81,11 @@ const FriendRequestButton = ({
             className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             <FiUserPlus className="mr-1" />
-            <span>{loading ? "Đang xử lý..." : "Kết bạn"}</span>
+            <span>
+              {loading
+                ? t("common.processing")
+                : t("profile.sendFriendRequest")}
+            </span>
           </button>
         );
 
@@ -91,7 +97,9 @@ const FriendRequestButton = ({
             className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
           >
             <FiUserCheck className="mr-1" />
-            <span>{loading ? "Đang xử lý..." : "Bạn bè"}</span>
+            <span>
+              {loading ? t("common.processing") : t("profile.alreadyFriends")}
+            </span>
           </button>
         );
 
@@ -103,7 +111,11 @@ const FriendRequestButton = ({
             className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
           >
             <FiClock className="mr-1" />
-            <span>{loading ? "Đang xử lý..." : "Đã gửi lời mời"}</span>
+            <span>
+              {loading
+                ? t("common.processing")
+                : t("profile.friendRequestSent")}
+            </span>
           </button>
         );
 
@@ -117,7 +129,7 @@ const FriendRequestButton = ({
               disabled={loading}
               className="flex items-center px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              <span>Chấp nhận</span>
+              <span>{t("profile.acceptFriendRequest")}</span>
             </button>
             <button
               onClick={() => {
@@ -126,7 +138,7 @@ const FriendRequestButton = ({
               disabled={loading}
               className="flex items-center px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
             >
-              <span>Từ chối</span>
+              <span>{t("friend.reject")}</span>
             </button>
           </div>
         );

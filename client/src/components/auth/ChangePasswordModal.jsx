@@ -1,9 +1,10 @@
 import { useState } from "react";
 import Modal from "../common/Modal";
 import { useChangePassword } from "../../hooks/mutations/useUserMutations";
-import { showSuccessToast } from "../../utils/toast";
+import { useTranslation } from "react-i18next";
 
 const ChangePasswordModal = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -39,22 +40,21 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
     const errors = {};
 
     if (!formData.currentPassword) {
-      errors.currentPassword = "Current password is required";
+      errors.currentPassword = t("auth.currentPasswordRequired");
     }
 
     if (!formData.newPassword) {
-      errors.newPassword = "New password is required";
+      errors.newPassword = t("auth.newPasswordRequired");
     } else if (formData.newPassword.length < 8) {
-      errors.newPassword = "Password must be at least 8 characters";
+      errors.newPassword = t("auth.passwordLength");
     } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.newPassword)) {
-      errors.newPassword =
-        "Password must contain uppercase, lowercase and numbers";
+      errors.newPassword = t("auth.passwordComplexity");
     }
 
     if (!formData.confirmPassword) {
-      errors.confirmPassword = "Please confirm your new password";
+      errors.confirmPassword = t("auth.confirmPasswordRequired");
     } else if (formData.newPassword !== formData.confirmPassword) {
-      errors.confirmPassword = "Passwords do not match";
+      errors.confirmPassword = t("auth.passwordsDoNotMatch");
     }
 
     setFieldErrors(errors);
@@ -79,7 +79,6 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
       });
 
       if (response.success) {
-        showSuccessToast("Password changed successfully");
         // Reset form
         setFormData({
           currentPassword: "",
@@ -89,38 +88,34 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
         // Close modal after success
         onClose();
       } else {
-        const errorMsg = response.message || "Failed to change password";
+        const errorMsg = response.message || t("auth.changePasswordFailed");
         setErrorMessage(errorMsg);
       }
     } catch (err) {
       console.error("Change password error:", err);
 
       // Xử lý lỗi từ server
-      const errorMessage = err.response?.data?.error || "An error occurred";
+      const errorMessage = err.response?.data?.error || t("auth.errorOccurred");
 
       if (errorMessage.includes("Current password is incorrect")) {
         setFieldErrors((prev) => ({
           ...prev,
-          currentPassword: "Current password is incorrect",
+          currentPassword: t("auth.currentPasswordIncorrect"),
         }));
-        setErrorMessage(
-          "Current password is incorrect. Please check and try again."
-        );
+        setErrorMessage(t("auth.currentPasswordCheckAgain"));
       } else if (errorMessage.includes("same as current password")) {
         setFieldErrors((prev) => ({
           ...prev,
-          newPassword: "New password cannot be the same as current password",
+          newPassword: t("auth.newPasswordSameAsCurrent"),
         }));
-        setErrorMessage("New password cannot be the same as current password.");
+        setErrorMessage(t("auth.newPasswordCannotBeSame"));
       } else if (err.response?.status === 400) {
         // Validation errors
         setErrorMessage(errorMessage);
       } else if (err.code === "ERR_NETWORK") {
-        setErrorMessage("Network error. Please check your connection.");
+        setErrorMessage(t("auth.networkError"));
       } else if (errorMessage.includes("Facebook or Google account")) {
-        setErrorMessage(
-          "You cannot change password when using a Facebook or Google account."
-        );
+        setErrorMessage(t("auth.socialAccountPasswordChange"));
       } else {
         setErrorMessage(errorMessage);
       }
@@ -128,7 +123,11 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Change Password">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t("settings.changePassword")}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {errorMessage && (
           <div className="bg-red-500/10 border-l-4 border-red-500 p-3 mb-4 rounded flex items-center space-x-2">
@@ -153,7 +152,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
             htmlFor="currentPassword"
             className="block text-sm font-medium text-[var(--color-text-secondary)]"
           >
-            Current Password <span className="text-red-500">*</span>
+            {t("auth.currentPassword")} <span className="text-red-500">*</span>
           </label>
           <input
             type="password"
@@ -181,7 +180,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
             htmlFor="newPassword"
             className="block text-sm font-medium text-[var(--color-text-secondary)]"
           >
-            New Password <span className="text-red-500">*</span>
+            {t("auth.newPassword")} <span className="text-red-500">*</span>
           </label>
           <input
             type="password"
@@ -202,8 +201,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
             </p>
           ) : (
             <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
-              Password must be at least 8 characters and contain uppercase,
-              lowercase, and numbers
+              {t("auth.passwordRequirements")}
             </p>
           )}
         </div>
@@ -214,7 +212,8 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
             htmlFor="confirmPassword"
             className="block text-sm font-medium text-[var(--color-text-secondary)]"
           >
-            Confirm New Password <span className="text-red-500">*</span>
+            {t("auth.confirmNewPassword")}{" "}
+            <span className="text-red-500">*</span>
           </label>
           <input
             type="password"
@@ -243,14 +242,16 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
             onClick={onClose}
             className="px-4 py-2 border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-hover)]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="submit"
             disabled={changePassword.isPending}
             className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
           >
-            {changePassword.isPending ? "Changing..." : "Change Password"}
+            {changePassword.isPending
+              ? t("common.processing")
+              : t("settings.changePassword")}
           </button>
         </div>
       </form>

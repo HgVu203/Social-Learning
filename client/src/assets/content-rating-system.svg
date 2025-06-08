@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="450" viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
+  <!-- Actor Người dùng -->
+  <circle cx="80" cy="150" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="170" x2="80" y2="200" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="180" x2="60" y2="220" stroke="#333" stroke-width="2"/>
+  <line x1="80" y1="180" x2="100" y2="220" stroke="#333" stroke-width="2"/>
+  <text x="80" y="240" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Người dùng</text>
+  
+  <!-- Actor Quản trị viên -->
+  <circle cx="720" cy="150" r="20" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="170" x2="720" y2="200" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="180" x2="700" y2="220" stroke="#333" stroke-width="2"/>
+  <line x1="720" y1="180" x2="740" y2="220" stroke="#333" stroke-width="2"/>
+  <text x="720" y="240" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">Quản trị viên</text>
+  
+  <!-- Khung chính -->
+  <rect x="180" y="50" width="440" height="350" rx="10" ry="10" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+  
+  <!-- Tiêu đề -->
+  <text x="400" y="80" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">Hệ thống Đánh giá Nội dung</text>
+  
+  <!-- Chức năng thích bài viết -->
+  <ellipse cx="300" cy="150" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="155" text-anchor="middle" font-family="Arial" font-size="14">Thích bài viết</text>
+  
+  <!-- Chức năng hệ thống cập nhật điểm like -->
+  <ellipse cx="500" cy="150" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="155" text-anchor="middle" font-family="Arial" font-size="14">Cập nhật số lượng thích</text>
+  
+  <!-- Chức năng bình luận bài viết -->
+  <ellipse cx="300" cy="250" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="300" y="255" text-anchor="middle" font-family="Arial" font-size="14">Bình luận bài viết</text>
+  
+  <!-- Chức năng thích bình luận -->
+  <ellipse cx="500" cy="250" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="500" y="255" text-anchor="middle" font-family="Arial" font-size="14">Thích bình luận</text>
+  
+  <!-- Chức năng hiển thị trạng thái đã thích -->
+  <ellipse cx="400" cy="350" rx="100" ry="30" fill="#e6f2ff" stroke="#333" stroke-width="2"/>
+  <text x="400" y="355" text-anchor="middle" font-family="Arial" font-size="14">Hiển thị trạng thái đánh giá</text>
+  
+  <!-- Đường kết nối từ actor người dùng đến chức năng -->
+  <line x1="80" y1="150" x2="200" y2="150" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="150" x2="200" y2="250" stroke="#333" stroke-width="1.5"/>
+  <line x1="80" y1="150" x2="300" y2="350" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường kết nối từ actor quản trị viên đến chức năng -->
+  <line x1="720" y1="150" x2="600" y2="150" stroke="#333" stroke-width="1.5"/>
+  <line x1="720" y1="150" x2="600" y2="250" stroke="#333" stroke-width="1.5"/>
+  
+  <!-- Đường include -->
+  <line x1="300" y1="180" x2="370" y2="320" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  <text x="290" y="210" text-anchor="middle" font-family="Arial" font-size="12">«include»</text>
+  
+  <line x1="500" y1="180" x2="430" y2="320" stroke="#333" stroke-width="1.5" stroke-dasharray="5,5"/>
+  <text x="510" y="210" text-anchor="middle" font-family="Arial" font-size="12">«include»</text>
+</svg> 

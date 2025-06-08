@@ -43,7 +43,17 @@ router.post(
 
 router.get("/profile/", UserController.myProfile);
 
-// Follow/Unfollow endpoint
+// Follow/Unfollow endpoints
 router.post("/:id/follow", trackUserActivity, UserController.toggleFollow);
+router.post("/:id/follow/add", trackUserActivity, UserController.followUser);
+router.post(
+  "/:id/follow/remove",
+  trackUserActivity,
+  UserController.unfollowUser
+);
+
+// Followers/Following endpoints
+router.get("/:id/followers", optionalAuth, UserController.getUserFollowers);
+router.get("/:id/following", optionalAuth, UserController.getUserFollowing);
 
 export default router;

@@ -7,8 +7,11 @@ import {
   getGameColorScheme,
   getGameIcon,
 } from "../../utils/gameUtils";
+import { useTranslation } from "react-i18next";
 
 const GamesPage = () => {
+  const { t } = useTranslation();
+
   useEffect(() => {
     // Check if game images exist and log a message if needed
     checkGameImages();
@@ -17,7 +20,7 @@ const GamesPage = () => {
   const games = [
     {
       id: "code-challenge",
-      title: "Coding Challenge",
+      title: t("game.codingChallenge"),
       path: "/game/code-challenge",
       imageUrl: "/assets/games/code-challenge.jpg",
       color: getGameColorScheme("code"),
@@ -26,7 +29,7 @@ const GamesPage = () => {
     },
     {
       id: "math-puzzle",
-      title: "Math Puzzles",
+      title: t("game.mathPuzzles"),
       path: "/game/math-puzzle",
       imageUrl: "/assets/games/math-puzzle.jpg",
       color: getGameColorScheme("math"),
@@ -35,7 +38,7 @@ const GamesPage = () => {
     },
     {
       id: "tech-quiz",
-      title: "Tech Quiz",
+      title: t("game.techQuiz"),
       path: "/game/tech-quiz",
       imageUrl: "/assets/games/tech-quiz.jpg",
       color: getGameColorScheme("quiz"),
@@ -73,7 +76,7 @@ const GamesPage = () => {
           animate={{ scale: 1 }}
           transition={{ duration: 0.5, type: "spring" }}
         >
-          Educational Games
+          {t("game.title")}
         </motion.h1>
         <motion.p
           className="text-center text-[var(--color-text-secondary)] text-lg max-w-2xl mx-auto"
@@ -81,8 +84,7 @@ const GamesPage = () => {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2, duration: 0.5 }}
         >
-          Challenge yourself with our collection of educational games designed
-          to improve your skills and knowledge in various tech domains.
+          {t("game.description")}
         </motion.p>
       </motion.div>
 

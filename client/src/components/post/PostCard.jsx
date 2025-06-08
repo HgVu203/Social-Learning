@@ -8,18 +8,62 @@ import PostComments from "./PostComment";
 import { showSuccessToast, showConfirmToast } from "../../utils/toast";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
+import { usePostComments } from "../../hooks/queries/usePostQueries";
+import { useQueryClient } from "@tanstack/react-query";
+import { POST_QUERY_KEYS } from "../../hooks/queries/usePostQueries";
+import { useTranslation } from "react-i18next";
 
-const PostCard = ({ post }) => {
+/**
+ * Component hiển thị một bài post với các chức năng tương tác
+ *
+ * Quy trình xử lý like:
+ * 1. Khi người dùng click vào nút like, hàm handleLike được gọi
+ * 2. Cập nhật UI ngay lập tức (optimistic update) trước khi gọi API
+ * 3. Gọi API like post
+ * 4. Nếu API trả về kết quả khác với trạng thái optimistic, cập nhật lại UI theo server
+ * 5. Nếu API gặp lỗi, khôi phục trạng thái ban đầu
+ */
+const PostCard = ({ post, index = 0 }) => {
+  const { t } = useTranslation();
   const [showComments, setShowComments] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   const [localPost, setLocalPost] = useState(post);
   const [showMenu, setShowMenu] = useState(false);
+  const [commentsMismatch, setCommentsMismatch] = useState(false);
   const menuRef = useRef(null);
+  const prevPostRef = useRef(post);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { likePost, deletePost } = usePostContext();
+  const { likePost, deletePost, optimisticTogglePostLike } = usePostContext();
   const isAuthor = user?._id === localPost.author?._id;
+  const queryClient = useQueryClient();
+
+  // Điều chỉnh eager loading dựa trên vị trí của post để tối ưu hiển thị
+  const isEagerLoad = index < 15; // Tăng từ 8 lên 15 post đầu tiên
+
+  // Pre-check if there might be a comment count mismatch
+  const { data: commentsData } = usePostComments(localPost._id, {
+    enabled: showComments, // Only fetch when comments are shown
+    staleTime: 30000,
+  });
+
+  // Check for potential mismatch when comments data is loaded
+  useEffect(() => {
+    if (commentsData && commentsData.data) {
+      const commentsArray = commentsData.data.comments || [];
+      const commentCount = commentsData.data.commentsCount || 0;
+      setCommentsMismatch(commentCount > 0 && commentsArray.length === 0);
+
+      // Cập nhật localPost.commentsCount dựa trên dữ liệu từ commentsData
+      if (commentCount !== localPost.commentsCount) {
+        setLocalPost((prev) => ({
+          ...prev,
+          commentsCount: commentCount,
+        }));
+      }
+    }
+  }, [commentsData, localPost]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -38,113 +82,305 @@ const PostCard = ({ post }) => {
     };
   }, [showMenu]);
 
-  // Update local state when post prop changes
+  // Cập nhật localPost khi post prop thay đổi
   useEffect(() => {
-    setLocalPost(post);
+    if (post && JSON.stringify(post) !== JSON.stringify(prevPostRef.current)) {
+      // Đảm bảo trạng thái like được đồng bộ từ server
+      const serverPost = { ...post };
+
+      // Đảm bảo likesCount là số hợp lệ
+      if (typeof serverPost.likesCount !== "number") {
+        serverPost.likesCount = Array.isArray(serverPost.likes)
+          ? serverPost.likes.length
+          : 0;
+      }
+
+      setLocalPost(serverPost);
+      prevPostRef.current = serverPost;
+    }
   }, [post]);
 
-  // More robust isLiked calculation
+  // Tính toán trạng thái isLiked dựa trên dữ liệu post
   const isLiked = useMemo(() => {
     if (!user || !localPost) return false;
 
-    // Ưu tiên dùng thuộc tính isLiked từ server
+    // Ưu tiên sử dụng giá trị từ localPost.isLiked nếu đã được thiết lập rõ ràng
     if (typeof localPost.isLiked === "boolean") {
       return localPost.isLiked;
     }
 
-    // Nếu không có isLiked, kiểm tra mảng likes
-    if (Array.isArray(localPost.likes) && localPost.likes.length > 0) {
+    // Nếu không có isLiked, kiểm tra trong mảng likes
+    if (Array.isArray(localPost.likes)) {
       return localPost.likes.some((like) => {
-        // Xử lý trường hợp like là string (userId)
-        if (typeof like === "string") {
-          return like === user._id;
-        }
-
-        // Xử lý trường hợp like là object có userId
+        if (typeof like === "string") return like === user._id;
         if (typeof like === "object" && like !== null) {
-          if (like.userId) {
-            return like.userId.toString() === user._id.toString();
-          }
-          // Xử lý trường hợp là ObjectId trực tiếp
-          return like.toString && like.toString() === user._id.toString();
+          return like._id === user._id || like.userId === user._id;
         }
-
         return false;
       });
     }
 
     return false;
+  }, [localPost, user]);
+
+  // Thêm effect để đảm bảo luôn lấy trạng thái like từ server mỗi khi component mount
+  useEffect(() => {
+    // Chỉ fetch lại dữ liệu nếu có user đăng nhập và có postId
+    if (user && localPost && localPost._id) {
+      // Tùy chọn: Có thể gọi API kiểm tra trạng thái like ở đây
+      // Ví dụ: fetchPostStatus(localPost._id)
+    }
   }, [user, localPost]);
 
-  // Khi có thay đổi trong isLiked, cập nhật localPost để đảm bảo UI hiển thị đúng
+  // Thêm useEffect để kiểm tra và đồng bộ trạng thái like khi component mount
   useEffect(() => {
-    if (localPost) {
-      setLocalPost((prev) => ({
-        ...prev,
-        isLiked: isLiked,
-      }));
-    }
-  }, [isLiked]);
+    if (user && localPost && localPost._id) {
+      // Xác định trạng thái like từ dữ liệu server
+      let serverIsLiked = false;
 
-  // Đảm bảo đồng bộ khi prop post thay đổi
+      // Ưu tiên sử dụng giá trị isLiked từ server nếu có
+      if (typeof localPost.isLiked === "boolean") {
+        serverIsLiked = localPost.isLiked;
+      }
+      // Nếu không có isLiked, tính toán từ mảng likes
+      else if (Array.isArray(localPost.likes)) {
+        serverIsLiked = localPost.likes.some((like) => {
+          if (typeof like === "string") return like === user._id;
+          if (typeof like === "object" && like !== null) {
+            return like._id === user._id || like.userId === user._id;
+          }
+          return false;
+        });
+      }
+
+      // Đảm bảo trạng thái local và trạng thái UI đồng bộ với server
+      if (serverIsLiked !== isLiked) {
+        setLocalPost((prev) => ({
+          ...prev,
+          isLiked: serverIsLiked,
+        }));
+      }
+    }
+  }, [user, localPost, isLiked]);
+
+  // Debug: xem trạng thái của isLiked
   useEffect(() => {
-    if (post && JSON.stringify(post) !== JSON.stringify(localPost)) {
-      setLocalPost(post);
-    }
-  }, [post]);
+    if (localPost && localPost._id) {
+      // Cập nhật likesCount dựa trên trạng thái isLiked nếu chưa đồng bộ
+      const hasLikesArray =
+        Array.isArray(localPost.likes) && localPost.likes.length > 0;
+      const expectedLikeCount = hasLikesArray
+        ? localPost.likes.length
+        : isLiked
+        ? 1
+        : 0;
 
+      // Kiểm tra nếu likesCount không khớp với mảng likes
+      if (localPost.likesCount !== expectedLikeCount && hasLikesArray) {
+        setLocalPost((prev) => ({
+          ...prev,
+          likesCount: expectedLikeCount,
+        }));
+      }
+    }
+  }, [isLiked, localPost]);
+
+  // Đảm bảo commentsCount không âm và là số hợp lệ
+  const commentsCount = useMemo(() => {
+    if (
+      localPost?.commentsCount === undefined ||
+      localPost?.commentsCount === null
+    ) {
+      return 0;
+    }
+
+    // Convert to number if it's a string
+    const count = Number(localPost.commentsCount);
+
+    // Return 0 if not a valid number
+    if (isNaN(count) || count < 0) {
+      return 0;
+    }
+
+    return count;
+  }, [localPost]);
+
+  // Hiển thị nút like với UI được đưa ra từ hàm riêng
+  const renderLikeButton = () => {
+    return (
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        onClick={handleLike}
+        disabled={isLiking}
+        className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+          isLiked
+            ? "text-[var(--color-primary)] bg-[var(--color-primary-dark)]/10"
+            : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+        }`}
+      >
+        {isLiking ? (
+          <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+        ) : (
+          <svg
+            className={`w-5 h-5 ${
+              isLiked ? "fill-current" : "stroke-current fill-none"
+            }`}
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+            />
+          </svg>
+        )}
+        <span className="text-sm font-medium">{localPost.likesCount || 0}</span>
+      </motion.button>
+    );
+  };
+
+  // Hàm để tải lại dữ liệu post từ server và đồng bộ trạng thái
+  const refreshPostStatus = useCallback(async () => {
+    if (!localPost || !localPost._id) return;
+
+    try {
+      // Phân biệt rõ post cá nhân và post group
+      if (localPost.groupId) {
+        // Chỉ invalidate post chi tiết, không invalidate danh sách post
+        queryClient.invalidateQueries({
+          queryKey: POST_QUERY_KEYS.detail(localPost._id),
+          refetchType: "none", // Không tự động refetch, chỉ đánh dấu stale
+        });
+      } else {
+        // Chỉ invalidate query liên quan đến post cá nhân
+        queryClient.invalidateQueries({
+          queryKey: POST_QUERY_KEYS.detail(localPost._id),
+          refetchType: "none", // Không tự động refetch, chỉ đánh dấu stale
+        });
+      }
+    } catch (error) {
+      console.error("Failed to refresh post status:", error);
+    }
+  }, [localPost, queryClient]);
+
+  // Thêm effect để refresh post status khi component mount
+  useEffect(() => {
+    // Refresh post status khi component mount nếu user đã đăng nhập
+    if (user && localPost && localPost._id) {
+      refreshPostStatus();
+    }
+  }, [refreshPostStatus, user, localPost]);
+
+  // Thêm biến để theo dõi thời gian like gần nhất
+  const lastLikeTimeRef = useRef(0);
+  const processingLikeRef = useRef(false);
+
+  /**
+   * Xử lý khi người dùng thích/bỏ thích bài viết
+   */
   const handleLike = useCallback(async () => {
     if (!user) {
       navigate("/login");
       return;
     }
 
-    if (isLiking) return; // Prevent multiple clicks
+    if (isLiking || processingLikeRef.current) return;
 
-    setIsLiking(true);
-
-    // Optimistic update
-    const currentLiked = isLiked;
-    const currentLikesCount = localPost.likesCount || 0;
-    const newLikesCount = currentLiked
-      ? Math.max(currentLikesCount - 1, 0)
-      : currentLikesCount + 1;
-
-    // Update local state first for immediate feedback
-    setLocalPost((prev) => ({
-      ...prev,
-      isLiked: !currentLiked,
-      likesCount: newLikesCount,
-    }));
+    // Thêm throttle check để tránh gọi API quá nhanh
+    const now = Date.now();
+    if (now - lastLikeTimeRef.current < 1000) {
+      return;
+    }
+    lastLikeTimeRef.current = now;
 
     try {
-      // Call API
-      const response = await likePost.mutateAsync(localPost._id);
+      setIsLiking(true);
+      processingLikeRef.current = true;
 
-      // Update with actual API response
-      if (response && response.success) {
+      // Optimistic update để làm UI mượt hơn
+      const prevLikeState = isLiked;
+      const prevLikeCount = localPost.likesCount || 0;
+      const optimisticLikeCount = prevLikeState
+        ? Math.max(0, prevLikeCount - 1)
+        : prevLikeCount + 1;
+
+      // Lưu trạng thái trước khi update để khôi phục nếu có lỗi
+      const prevPost = { ...localPost };
+
+      // Cập nhật UI ngay lập tức cho trải nghiệm mượt mà
+      setLocalPost((prev) => ({
+        ...prev,
+        isLiked: !prevLikeState,
+        likesCount: optimisticLikeCount,
+        likes: !prevLikeState
+          ? [...(prev.likes || []), user._id]
+          : (prev.likes || []).filter((id) =>
+              typeof id === "string" ? id !== user._id : id._id !== user._id
+            ),
+      }));
+
+      // Gọi API và đợi phản hồi từ server
+      const response = await likePost.mutateAsync(localPost._id);
+      if (response && response.success === true) {
+        // Cập nhật localPost với dữ liệu từ server
         setLocalPost((prev) => ({
           ...prev,
           isLiked: response.isLiked,
           likesCount: response.likesCount,
-          likes: response.likes || prev.likes,
+          likes: response.likes || [],
         }));
+
+        // Đồng bộ cache với dữ liệu từ server
+        optimisticTogglePostLike({
+          postId: localPost._id,
+          userId: user._id,
+          serverState: response.isLiked, // Đảm bảo sử dụng giá trị từ server
+          groupId: localPost.groupId, // Thêm groupId để giúp cập nhật chính xác
+        });
+      } else {
+        console.error(
+          "[PostCard] Like API returned unsuccessful response:",
+          response
+        );
+
+        // Nếu có lỗi, khôi phục về trạng thái trước đó
+        setLocalPost(prevPost);
       }
     } catch (error) {
-      console.error("Like action failed:", error);
-      // Revert on error
-      setLocalPost((prev) => ({
-        ...prev,
-        isLiked: currentLiked,
-        likesCount: currentLikesCount,
-      }));
+      console.error("[PostCard] Failed to like post:", error);
+      showSuccessToast(t("toast.error.generic"));
     } finally {
       setIsLiking(false);
+      processingLikeRef.current = false;
     }
-  }, [isLiked, isLiking, likePost, localPost._id, navigate, user]);
+  }, [
+    user,
+    navigate,
+    isLiking,
+    localPost,
+    likePost,
+    optimisticTogglePostLike,
+    isLiked,
+    showSuccessToast,
+  ]);
 
   const handleDelete = () => {
-    showConfirmToast("Are you sure you want to delete this post?", async () => {
+    showConfirmToast("toast.confirm.delete", async () => {
       try {
         setIsDeleting(true);
         await deletePost.mutateAsync(localPost._id);
@@ -166,7 +402,7 @@ const PostCard = ({ post }) => {
   const handleShare = () => {
     const url = `${window.location.origin}/post/${localPost._id}`;
     navigator.clipboard.writeText(url);
-    showSuccessToast("Link copied to clipboard!");
+    showSuccessToast("toast.success.linkCopied");
   };
 
   return (
@@ -301,6 +537,8 @@ const PostCard = ({ post }) => {
           <p className="text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed line-clamp-3">
             {localPost.content}
           </p>
+
+          {/* Post Images */}
           {localPost.images && localPost.images.length > 0 ? (
             <div className="mt-4 grid grid-cols-1 gap-2">
               {localPost.images.map((image, index) => (
@@ -309,7 +547,7 @@ const PostCard = ({ post }) => {
                   src={image}
                   alt={`Post content ${index + 1}`}
                   className="rounded-xl max-h-96 h-64 hover:shadow-lg transition-shadow"
-                  eager={index === 0}
+                  eager={isEagerLoad}
                 />
               ))}
             </div>
@@ -318,15 +556,17 @@ const PostCard = ({ post }) => {
               src={localPost.image}
               alt="Post content"
               className="mt-4 rounded-xl max-h-96 h-64 hover:shadow-lg transition-shadow"
-              eager={true}
+              eager={isEagerLoad}
             />
           ) : null}
+
+          {/* Post Tags */}
           {localPost.tags && localPost.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-4">
               {localPost.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-3 py-1 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] rounded-full text-sm hover:bg-[var(--color-bg-light)] transition-colors"
+                  className="px-3 py-1 bg-[var(--color-primary)] text-white rounded-full text-sm hover:bg-[var(--color-primary-hover)] transition-colors"
                 >
                   #{tag}
                 </span>
@@ -338,54 +578,45 @@ const PostCard = ({ post }) => {
         {/* Post Actions */}
         <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-4">
           <div className="flex space-x-4">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleLike}
-              disabled={isLiking}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                isLiked
-                  ? "text-[var(--color-primary)] bg-[var(--color-primary-dark)]/10"
-                  : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
-              }`}
-            >
-              <svg
-                className={`w-5 h-5 ${
-                  isLiked ? "fill-current" : "stroke-current fill-none"
-                }`}
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                />
-              </svg>
-              <span className="text-sm font-medium">
-                {localPost.likesCount || 0}
-              </span>
-            </motion.button>
+            {renderLikeButton()}
 
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setShowComments(!showComments)}
-              className="flex items-center space-x-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                commentsMismatch
+                  ? "text-amber-500 bg-amber-50 dark:bg-amber-900/20"
+                  : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+              }`}
             >
-              <svg
-                className="w-5 h-5 stroke-current"
-                viewBox="0 0 24 24"
-                fill="none"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"
-                />
-              </svg>
-              <span className="text-sm font-medium">
-                {localPost.commentsCount || 0}
-              </span>
+              {commentsMismatch ? (
+                <svg
+                  className="w-5 h-5 stroke-current"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5 stroke-current"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"
+                  />
+                </svg>
+              )}
+              <span className="text-sm font-medium">{commentsCount}</span>
             </motion.button>
           </div>
 

@@ -1,37 +1,33 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { useNavigate, useLocation, useParams, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import { motion } from "framer-motion";
+
 import {
   FiEdit,
   FiEye,
   FiFileText,
   FiImage,
   FiCheck,
-  FiPlus,
   FiTrash2,
   FiX,
-  FiHash,
-  FiAlertCircle,
-  FiUsers,
-  FiTag,
   FiInfo,
   FiUpload,
   FiLoader,
-  FiMessageSquare,
+  FiUsers,
+  FiArrowLeft,
 } from "react-icons/fi";
 import Toast from "../../utils/toast";
-import { useAuth } from "../../contexts/AuthContext";
 import { usePostContext } from "../../contexts/PostContext";
 import { useGroupQueries } from "../../hooks/queries/useGroupQueries";
 import { usePostQueries } from "../../hooks/queries/usePostQueries";
 import { SkeletonPostDetail } from "../../components/skeleton";
+import { useTranslation } from "react-i18next";
 
 const CreatePostPage = ({ isEditing = false }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { postId } = useParams();
-  const { user } = useAuth();
   const { createPost, updatePost } = usePostContext();
   const { usePost } = usePostQueries;
   const fileInputRef = useRef(null);
@@ -41,8 +37,7 @@ const CreatePostPage = ({ isEditing = false }) => {
   const groupId = queryParams.get("groupId");
 
   // Fetch group information if groupId is present
-  const { data: groupData, isLoading: groupLoading } =
-    useGroupQueries.useGroup(groupId);
+  const { data: groupData } = useGroupQueries.useGroup(groupId);
   const group = groupData?.data;
 
   // Fetch post data if in editing mode
@@ -124,7 +119,7 @@ const CreatePostPage = ({ isEditing = false }) => {
       if (formData.tags.length >= 5) {
         setErrors((prev) => ({
           ...prev,
-          tags: "Maximum 5 tags allowed",
+          tags: t("post.maxTagsAllowed"),
         }));
         return;
       }
@@ -160,17 +155,17 @@ const CreatePostPage = ({ isEditing = false }) => {
   const validateForm = () => {
     const newErrors = {};
     if (!formData.title.trim()) {
-      newErrors.title = "Title is required";
+      newErrors.title = t("post.titleRequired");
     } else if (formData.title.trim().length < 3) {
-      newErrors.title = "Title must be at least 3 characters";
+      newErrors.title = t("post.titleMinLength");
     }
     if (!formData.content.trim()) {
-      newErrors.content = "Content is required";
+      newErrors.content = t("post.contentRequired");
     } else if (formData.content.trim().length < 10) {
-      newErrors.content = "Content must be at least 10 characters";
+      newErrors.content = t("post.contentMinLength");
     }
     if (formData.tags.length === 0) {
-      newErrors.tags = "At least one tag is required";
+      newErrors.tags = t("post.tagsRequired");
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -179,6 +174,53 @@ const CreatePostPage = ({ isEditing = false }) => {
   // Handle image upload
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files).filter((file) =>
+      file.type.startsWith("image/")
+    );
+    handleImageFiles(files);
+  };
+
+  const handleRemoveImage = (index) => {
+    // Handle removal of images
+    if (index < existingImages.length) {
+      const imageToDelete = existingImages[index];
+      setImagesToDelete((prev) => [...prev, imageToDelete]);
+    }
+
+    setImagePreviewUrls((prev) =>
+      prev.filter((_, prevIndex) => prevIndex !== index)
+    );
+
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter(
+        (_, prevIndex) => prevIndex + existingImages.length !== index
+      ),
+    }));
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files).filter((file) =>
       file.type.startsWith("image/")
     );
     handleImageFiles(files);
@@ -202,622 +244,401 @@ const CreatePostPage = ({ isEditing = false }) => {
       return;
     }
 
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviewUrls((prev) => [...prev, reader.result]);
-        setFormData((prev) => ({
-          ...prev,
-          images: [...prev.images, file],
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
+    // Create preview URLs for new images
+    const newImageUrls = validFiles.map((file) => URL.createObjectURL(file));
+
+    setImagePreviewUrls((prev) => [...prev, ...newImageUrls]);
+    setFormData((prev) => ({
+      ...prev,
+      images: [...prev.images, ...validFiles],
+    }));
   };
 
-  const handleRemoveImage = (index) => {
-    if (index < existingImages.length) {
-      // It's an existing image, mark it for deletion
-      const imageUrl = existingImages[index];
-      setImagesToDelete((prev) => [...prev, imageUrl]);
-      setExistingImages((prev) => prev.filter((_, i) => i !== index));
-    } else {
-      // It's a new image, just remove it from the array
-      const newImagesIndex = index - existingImages.length;
-      setFormData((prev) => ({
-        ...prev,
-        images: prev.images.filter((_, i) => i !== newImagesIndex),
-      }));
-    }
-    setImagePreviewUrls((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleDragEnter = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files).filter((file) =>
-      file.type.startsWith("image/")
-    );
-    handleImageFiles(files);
-  };
-
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
-    setErrors({}); // Clear previous errors
     setIsSubmitting(true);
+    let success = false;
 
     try {
-      // Create form data for multipart/form-data request
-      const postFormData = new FormData();
-      postFormData.append("title", formData.title.trim());
-      postFormData.append("content", formData.content.trim());
+      const formDataToSend = new FormData();
+      formDataToSend.append("title", formData.title);
+      formDataToSend.append("content", formData.content);
+      formDataToSend.append("tags", JSON.stringify(formData.tags));
 
-      // Add groupId if posting in a group
       if (groupId) {
-        // Check MongoDB ObjectId format (24 hex characters)
-        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(groupId);
-        if (!isValidObjectId) {
-          Toast.error("Invalid group ID format");
-          setIsSubmitting(false);
-          return;
-        }
-        postFormData.append("groupId", groupId);
+        formDataToSend.append("groupId", groupId);
       }
 
-      // Convert tags array to JSON string to ensure it's properly sent as array
-      postFormData.append(
-        "tags",
-        JSON.stringify(formData.tags.map((tag) => tag.toLowerCase().trim()))
-      );
+      // Add images to FormData
+      formData.images.forEach((image) => {
+        formDataToSend.append("images", image);
+      });
 
-      // Add images to delete if editing
+      // Add list of images to delete
       if (isEditing && imagesToDelete.length > 0) {
-        postFormData.append("imagesToDelete", JSON.stringify(imagesToDelete));
+        formDataToSend.append("imagesToDelete", JSON.stringify(imagesToDelete));
       }
 
-      // Keep existing images if editing
-      if (isEditing && existingImages.length > 0) {
-        postFormData.append("existingImages", JSON.stringify(existingImages));
-      }
-
-      // Append new images
-      if (formData.images.length > 0) {
-        formData.images.forEach((image) => {
-          postFormData.append("images", image);
-        });
-      }
-
-      // Call the appropriate mutation based on whether we're creating or updating
       let response;
       if (isEditing) {
-        response = await updatePost.mutateAsync({
-          postId,
-          data: postFormData,
-        });
+        formDataToSend.append("postId", postId);
+        response = await updatePost.mutateAsync(formDataToSend);
       } else {
-        response = await createPost.mutateAsync(postFormData);
+        response = await createPost.mutateAsync(formDataToSend);
       }
 
       if (response.success) {
-        // Clear form and redirect to post detail or home
-        setFormData({
-          title: "",
-          content: "",
-          tags: [],
-          images: [],
-        });
-        setImagePreviewUrls([]);
-        setExistingImages([]);
-        setImagesToDelete([]);
-
-        // Show success message
         Toast.success(
-          isEditing
-            ? "Post updated successfully!"
-            : "Post created successfully!"
+          isEditing ? "Post updated successfully" : "Post created successfully"
         );
+        success = true;
 
-        // Redirect to the post or home page
+        // Redirect logic based on post type
         if (isEditing) {
+          // For edited posts, go to post detail page
           navigate(`/post/${postId}`);
+        } else if (groupId && response.data?._id) {
+          // For new group posts, return to group page
+          navigate(`/groups/${groupId}`);
         } else if (response.data?._id) {
+          // For new personal posts, go to post detail
           navigate(`/post/${response.data._id}`);
         } else {
-          navigate("/");
+          navigate(-1);
         }
-      }
-    } catch (error) {
-      console.error(
-        isEditing ? "Error updating post:" : "Error creating post:",
-        error
-      );
-
-      // Handle validation errors from server
-      if (error.response?.data?.errors) {
-        setErrors(error.response.data.errors);
       } else {
         Toast.error(
-          error.response?.data?.error ||
-            (isEditing
-              ? "Failed to update post. Please try again."
-              : "Failed to create post. Please try again.")
+          response.message ||
+            (isEditing ? "Failed to update post" : "Failed to create post")
         );
+        setErrors((prev) => ({
+          ...prev,
+          submit: response.message || "An error occurred",
+        }));
       }
+    } catch (error) {
+      console.error("Error submitting post:", error);
+      Toast.error("An error occurred. Please try again.");
+      setErrors((prev) => ({
+        ...prev,
+        submit: "An error occurred. Please try again.",
+      }));
     } finally {
       setIsSubmitting(false);
+
+      // Clean up image object URLs if submission failed
+      if (!success) {
+        imagePreviewUrls.forEach((url) => {
+          if (url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+          }
+        });
+      }
     }
   };
 
-  // Render the preview tab
-  const renderPreview = () => (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="markdown-preview px-6 py-4 rounded-lg bg-[var(--color-bg-secondary)] shadow-lg"
-    >
-      <h1 className="text-3xl font-bold mb-4 text-[var(--color-text-primary)]">
-        {formData.title || "Untitled"}
-      </h1>
-      {formData.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {formData.tags.map((tag) => (
-            <span
-              key={tag}
-              className="px-3 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-full text-sm font-medium"
-            >
-              #{tag}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="prose prose-invert max-w-none text-[var(--color-text-secondary)]">
-        <ReactMarkdown>{formData.content || "No content yet."}</ReactMarkdown>
-      </div>
-      {imagePreviewUrls.length > 0 && (
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {imagePreviewUrls.map((url, index) => (
-            <div
-              key={index}
-              className="relative rounded-lg overflow-hidden bg-[var(--color-bg-tertiary)] shadow-md"
-            >
-              <img
-                src={url}
-                alt={`Preview ${index + 1}`}
-                className="w-full h-48 object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </motion.div>
-  );
-
-  if (groupLoading) {
-    return (
-      <div className="max-w-3xl mx-auto mt-8 p-4">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-[var(--color-bg-light)] w-1/3 rounded"></div>
-          <div className="h-24 bg-[var(--color-bg-light)] rounded"></div>
-          <div className="flex justify-end">
-            <div className="h-10 bg-[var(--color-bg-light)] w-24 rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Handle unauthorized user
-  if (!user) {
-    return (
-      <div className="max-w-3xl mx-auto mt-8 p-4">
-        <div className="bg-yellow-900/20 border-l-4 border-yellow-600 p-4 rounded-lg text-yellow-500">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <FiAlertCircle className="h-5 w-5" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-500">
-                Please log in to create a post.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-5xl mx-auto py-3 sm:py-5 md:py-8 px-2 sm:px-4 md:px-6">
-      <div className="mb-3 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[var(--color-text-primary)]">
-          {isEditing ? "Edit Post" : "Create New Post"}
-        </h1>
-        {groupId && group && (
-          <div className="mt-1 sm:mt-2 text-sm sm:text-base text-[var(--color-text-secondary)]">
-            Posting in group: <span className="font-medium">{group.name}</span>
+    <div
+      className={`container mx-auto px-4 py-8 max-w-4xl ${
+        isDragging
+          ? "bg-[var(--color-primary-light)] opacity-90 transition-colors"
+          : ""
+      }`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-4">
+        {isEditing ? t("post.editPost") : t("post.createNewPost")}
+      </h1>
+
+      {/* Group information banner */}
+      {groupId && group && !isEditing && (
+        <div className="mb-6 bg-[var(--color-bg-secondary)] p-4 rounded-lg border border-[var(--color-border)] flex items-center">
+          <FiUsers
+            className="text-[var(--color-primary)] mr-2 flex-shrink-0"
+            size={24}
+          />
+          <div className="flex-grow">
+            <div className="flex items-center">
+              <span className="font-medium text-[var(--color-text-primary)]">
+                {t("post.creatingPostInGroup")}
+              </span>
+              <span className="ml-2 font-bold text-[var(--color-text-primary)]">
+                {group.name}
+              </span>
+            </div>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {group.isPrivate ? t("group.private") : t("group.public")} ·
+              {group.membersCount || 0} {t("group.member")}
+            </p>
           </div>
-        )}
+          <Link
+            to={`/groups/${groupId}`}
+            className="text-[var(--color-primary)] hover:underline text-sm ml-auto flex items-center"
+            title={t("common.back")}
+          >
+            <FiArrowLeft size={18} />
+          </Link>
+        </div>
+      )}
+
+      {/* Post type indicator */}
+      <div className="mb-6 text-sm text-[var(--color-text-secondary)] flex items-center">
+        <div
+          className={`px-3 py-1 rounded-full ${
+            groupId
+              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+          }`}
+        >
+          {groupId ? t("group.post") : t("post.personalPost")}
+        </div>
+        <div className="ml-2">
+          {groupId ? t("post.visibleInGroup") : t("post.visibleInFeed")}
+        </div>
       </div>
 
-      {/* Show loading indicator while fetching post data in edit mode */}
       {isEditing && postLoading ? (
-        <div className="max-w-2xl mx-auto py-3 sm:py-8">
-          <SkeletonPostDetail />
-        </div>
+        <SkeletonPostDetail />
       ) : (
-        <div className="bg-[var(--color-bg-secondary)] rounded-xl p-3 sm:p-4 md:p-6 shadow-lg border border-[var(--color-border)]">
-          {/* Page Header with tabs navigation */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 sm:pb-6 mb-3 sm:mb-6 border-b border-[var(--color-border)]">
-            {/* Mode Switching Tabs */}
-            <div className="flex mb-3 sm:mb-0 rounded-md overflow-hidden border border-[var(--color-border)] shadow-sm">
-              <button
-                onClick={() => setActiveTab("write")}
-                className={`px-2 sm:px-4 py-1.5 sm:py-2 flex items-center text-xs sm:text-sm font-medium cursor-pointer ${
-                  activeTab === "write"
-                    ? "bg-[var(--color-primary)] text-white"
-                    : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
-                } transition-colors`}
-              >
-                <FiEdit className="mr-1 sm:mr-2" />
-                Write
-              </button>
-              <button
-                onClick={() => setActiveTab("preview")}
-                className={`px-2 sm:px-4 py-1.5 sm:py-2 flex items-center text-xs sm:text-sm font-medium cursor-pointer ${
-                  activeTab === "preview"
-                    ? "bg-[var(--color-primary)] text-white"
-                    : "bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
-                } transition-colors`}
-              >
-                <FiEye className="mr-1 sm:mr-2" />
-                Preview
-              </button>
-            </div>
-
-            {groupId && group && (
-              <div className="flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-[var(--color-primary)]/10 rounded-md">
-                <FiUsers className="h-3 w-3 sm:h-4 sm:w-4 text-[var(--color-primary)] mr-1 sm:mr-2" />
-                <p className="text-xs sm:text-sm text-[var(--color-primary)]">
-                  Posting in <strong>{group.name}</strong>
-                </p>
-              </div>
-            )}
+        <div className="card p-6 rounded-xl shadow-md">
+          {/* Tab Navigation */}
+          <div className="flex space-x-2 mb-6">
+            <button
+              className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
+                activeTab === "write"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+              }`}
+              onClick={() => setActiveTab("write")}
+            >
+              <FiEdit />
+              <span>{t("post.write")}</span>
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md flex items-center space-x-2 ${
+                activeTab === "preview"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+              }`}
+              onClick={() => setActiveTab("preview")}
+            >
+              <FiEye />
+              <span>{t("post.preview")}</span>
+            </button>
           </div>
 
-          {/* Error Alert */}
-          {errors.submit && (
-            <div className="mb-3 sm:mb-6 bg-red-900/20 border-l-4 border-red-500 p-2 sm:p-4 rounded-md">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <FiAlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500" />
-                </div>
-                <div className="ml-2 sm:ml-3">
-                  <p className="text-xs sm:text-sm text-red-500">
-                    {errors.submit}
-                  </p>
-                </div>
-              </div>
+          <form onSubmit={handleSubmit}>
+            {/* Title */}
+            <div className="mb-4">
+              <label
+                htmlFor="title"
+                className="flex items-center text-[var(--color-text-secondary)] mb-2"
+              >
+                <FiFileText className="mr-2" />
+                {t("post.title")}
+              </label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                placeholder={t("post.titlePlaceholder")}
+                className="w-full p-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+              {errors.title && (
+                <p className="text-red-500 text-sm mt-1">{errors.title}</p>
+              )}
             </div>
-          )}
 
-          {/* Content Area */}
-          <div>
-            {activeTab === "write" ? (
-              <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-6">
-                {/* Title Input */}
-                <div className="space-y-1 sm:space-y-2">
-                  <label
-                    htmlFor="title"
-                    className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
+            {/* Tags */}
+            <div className="mb-4">
+              <label
+                htmlFor="tags"
+                className="flex items-center text-[var(--color-text-secondary)] mb-2"
+              >
+                <FiFileText className="mr-2" />
+                {t("post.tags")}
+              </label>
+              <div
+                className={`flex flex-wrap items-center p-2 border border-[var(--color-border)] rounded-md bg-[var(--color-bg-primary)] ${
+                  errors.tags ? "border-red-500" : ""
+                }`}
+              >
+                {formData.tags.map((tag) => (
+                  <div
+                    key={tag}
+                    className="flex items-center bg-[var(--color-primary-light)] text-[var(--color-text-primary)] px-2 py-1 rounded-md m-1"
                   >
-                    <FiMessageSquare className="mr-1 sm:mr-2" /> Title
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    name="title"
-                    value={formData.title}
-                    onChange={handleChange}
-                    placeholder="Enter an attention-grabbing title..."
-                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 border ${
-                      errors.title
-                        ? "border-red-500"
-                        : "border-[var(--color-border)]"
-                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-base sm:text-lg`}
-                  />
-                  {errors.title && (
-                    <p className="text-xs sm:text-sm text-red-500">
-                      {errors.title}
-                    </p>
-                  )}
-                </div>
-
-                {/* Tags Input */}
-                <div className="space-y-1 sm:space-y-2">
-                  <label
-                    htmlFor="tagInput"
-                    className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
-                  >
-                    <FiHash className="mr-1 sm:mr-2" /> Tags
-                  </label>
-
-                  <div className="flex flex-wrap gap-1 sm:gap-2 mb-2 sm:mb-3">
-                    {formData.tags.map((tag) => (
-                      <motion.span
-                        key={tag}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="inline-flex items-center px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                      >
-                        #{tag}
-                        <button
-                          type="button"
-                          onClick={() => removeTag(tag)}
-                          className="ml-1 sm:ml-2 text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
-                        >
-                          <FiX className="w-3 h-3 sm:w-4 sm:h-4" />
-                        </button>
-                      </motion.span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center">
-                    <div className="relative flex-grow">
-                      <input
-                        type="text"
-                        id="tagInput"
-                        value={tagInput}
-                        onChange={handleTagInputChange}
-                        onKeyDown={handleTagKeyDown}
-                        onBlur={addTag}
-                        placeholder="Add relevant tags (press Enter or comma to add)"
-                        className={`w-full px-3 sm:px-4 py-2 sm:py-3 pl-3 sm:pl-4 pr-8 sm:pr-10 border ${
-                          errors.tags
-                            ? "border-red-500"
-                            : "border-[var(--color-border)]"
-                        } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] text-sm`}
-                      />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 pointer-events-none text-[var(--color-text-tertiary)]">
-                        <FiTag className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </div>
-                    </div>
+                    <span className="mr-1">#{tag}</span>
                     <button
                       type="button"
-                      onClick={addTag}
-                      className="ml-2 btn btn-secondary flex items-center text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2"
+                      onClick={() => removeTag(tag)}
+                      className="text-[var(--color-text-primary)]"
                     >
-                      <FiPlus className="mr-0.5 sm:mr-1" /> Add
+                      <FiX size={16} />
                     </button>
                   </div>
+                ))}
+                <input
+                  type="text"
+                  id="tagInput"
+                  value={tagInput}
+                  onChange={handleTagInputChange}
+                  onKeyDown={handleTagKeyDown}
+                  onBlur={addTag}
+                  placeholder={
+                    formData.tags.length === 0 ? t("post.tagsPlaceholder") : ""
+                  }
+                  className="flex-grow p-2 outline-none bg-transparent text-[var(--color-text-primary)]"
+                />
+              </div>
+              <p className="text-sm text-[var(--color-text-tertiary)] mt-1">
+                {t("post.tagsHelp")}
+              </p>
+              {errors.tags && (
+                <p className="text-red-500 text-sm mt-1">{errors.tags}</p>
+              )}
+            </div>
 
-                  {errors.tags && (
-                    <p className="text-xs sm:text-sm text-red-500">
-                      {errors.tags}
-                    </p>
-                  )}
-                  <p className="text-[10px] sm:text-xs text-[var(--color-text-tertiary)]">
-                    Enter up to 5 tags to help others find your post
-                  </p>
-                </div>
-
-                {/* Content Input */}
-                <div className="space-y-1 sm:space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label
-                      htmlFor="content"
-                      className="flex items-center text-xs sm:text-sm font-medium text-[var(--color-text-secondary)]"
-                    >
-                      <FiFileText className="mr-1 sm:mr-2" /> Content
-                    </label>
-                    <a
-                      href="https://www.markdownguide.org/cheat-sheet/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] sm:text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] flex items-center"
-                    >
-                      <FiInfo className="mr-0.5 sm:mr-1" />
-                      Markdown Supported
-                    </a>
-                  </div>
-
-                  <textarea
-                    id="content"
-                    name="content"
-                    value={formData.content}
-                    onChange={handleChange}
-                    rows={10}
-                    placeholder="Write your post content using Markdown..."
-                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 border ${
-                      errors.content
-                        ? "border-red-500"
-                        : "border-[var(--color-border)]"
-                    } bg-[var(--color-bg-secondary)] rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-[var(--color-text-primary)] font-mono text-xs sm:text-sm leading-relaxed`}
-                  ></textarea>
-
-                  {errors.content && (
-                    <p className="text-xs sm:text-sm text-red-500">
-                      {errors.content}
-                    </p>
-                  )}
-                </div>
-
-                {/* Images Upload */}
-                <div className="space-y-2">
-                  <label className="flex items-center text-sm font-medium text-[var(--color-text-secondary)]">
-                    <FiImage className="mr-2" /> Images
-                  </label>
-
-                  <div
-                    className={`border-2 border-dashed rounded-lg p-6 ${
-                      isDragging
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
-                        : "border-[var(--color-border)] bg-[var(--color-bg-secondary)]"
-                    } transition-all duration-200`}
-                    onDragEnter={handleDragEnter}
-                    onDragLeave={handleDragLeave}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                  >
-                    {imagePreviewUrls.length > 0 ? (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {imagePreviewUrls.map((url, index) => (
-                            <motion.div
-                              key={index}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              className="relative aspect-video rounded-lg overflow-hidden group shadow-md"
-                            >
-                              <img
-                                src={url}
-                                alt={`Preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveImage(index)}
-                                  className="p-2 bg-red-600 text-white rounded-full shadow-lg cursor-pointer hover:bg-red-700 transition-colors"
-                                >
-                                  <FiTrash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </motion.div>
-                          ))}
-                        </div>
-
-                        {imagePreviewUrls.length < 10 && (
-                          <div className="flex justify-center mt-4">
-                            <input
-                              type="file"
-                              ref={fileInputRef}
-                              onChange={handleImageUpload}
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              className="btn btn-secondary flex items-center cursor-pointer"
-                            >
-                              <FiPlus className="mr-2" />
-                              Add More Images
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-6">
-                        <FiImage className="w-12 h-12 text-[var(--color-text-tertiary)] mb-3" />
-                        <p className="text-sm text-[var(--color-text-tertiary)] text-center mb-4">
-                          Drag images here or click to select
-                          <br />
-                          <span className="text-xs">
-                            Max: 5MB per image (up to 10 images)
-                          </span>
-                        </p>
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleImageUpload}
-                          accept="image/*"
-                          multiple
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="btn btn-primary flex items-center cursor-pointer"
-                        >
-                          <FiUpload className="mr-2" />
-                          Select Images
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end space-x-3 pt-4 border-t border-[var(--color-border)]">
-                  <button
-                    type="button"
-                    onClick={() => navigate("/")}
-                    className="btn-secondary text-sm px-4 py-2 rounded-full border border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] transition-all cursor-pointer flex items-center"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={`relative overflow-hidden text-sm px-6 py-2.5 rounded-full font-medium text-white cursor-pointer shadow-lg transition-all duration-300 ${
-                      isSubmitting
-                        ? "opacity-70"
-                        : "hover:shadow-xl hover:translate-y-[-1px]"
-                    }`}
-                    style={{
-                      background:
-                        "linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%)",
-                    }}
-                  >
-                    <span className="relative z-10 flex items-center">
-                      {isSubmitting ? (
-                        <>
-                          <FiLoader className="mr-2 animate-spin" />
-                          {isEditing ? "Updating..." : "Publishing..."}
-                        </>
-                      ) : (
-                        <>
-                          <FiCheck className="mr-2" />
-                          {isEditing ? "Update Post" : "Publish Post"}
-                        </>
-                      )}
-                    </span>
-                  </button>
-                </div>
-              </form>
+            {/* Content */}
+            {activeTab === "write" ? (
+              <div className="mb-4">
+                <label
+                  htmlFor="content"
+                  className="flex items-center text-[var(--color-text-secondary)] mb-2"
+                >
+                  <FiFileText className="mr-2" />
+                  {t("post.content")}
+                  <span className="ml-auto text-[var(--color-primary)] text-sm flex items-center">
+                    <FiInfo className="mr-1" />
+                    {t("post.markdownSupported")}
+                  </span>
+                </label>
+                <textarea
+                  id="content"
+                  name="content"
+                  value={formData.content}
+                  onChange={handleChange}
+                  placeholder={t("post.contentPlaceholder")}
+                  className="w-full p-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] min-h-[300px]"
+                ></textarea>
+                {errors.content && (
+                  <p className="text-red-500 text-sm mt-1">{errors.content}</p>
+                )}
+              </div>
             ) : (
-              <div className="space-y-6">
-                <div className="mb-4 text-sm text-[var(--color-text-secondary)] flex items-center">
-                  <FiEye className="mr-2" /> Post Preview
+              <div className="mb-4">
+                <div className="flex items-center text-[var(--color-text-secondary)] mb-2">
+                  <FiEye className="mr-2" />
+                  {t("post.preview")}
                 </div>
-
-                {renderPreview()}
-
-                <div className="flex justify-end pt-4 border-t border-[var(--color-border)]">
-                  <button
-                    onClick={() => setActiveTab("write")}
-                    className={`relative overflow-hidden text-sm px-6 py-2.5 rounded-full font-medium text-white cursor-pointer shadow-lg transition-all duration-300 hover:shadow-xl hover:translate-y-[-1px] flex items-center`}
-                    style={{
-                      background:
-                        "linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%)",
-                    }}
-                  >
-                    <span className="relative z-10 flex items-center">
-                      <FiEdit className="mr-2" /> Continue Editing
-                    </span>
-                  </button>
+                <div className="w-full p-4 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] min-h-[300px] prose prose-sm prose-[var(--color-text-primary)] max-w-none">
+                  {formData.content ? (
+                    <ReactMarkdown className="prose dark:prose-invert prose-a:text-[var(--color-primary)] max-w-none">
+                      {formData.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <p className="text-[var(--color-text-tertiary)]">
+                      {t("post.previewEmpty")}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
-          </div>
+
+            {/* Image Upload */}
+            <div className="mb-6">
+              <label
+                htmlFor="images"
+                className="flex items-center text-[var(--color-text-secondary)] mb-2"
+              >
+                <FiImage className="mr-2" />
+                {t("post.images")}
+              </label>
+              <div className="border-2 border-dashed border-[var(--color-border)] rounded-md p-4 text-center">
+                <input
+                  type="file"
+                  id="images"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  ref={fileInputRef}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current.click()}
+                  className="btn btn-primary btn-sm"
+                >
+                  <FiUpload className="mr-2" />
+                  {t("post.uploadImages")}
+                </button>
+                <p className="text-sm text-[var(--color-text-tertiary)] mt-2">
+                  {t("post.dragAndDrop")}
+                </p>
+              </div>
+
+              {/* Image Previews */}
+              {imagePreviewUrls.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {imagePreviewUrls.map((url, index) => (
+                    <div
+                      key={index}
+                      className="relative border border-[var(--color-border)] rounded-md overflow-hidden"
+                    >
+                      <img
+                        src={url}
+                        alt={`Preview ${index}`}
+                        className="w-full h-24 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                      >
+                        <FiTrash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end mt-6">
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="btn btn-secondary mr-2"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary flex items-center"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <FiLoader className="animate-spin mr-2" />
+                    {t("common.submitting")}
+                  </>
+                ) : (
+                  <>
+                    <FiCheck className="mr-2" />
+                    {isEditing ? t("post.updatePost") : t("post.publishPost")}
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

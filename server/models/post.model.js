@@ -61,6 +61,20 @@ const PostSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    offensiveContent: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    offensiveSeverity: {
+      type: String,
+      enum: ["low", "medium", "high", null],
+      default: null,
+    },
+    offensiveWords: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -68,6 +82,28 @@ const PostSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
+// Pre-save hook để phân tích nội dung nhạy cảm
+PostSchema.pre("save", async function (next) {
+  if (this.isModified("content")) {
+    try {
+      // Import và sử dụng hàm phân tích
+      const { analyzeContent } = await import(
+        "../services/content-moderation.service.js"
+      );
+
+      const result = analyzeContent(this.content);
+
+      this.offensiveContent = result.offensiveContent;
+      this.offensiveSeverity = result.offensiveSeverity;
+      this.offensiveWords = result.offensiveWords;
+    } catch (error) {
+      console.error("Error analyzing content for offensive language:", error);
+    }
+  }
+
+  next();
+});
 
 PostSchema.virtual("likeCount", {
   ref: "Feedback",

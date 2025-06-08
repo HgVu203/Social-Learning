@@ -1,5 +1,11 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  useNavigate,
+  Link,
+  useSearchParams,
+  useLocation,
+} from "react-router-dom";
 import { useLogin } from "../../hooks/mutations/useAuthMutations";
 import { useAuth } from "../../contexts/AuthContext";
 import { motion } from "framer-motion";
@@ -7,8 +13,10 @@ import AuthForm from "../../components/auth/AuthForm";
 import AuthInput from "../../components/auth/AuthInput";
 import AuthButton from "../../components/auth/AuthButton";
 import { FaGoogle, FaFacebook, FaEnvelope, FaLock } from "react-icons/fa";
+import tokenService from "../../services/tokenService";
 
 const LoginPage = () => {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -21,6 +29,8 @@ const LoginPage = () => {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const isSubmittingRef = useRef(false);
 
   const login = useLogin();
   const { isAuthenticated } = useAuth();
@@ -29,10 +39,33 @@ const LoginPage = () => {
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/");
+    // Kiểm tra token hợp lệ trước khi đợi isAuthenticated từ context
+    const hasValidToken = tokenService.isTokenValid();
+
+    if (hasValidToken || isAuthenticated) {
+      // Đánh dấu đang chuyển hướng để tránh các lần render tiếp theo
+      // cũng cố gắng chuyển hướng
+      const redirecting = localStorage.getItem("auth_redirecting");
+      if (redirecting === "true") {
+        return; // Đang chuyển hướng, không làm gì thêm
+      }
+
+      localStorage.setItem("auth_redirecting", "true");
+
+      // Sử dụng setTimeout với delay 0 để mở ra event loop và cho phép
+      // các cập nhật khác hoàn thành trước khi chuyển trang
+      setTimeout(() => {
+        // Lấy đường dẫn trước đó từ location state hoặc chuyển hướng về trang chủ
+        const from = location?.state?.from || "/";
+        navigate(from, { replace: true });
+
+        // Xóa cờ chuyển hướng sau khi hoàn thành
+        setTimeout(() => {
+          localStorage.removeItem("auth_redirecting");
+        }, 1000);
+      }, 100);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, location]);
 
   useEffect(() => {
     // Check for OAuth redirect errors
@@ -61,16 +94,16 @@ const LoginPage = () => {
 
     // Email validation
     if (!formData.email) {
-      errors.email = "Email is required";
+      errors.email = t("auth.emailRequired");
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.email = "Please enter a valid email address";
+      errors.email = t("auth.validEmail");
     }
 
     // Password validation
     if (!formData.password) {
-      errors.password = "Password is required";
+      errors.password = t("auth.passwordRequired");
     } else if (formData.password.length < 8) {
-      errors.password = "Password must be at least 8 characters long";
+      errors.password = t("auth.passwordLength");
     }
 
     setValidationErrors(errors);
@@ -101,7 +134,7 @@ const LoginPage = () => {
     e.preventDefault();
 
     // Prevent multiple submissions
-    if (isLoading) return;
+    if (isLoading || isSubmittingRef.current) return;
 
     // Validate form
     if (!validateForm()) {
@@ -109,25 +142,37 @@ const LoginPage = () => {
     }
 
     try {
-      console.log("Attempting login with:", formData.email);
+      isSubmittingRef.current = true;
       const result = await login.mutateAsync(formData);
-      console.log("Login result:", result);
 
       // Handle login result
       if (result.success) {
-        // Login successful
-        console.log("Login successful, navigating to home");
-        // If user is admin, redirect to admin dashboard
-        if (result.data?.user?.role === "admin") {
-          navigate("/admin");
-        } else {
-          navigate("/");
+        // Đánh dấu đang chuyển hướng để tránh các component khác can thiệp
+        localStorage.setItem("auth_redirecting", "true");
+
+        // Đảm bảo token được lưu đúng cách
+        if (result.data?.accessToken) {
+          tokenService.setToken(result.data.accessToken);
+
+          if (result.data?.user) {
+            // Lưu thông tin người dùng vào localStorage
+            tokenService.setUser({
+              ...result.data.user,
+              token: result.data.accessToken,
+            });
+          }
         }
+
+        // Buộc chuyển hướng bằng window.location thay vì navigate để refresh trang
+        if (result.data?.user?.role === "admin") {
+          window.location.href = "/admin";
+        } else {
+          window.location.href = "/";
+        }
+
+        return; // Ngăn code thực thi tiếp sau khi chuyển hướng
       } else if (result.data?.requiresVerification) {
         // Account not verified - clear any errors before redirecting
-        console.log(
-          "Email verification required, redirecting to verification page"
-        );
         clearError();
 
         localStorage.setItem(
@@ -145,15 +190,12 @@ const LoginPage = () => {
           },
         });
       } else {
-        // Other error scenarios
-        console.log(
-          "Login returned false success but no requiresVerification flag"
-        );
-        setError(result.message || "Login failed. Please try again.");
+        // Other error scenarios - hiển thị lỗi rõ ràng
+        setError(result.error || result.message || t("auth.loginFailed"));
       }
     } catch (err) {
       console.error("Login failed:", err);
-      console.error("Login error details:", err.response?.data);
+
       // Check if the error is due to email verification required
       if (err.response?.data?.data?.requiresVerification) {
         // Clear any error messages before redirecting to verification
@@ -174,10 +216,23 @@ const LoginPage = () => {
           },
         });
       } else {
-        setError(
-          err.response?.data?.error || "Login failed. Please try again."
-        );
+        // Đảm bảo phân tích đúng cấu trúc lỗi từ response API
+        if (err.response?.data) {
+          // Trích xuất error message từ cấu trúc API response
+          const errorMessage =
+            err.response.data.error || // Thường là định dạng { success: false, error: "message" }
+            err.response.data.message ||
+            err.message ||
+            t("auth.loginFailed");
+
+          console.log("Setting error:", errorMessage);
+          setError(errorMessage);
+        } else {
+          setError(err.message || t("auth.loginFailed"));
+        }
       }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -235,41 +290,20 @@ const LoginPage = () => {
         className="max-w-md w-full"
       >
         <AuthForm
-          title="Welcome Back"
+          title={t("auth.login")}
           subtitle="Sign in to your account to continue"
           onSubmit={handleSubmit}
           className="space-y-5"
+          error={error}
+          clearError={clearError}
         >
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-red-700"
-            >
-              <div className="flex">
-                <svg
-                  className="w-5 h-5 mr-2"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{error}</span>
-              </div>
-            </motion.div>
-          )}
-
           <AuthInput
             label="Email Address"
             type="email"
             name="email"
             value={formData.email}
             onChange={handleChange}
-            placeholder="Enter your email"
+            placeholder={t("auth.email")}
             error={validationErrors.email}
             icon={<FaEnvelope />}
             autoComplete="email"
@@ -283,7 +317,7 @@ const LoginPage = () => {
             name="password"
             value={formData.password}
             onChange={handleChange}
-            placeholder="Enter your password"
+            placeholder={t("auth.password")}
             error={validationErrors.password}
             icon={<FaLock />}
             autoComplete="current-password"
@@ -291,13 +325,30 @@ const LoginPage = () => {
             required
           />
 
-          <div className="flex justify-end">
-            <Link
-              to="/forgot-password"
-              className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200"
-            >
-              Forgot password?
-            </Link>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <input
+                id="remember-me"
+                name="remember-me"
+                type="checkbox"
+                className="h-4 w-4 text-[var(--color-primary)] focus:ring-[var(--color-primary)] border-gray-300 rounded"
+              />
+              <label
+                htmlFor="remember-me"
+                className="ml-2 block text-sm text-[var(--color-text-secondary)]"
+              >
+                {t("auth.rememberMe")}
+              </label>
+            </div>
+
+            <div className="text-sm">
+              <Link
+                to="/forgot-password"
+                className="font-medium text-[var(--color-primary)] hover:opacity-80"
+              >
+                {t("auth.forgotPassword")}
+              </Link>
+            </div>
           </div>
 
           <AuthButton
@@ -307,7 +358,7 @@ const LoginPage = () => {
             variant="primary"
             fullWidth
           >
-            Sign In
+            {t("auth.login")}
           </AuthButton>
 
           <div className="relative flex items-center justify-center mt-6">
@@ -342,12 +393,12 @@ const LoginPage = () => {
 
           <div className="text-center mt-6">
             <p className="text-[var(--color-text-secondary)]">
-              Don't have an account?{" "}
+              {t("auth.dontHaveAccount")}{" "}
               <Link
                 to="/signup"
                 className="text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors duration-200 font-medium"
               >
-                Sign up now
+                {t("auth.signup")}
               </Link>
             </p>
           </div>
